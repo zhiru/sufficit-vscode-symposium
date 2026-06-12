@@ -72,7 +72,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 return;
             }
             const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-            ChatPanel.open(context, adapter, { cwd, resumeSessionId: info.sessionId }, info.title);
+            ChatPanel.open(context, adapter, { cwd, resumeSessionId: info.sessionId }, info.title, info);
         }),
     );
 }

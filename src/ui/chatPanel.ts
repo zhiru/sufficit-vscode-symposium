@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AgentAdapter, AgentEvent, AgentSession, SessionStartOptions } from "../adapters/types";
+import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOptions } from "../adapters/types";
 
 /**
  * One webview panel hosting one dialogue with one agent session.
@@ -15,6 +15,7 @@ export class ChatPanel {
         adapter: AgentAdapter,
         options: SessionStartOptions,
         title: string,
+        info?: SessionInfo,
     ): ChatPanel {
         const key = `${adapter.backend}:${options.resumeSessionId ?? Date.now()}`;
         const existing = ChatPanel.panels.get(key);
@@ -24,6 +25,9 @@ export class ChatPanel {
         }
         const created = new ChatPanel(context, adapter, options, title, key);
         ChatPanel.panels.set(key, created);
+        if (info && adapter.history) {
+            void created.loadHistory(info);
+        }
         return created;
     }
 
@@ -55,6 +59,18 @@ export class ChatPanel {
         }, undefined, context.subscriptions);
 
         this.post({ type: "meta", backend: adapter.backend, resumed: !!options.resumeSessionId });
+    }
+
+    private async loadHistory(info: SessionInfo): Promise<void> {
+        try {
+            const messages = await this.adapter.history!(info);
+            this.post({ type: "history", messages });
+        } catch (error) {
+            this.post({
+                type: "event",
+                event: { kind: "error", message: `failed to load history: ${error instanceof Error ? error.message : error}` },
+            });
+        }
     }
 
     private sendUserMessage(text: string): void {
@@ -138,7 +154,15 @@ function renderHtml(webview: vscode.Webview): string {
     });
 
     window.addEventListener("message", ({ data }) => {
-        if (data.type === "user") {
+        if (data.type === "history") {
+            for (const m of data.messages) {
+                if (m.role === "user") append("user", "you: " + m.text);
+                else if (m.role === "tool") append("tool", m.text);
+                else append("", m.text);
+            }
+            if (data.messages.length) append("meta", "— end of stored transcript —");
+            else append("meta", "(empty transcript)");
+        } else if (data.type === "user") {
             append("user", "you: " + data.text);
         } else if (data.type === "meta") {
             append("meta", "backend: " + data.backend + (data.resumed ? " (resumed session)" : " (new session)"));

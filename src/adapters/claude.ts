@@ -7,6 +7,7 @@ import * as readline from "readline";
 import {
     AgentAdapter,
     AgentSession,
+    HistoryMessage,
     SessionInfo,
     SessionStartOptions,
 } from "./types";
@@ -219,6 +220,7 @@ export class ClaudeAdapter implements AgentAdapter {
                         title: await readSessionTitle(fullPath) ?? dir,
                         cwd: dir,
                         updatedAt: stat.mtime,
+                        transcriptPath: fullPath,
                     });
                 } catch {
                     // unreadable session files are skipped
@@ -231,6 +233,80 @@ export class ClaudeAdapter implements AgentAdapter {
 
     start(options: SessionStartOptions): AgentSession {
         return new ClaudeSession(this.getConfig(), options);
+    }
+
+    /**
+     * Rebuilds the dialogue from the transcript JSONL. Tool noise is
+     * reduced to one line per tool call; meta/system entries are skipped.
+     */
+    async history(info: SessionInfo): Promise<HistoryMessage[]> {
+        const file = info.transcriptPath ?? await this.findTranscript(info.sessionId);
+        if (!file) {
+            return [];
+        }
+        let content: string;
+        try {
+            content = await fs.promises.readFile(file, "utf8");
+        } catch {
+            return [];
+        }
+        const messages: HistoryMessage[] = [];
+        for (const line of content.split("\n")) {
+            if (!line.trim()) {
+                continue;
+            }
+            let entry: any;
+            try {
+                entry = JSON.parse(line);
+            } catch {
+                continue;
+            }
+            if (entry.isMeta) {
+                continue;
+            }
+            if (entry.type === "user") {
+                const content = entry.message?.content;
+                if (typeof content === "string") {
+                    content.trim() && messages.push({ role: "user", text: content });
+                } else if (Array.isArray(content)) {
+                    for (const block of content) {
+                        if (block.type === "text" && block.text?.trim()) {
+                            messages.push({ role: "user", text: block.text });
+                        }
+                        // tool_result blocks are skipped: the tool line was already added
+                    }
+                }
+            } else if (entry.type === "assistant") {
+                for (const block of entry.message?.content ?? []) {
+                    if (block.type === "text" && block.text?.trim()) {
+                        messages.push({ role: "assistant", text: block.text });
+                    } else if (block.type === "tool_use") {
+                        messages.push({ role: "tool", text: `⚙ ${block.name}` });
+                    }
+                }
+            }
+        }
+        return messages;
+    }
+
+    private async findTranscript(sessionId: string): Promise<string | undefined> {
+        const root = path.join(os.homedir(), ".claude", "projects");
+        let projectDirs: string[];
+        try {
+            projectDirs = await fs.promises.readdir(root);
+        } catch {
+            return undefined;
+        }
+        for (const dir of projectDirs) {
+            const candidate = path.join(root, dir, `${sessionId}.jsonl`);
+            try {
+                await fs.promises.access(candidate);
+                return candidate;
+            } catch {
+                // not in this project dir
+            }
+        }
+        return undefined;
     }
 }
 

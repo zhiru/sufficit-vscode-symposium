@@ -19,6 +19,14 @@ export interface SessionInfo {
     title: string;
     cwd?: string;
     updatedAt?: Date;
+    /** Path to the stored transcript, when the backend keeps one. */
+    transcriptPath?: string;
+}
+
+/** One past message reconstructed from a stored transcript. */
+export interface HistoryMessage {
+    role: "user" | "assistant" | "tool";
+    text: string;
 }
 
 /** Options for starting or resuming a live session. */
@@ -56,4 +64,6 @@ export interface AgentAdapter {
     listSessions(): Promise<SessionInfo[]>;
     /** Start a new live session (or resume one). */
     start(options: SessionStartOptions): AgentSession;
+    /** Reconstruct past messages of a stored session, newest last. */
+    history?(info: SessionInfo): Promise<HistoryMessage[]>;
 }
