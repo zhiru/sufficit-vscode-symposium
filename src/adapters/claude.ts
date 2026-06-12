@@ -235,6 +235,12 @@ export class ClaudeAdapter implements AgentAdapter {
         return new ClaudeSession(this.getConfig(), options);
     }
 
+    models(): string[] {
+        const configured = this.getConfig().model;
+        const known = ["sonnet", "opus", "haiku"];
+        return [...new Set([configured || "default", ...known])];
+    }
+
     /**
      * Rebuilds the dialogue from the transcript JSONL. Tool noise is
      * reduced to one line per tool call; meta/system entries are skipped.

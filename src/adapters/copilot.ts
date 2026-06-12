@@ -159,4 +159,10 @@ export class CopilotAdapter implements AgentAdapter {
     start(options: SessionStartOptions): AgentSession {
         return new CopilotSession(this.getConfig(), options);
     }
+
+    models(): string[] {
+        const configured = this.getConfig().model;
+        const known = ["auto", "claude-sonnet-4.6", "claude-haiku-4.5", "gpt-5.2", "gpt-5-mini"];
+        return [...new Set([configured || "auto", ...known])];
+    }
 }

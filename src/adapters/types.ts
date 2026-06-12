@@ -66,4 +66,6 @@ export interface AgentAdapter {
     start(options: SessionStartOptions): AgentSession;
     /** Reconstruct past messages of a stored session, newest last. */
     history?(info: SessionInfo): Promise<HistoryMessage[]>;
+    /** Models offered in the chat panel picker; first entry is the default. */
+    models?(): string[];
 }
