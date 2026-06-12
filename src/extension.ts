@@ -1,10 +1,12 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { ClaudeAdapter, ClaudeAdapterConfig } from "./adapters/claude";
 import { CopilotAdapter, CopilotAdapterConfig } from "./adapters/copilot";
 import { StubAdapter } from "./adapters/stubs";
-import { AgentAdapter, SessionInfo } from "./adapters/types";
+import { AgentAdapter, SessionInfo, SessionStartOptions } from "./adapters/types";
 import { SessionsTreeProvider } from "./sessions/tree";
 import { ChatPanel } from "./ui/chatPanel";
+import { ChatViewProvider } from "./ui/chatView";
 
 function claudeConfig(): ClaudeAdapterConfig {
     const config = vscode.workspace.getConfiguration("symposium.claude");
@@ -33,8 +35,27 @@ export function activate(context: vscode.ExtensionContext): void {
     const adapterByBackend = new Map(adapters.map((adapter) => [adapter.backend, adapter]));
 
     const tree = new SessionsTreeProvider(adapters);
+    const chatView = new ChatViewProvider();
+
+    const openDialogue = (adapter: AgentAdapter, options: SessionStartOptions, title: string, info?: SessionInfo) => {
+        const location = vscode.workspace.getConfiguration("symposium.chat").get<string>("openIn", "sidebar");
+        if (location === "editor") {
+            ChatPanel.open(context, adapter, options, title, info);
+        } else {
+            void chatView.open(adapter, options, title, info);
+        }
+    };
+
+    /** Resume must run in the session's original cwd: the CLIs scope sessions per directory. */
+    const cwdFor = (info: SessionInfo): string =>
+        info.cwd && path.isAbsolute(info.cwd)
+            ? info.cwd
+            : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider("symposium.sessions", tree),
+        vscode.window.registerWebviewViewProvider(ChatViewProvider.viewId, chatView,
+            { webviewOptions: { retainContextWhenHidden: true } }),
         vscode.commands.registerCommand("symposium.refreshSessions", () => tree.refresh()),
 
         // dev convenience: reload the freshly installed vsix without reloading the window
@@ -67,7 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 void vscode.window.showWarningMessage("Open a folder first; sessions are bound to a working directory.");
                 return;
             }
-            ChatPanel.open(context, choice.adapter, { cwd }, "New dialogue");
+            openDialogue(choice.adapter, { cwd }, "New dialogue");
         }),
 
         vscode.commands.registerCommand("symposium.openSession", (info: SessionInfo) => {
@@ -75,8 +96,16 @@ export function activate(context: vscode.ExtensionContext): void {
             if (!adapter) {
                 return;
             }
-            const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-            ChatPanel.open(context, adapter, { cwd, resumeSessionId: info.sessionId }, info.title, info);
+            openDialogue(adapter, { cwd: cwdFor(info), resumeSessionId: info.sessionId }, info.title, info);
+        }),
+
+        vscode.commands.registerCommand("symposium.openSessionInEditor", (item: { info?: SessionInfo } | SessionInfo) => {
+            const info = "info" in item && item.info ? item.info : item as SessionInfo;
+            const adapter = adapterByBackend.get(info.backend);
+            if (!adapter) {
+                return;
+            }
+            ChatPanel.open(context, adapter, { cwd: cwdFor(info), resumeSessionId: info.sessionId }, info.title, info);
         }),
     );
 }

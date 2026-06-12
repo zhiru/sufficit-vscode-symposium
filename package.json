@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -34,6 +34,12 @@
           "id": "symposium.sessions",
           "name": "Sessions",
           "icon": "media/symposium.svg"
+        },
+        {
+          "id": "symposium.chat",
+          "type": "webview",
+          "name": "Chat",
+          "icon": "media/symposium.svg"
         }
       ]
     },
@@ -46,6 +52,11 @@
       {
         "command": "symposium.openSession",
         "title": "Symposium: Open Session"
+      },
+      {
+        "command": "symposium.openSessionInEditor",
+        "title": "Open Session in Editor",
+        "icon": "$(window)"
       },
       {
         "command": "symposium.refreshSessions",
@@ -74,6 +85,13 @@
           "command": "symposium.restartExtensionHost",
           "when": "view == symposium.sessions",
           "group": "navigation@9"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "symposium.openSessionInEditor",
+          "when": "view == symposium.sessions",
+          "group": "inline"
         }
       ]
     },
@@ -123,6 +141,15 @@
           "type": "string",
           "default": "",
           "description": "Model passed to copilot --model. Empty uses the CLI default."
+        },
+        "symposium.chat.openIn": {
+          "type": "string",
+          "enum": [
+            "sidebar",
+            "editor"
+          ],
+          "default": "sidebar",
+          "description": "Where sessions open: in the Symposium sidebar Chat view (drag the Symposium container to the secondary side bar to place it on the right) or as an editor panel."
         }
       }
     }

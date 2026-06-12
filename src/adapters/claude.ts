@@ -214,11 +214,12 @@ export class ClaudeAdapter implements AgentAdapter {
                 const fullPath = path.join(projectPath, file);
                 try {
                     const stat = await fs.promises.stat(fullPath);
+                    const meta = await readSessionMeta(fullPath);
                     sessions.push({
                         backend: "claude",
                         sessionId: path.basename(file, ".jsonl"),
-                        title: await readSessionTitle(fullPath) ?? dir,
-                        cwd: dir,
+                        title: meta.title ?? dir,
+                        cwd: meta.cwd,
                         updatedAt: stat.mtime,
                         transcriptPath: fullPath,
                     });
@@ -316,29 +317,43 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 }
 
-/** Reads the first user prompt from a transcript to use as the session title. */
-async function readSessionTitle(file: string): Promise<string | undefined> {
+/**
+ * Reads the first user prompt (title) and the session's original working
+ * directory from a transcript. The cwd matters: `claude --resume` only finds
+ * sessions that belong to the directory it is started in.
+ */
+async function readSessionMeta(file: string): Promise<{ title?: string; cwd?: string }> {
     let content: string;
     try {
         content = await fs.promises.readFile(file, "utf8");
     } catch {
-        return undefined;
+        return {};
     }
-    for (const line of content.split("\n").slice(0, 20)) {
+    let title: string | undefined;
+    let cwd: string | undefined;
+    for (const line of content.split("\n").slice(0, 30)) {
         try {
             const entry = JSON.parse(line);
-            if (entry.type === "user" && typeof entry.message?.content === "string") {
-                return entry.message.content.slice(0, 80);
+            if (!cwd && typeof entry.cwd === "string" && entry.cwd) {
+                cwd = entry.cwd;
             }
-            if (entry.type === "user" && Array.isArray(entry.message?.content)) {
-                const text = entry.message.content.find((b: any) => b.type === "text")?.text;
-                if (text) {
-                    return String(text).slice(0, 80);
+            if (!title && entry.type === "user") {
+                const c = entry.message?.content;
+                if (typeof c === "string" && c.trim() && !c.startsWith("<")) {
+                    title = c.slice(0, 80);
+                } else if (Array.isArray(c)) {
+                    const text = c.find((b: any) => b.type === "text")?.text;
+                    if (text) {
+                        title = String(text).slice(0, 80);
+                    }
                 }
+            }
+            if (title && cwd) {
+                break;
             }
         } catch {
             // non-JSON lines are skipped
         }
     }
-    return undefined;
+    return { title, cwd };
 }
