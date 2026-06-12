@@ -3,9 +3,10 @@ import * as vscode from "vscode";
 import { ClaudeAdapter, ClaudeAdapterConfig } from "./adapters/claude";
 import { CopilotAdapter, CopilotAdapterConfig } from "./adapters/copilot";
 import { StubAdapter } from "./adapters/stubs";
-import { AgentAdapter, SessionInfo, SessionStartOptions } from "./adapters/types";
+import { AgentAdapter, SessionInfo } from "./adapters/types";
 import { SessionsTreeProvider } from "./sessions/tree";
 import { ChatPanel } from "./ui/chatPanel";
+import { ChatSurfaceDeps } from "./ui/chatSurface";
 import { ChatViewProvider } from "./ui/chatView";
 
 function claudeConfig(): ClaudeAdapterConfig {
@@ -32,25 +33,29 @@ export function activate(context: vscode.ExtensionContext): void {
         new CopilotAdapter(copilotConfig),
         new StubAdapter("codex"),
     ];
-    const adapterByBackend = new Map(adapters.map((adapter) => [adapter.backend, adapter]));
+    const adapterByBackend = new Map<string, AgentAdapter>(
+        adapters.map((adapter) => [adapter.backend, adapter]));
 
-    const tree = new SessionsTreeProvider(adapters);
-    const chatView = new ChatViewProvider();
-
-    const openDialogue = (adapter: AgentAdapter, options: SessionStartOptions, title: string, info?: SessionInfo) => {
-        const location = vscode.workspace.getConfiguration("symposium.chat").get<string>("openIn", "sidebar");
-        if (location === "editor") {
-            ChatPanel.open(context, adapter, options, title, info);
-        } else {
-            void chatView.open(adapter, options, title, info);
-        }
+    const deps: ChatSurfaceDeps = {
+        adapterByBackend,
+        listSessions: async () => {
+            const all = await Promise.all(adapters.map((adapter) =>
+                adapter.listSessions().catch(() => [] as SessionInfo[])));
+            return all.flat()
+                .sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0));
+        },
+        // Resume must run in the session's original cwd: the CLIs scope sessions per directory.
+        cwdFor: (info) =>
+            info.cwd && path.isAbsolute(info.cwd)
+                ? info.cwd
+                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
     };
 
-    /** Resume must run in the session's original cwd: the CLIs scope sessions per directory. */
-    const cwdFor = (info: SessionInfo): string =>
-        info.cwd && path.isAbsolute(info.cwd)
-            ? info.cwd
-            : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    const tree = new SessionsTreeProvider(adapters);
+    const chatView = new ChatViewProvider(deps);
+
+    const inEditor = () =>
+        vscode.workspace.getConfiguration("symposium.chat").get<string>("openIn", "editor") === "editor";
 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider("symposium.sessions", tree),
@@ -88,24 +93,24 @@ export function activate(context: vscode.ExtensionContext): void {
                 void vscode.window.showWarningMessage("Open a folder first; sessions are bound to a working directory.");
                 return;
             }
-            openDialogue(choice.adapter, { cwd }, "New dialogue");
+            if (inEditor()) {
+                ChatPanel.show(context, deps).openDialogue(choice.adapter.backend, { cwd }, "New dialogue");
+            } else {
+                void chatView.openDialogue(choice.adapter.backend, { cwd }, "New dialogue");
+            }
         }),
 
         vscode.commands.registerCommand("symposium.openSession", (info: SessionInfo) => {
-            const adapter = adapterByBackend.get(info.backend);
-            if (!adapter) {
-                return;
+            if (inEditor()) {
+                ChatPanel.show(context, deps).openSession(info);
+            } else {
+                void chatView.openSession(info);
             }
-            openDialogue(adapter, { cwd: cwdFor(info), resumeSessionId: info.sessionId }, info.title, info);
         }),
 
         vscode.commands.registerCommand("symposium.openSessionInEditor", (item: { info?: SessionInfo } | SessionInfo) => {
             const info = "info" in item && item.info ? item.info : item as SessionInfo;
-            const adapter = adapterByBackend.get(info.backend);
-            if (!adapter) {
-                return;
-            }
-            ChatPanel.open(context, adapter, { cwd: cwdFor(info), resumeSessionId: info.sessionId }, info.title, info);
+            ChatPanel.show(context, deps).openSession(info);
         }),
     );
 }

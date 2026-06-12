@@ -1,62 +1,67 @@
 import * as vscode from "vscode";
-import { AgentAdapter, SessionInfo, SessionStartOptions } from "../adapters/types";
-import { ChatController } from "./chatController";
-import { renderHtml } from "./chatHtml";
+import { SessionInfo, SessionStartOptions } from "../adapters/types";
+import { ChatSurface, ChatSurfaceDeps } from "./chatSurface";
 
 interface PendingOpen {
-    adapter: AgentAdapter;
-    options: SessionStartOptions;
-    title: string;
+    kind: "session" | "dialogue";
     info?: SessionInfo;
+    backend?: string;
+    options?: SessionStartOptions;
+    title?: string;
 }
 
 /**
- * Sidebar chat surface (WebviewView), stacked under the Sessions tree in
- * the Symposium container — the same layout as the built-in Chat view.
- * Users can drag the Symposium container to the secondary side bar to put
- * sessions + chat on the right, or keep it on the left.
+ * Sidebar surface (WebviewView) in the Symposium container. Same webview
+ * as the editor panel: when the view is wide the sessions list shows
+ * beside the chat; narrow hides it behind the toggle. Drag the Symposium
+ * container to the secondary side bar for right-side placement.
  */
 export class ChatViewProvider implements vscode.WebviewViewProvider {
     static readonly viewId = "symposium.chat";
 
     private view: vscode.WebviewView | undefined;
-    private controller: ChatController | undefined;
+    private surface: ChatSurface | undefined;
     private pending: PendingOpen | undefined;
+
+    constructor(private readonly deps: ChatSurfaceDeps) { }
 
     resolveWebviewView(webviewView: vscode.WebviewView): void {
         this.view = webviewView;
-        webviewView.webview.options = { enableScripts: true };
-        webviewView.webview.onDidReceiveMessage(
-            (message) => void this.controller?.handleMessage(message));
+        this.surface = new ChatSurface(webviewView.webview, this.deps,
+            (title) => { if (this.view) { this.view.title = title; } });
         webviewView.onDidDispose(() => {
-            this.controller?.dispose();
-            this.controller = undefined;
+            this.surface?.dispose();
+            this.surface = undefined;
             this.view = undefined;
         });
-        if (this.pending) {
-            this.openPending();
-        } else {
-            webviewView.webview.html = renderHtml();
-        }
+        this.consumePending();
     }
 
-    /** Opens (or replaces) the dialogue shown in the sidebar chat. */
-    async open(adapter: AgentAdapter, options: SessionStartOptions, title: string, info?: SessionInfo): Promise<void> {
-        this.pending = { adapter, options, title, info };
+    async openSession(info: SessionInfo): Promise<void> {
+        this.pending = { kind: "session", info };
+        await this.reveal();
+    }
+
+    async openDialogue(backend: string, options: SessionStartOptions, title: string): Promise<void> {
+        this.pending = { kind: "dialogue", backend, options, title };
+        await this.reveal();
+    }
+
+    private async reveal(): Promise<void> {
         await vscode.commands.executeCommand(`${ChatViewProvider.viewId}.focus`);
-        if (this.view) {
-            this.openPending();
-        }
-        // else: resolveWebviewView fires next and consumes this.pending
+        this.consumePending();
     }
 
-    private openPending(): void {
-        const pending = this.pending!;
+    private consumePending(): void {
+        if (!this.pending || !this.surface) {
+            return;
+        }
+        const pending = this.pending;
         this.pending = undefined;
-        this.controller?.dispose();
-        this.view!.title = `${pending.title} · ${pending.adapter.backend}`;
-        this.view!.webview.html = renderHtml();
-        this.controller = new ChatController(pending.adapter, pending.options, pending.info,
-            (message) => void this.view?.webview.postMessage(message));
+        if (pending.kind === "session" && pending.info) {
+            this.surface.openSession(pending.info);
+        } else if (pending.kind === "dialogue" && pending.backend && pending.options) {
+            this.surface.openDialogue(pending.backend, pending.options, pending.title ?? "New dialogue");
+        }
     }
 }

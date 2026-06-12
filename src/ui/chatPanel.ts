@@ -1,55 +1,46 @@
 import * as vscode from "vscode";
-import { AgentAdapter, SessionInfo, SessionStartOptions } from "../adapters/types";
-import { ChatController } from "./chatController";
-import { renderHtml } from "./chatHtml";
+import { SessionInfo, SessionStartOptions } from "../adapters/types";
+import { ChatSurface, ChatSurfaceDeps } from "./chatSurface";
 
-/** One editor webview panel hosting one dialogue with one agent session. */
+/**
+ * Editor surface: one reusable full-size panel with the sessions list
+ * beside the chat (master-detail inside the webview), mirroring how the
+ * built-in chat opens sessions as an editor.
+ */
 export class ChatPanel {
-    private static panels = new Map<string, ChatPanel>();
-    private readonly controller: ChatController;
+    private static current: ChatPanel | undefined;
+    private readonly surface: ChatSurface;
     private readonly panel: vscode.WebviewPanel;
 
-    static open(
-        context: vscode.ExtensionContext,
-        adapter: AgentAdapter,
-        options: SessionStartOptions,
-        title: string,
-        info?: SessionInfo,
-    ): ChatPanel {
-        const key = `${adapter.backend}:${options.resumeSessionId ?? Date.now()}`;
-        const existing = ChatPanel.panels.get(key);
-        if (existing) {
-            existing.panel.reveal();
-            return existing;
+    static show(context: vscode.ExtensionContext, deps: ChatSurfaceDeps): ChatPanel {
+        if (ChatPanel.current) {
+            ChatPanel.current.panel.reveal();
+            return ChatPanel.current;
         }
-        const created = new ChatPanel(context, adapter, options, title, key, info);
-        ChatPanel.panels.set(key, created);
-        return created;
+        ChatPanel.current = new ChatPanel(context, deps);
+        return ChatPanel.current;
     }
 
-    private constructor(
-        context: vscode.ExtensionContext,
-        adapter: AgentAdapter,
-        options: SessionStartOptions,
-        title: string,
-        key: string,
-        info?: SessionInfo,
-    ) {
+    private constructor(context: vscode.ExtensionContext, deps: ChatSurfaceDeps) {
         this.panel = vscode.window.createWebviewPanel(
             "symposium.chat",
-            `${title} · ${adapter.backend}`,
+            "Symposium",
             vscode.ViewColumn.Active,
             { enableScripts: true, retainContextWhenHidden: true },
         );
-        this.panel.webview.html = renderHtml();
-        this.controller = new ChatController(adapter, options, info,
-            (message) => void this.panel.webview.postMessage(message));
-        this.panel.webview.onDidReceiveMessage(
-            (message) => void this.controller.handleMessage(message),
-            undefined, context.subscriptions);
+        this.surface = new ChatSurface(this.panel.webview, deps,
+            (title) => { this.panel.title = title; });
         this.panel.onDidDispose(() => {
-            this.controller.dispose();
-            ChatPanel.panels.delete(key);
+            this.surface.dispose();
+            ChatPanel.current = undefined;
         }, undefined, context.subscriptions);
+    }
+
+    openSession(info: SessionInfo): void {
+        this.surface.openSession(info);
+    }
+
+    openDialogue(backend: string, options: SessionStartOptions, title: string): void {
+        this.surface.openDialogue(backend, options, title);
     }
 }

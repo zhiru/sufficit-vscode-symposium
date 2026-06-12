@@ -12,28 +12,32 @@ export class ChatController {
     constructor(
         private readonly adapter: AgentAdapter,
         private readonly options: SessionStartOptions,
-        info: SessionInfo | undefined,
         private readonly post: (message: unknown) => void,
-    ) {
-        this.post({
-            type: "meta",
-            backend: adapter.backend,
-            resumed: !!options.resumeSessionId,
-            models: adapter.models?.() ?? [],
-        });
-        if (info && adapter.history) {
-            void this.loadHistory(info);
+    ) { }
+
+    async loadHistory(info: SessionInfo): Promise<void> {
+        if (!this.adapter.history) {
+            return;
+        }
+        try {
+            const messages = await this.adapter.history(info);
+            this.post({ type: "history", messages });
+        } catch (error) {
+            this.post({
+                type: "event",
+                event: { kind: "error", message: `failed to load history: ${error instanceof Error ? error.message : error}` },
+            });
         }
     }
 
-    async handleMessage(message: any): Promise<void> {
+    async handleMessage(message: any): Promise<boolean> {
         switch (message?.type) {
             case "send":
                 this.sendUserMessage(message.text, message.attachments ?? [], message.model);
-                break;
+                return true;
             case "cancel":
                 this.session?.cancel();
-                break;
+                return true;
             case "pick-attachments": {
                 const picked = await vscode.window.showOpenDialog({
                     canSelectMany: true,
@@ -49,21 +53,10 @@ export class ChatController {
                         })),
                     });
                 }
-                break;
+                return true;
             }
         }
-    }
-
-    private async loadHistory(info: SessionInfo): Promise<void> {
-        try {
-            const messages = await this.adapter.history!(info);
-            this.post({ type: "history", messages });
-        } catch (error) {
-            this.post({
-                type: "event",
-                event: { kind: "error", message: `failed to load history: ${error instanceof Error ? error.message : error}` },
-            });
-        }
+        return false;
     }
 
     private sendUserMessage(text: string, attachments: string[], model?: string): void {
