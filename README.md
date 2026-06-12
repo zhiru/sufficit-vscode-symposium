@@ -55,6 +55,19 @@ and the model selection. Agents converse; the host conducts.
 | `symposium.claude.permissionMode` | `default` / `acceptEdits` / `bypassPermissions` / `plan` |
 | `symposium.claude.env` | Extra env (e.g. `ANTHROPIC_BASE_URL` for a gateway) |
 
+## Install
+
+Grab the `.vsix` from the [latest release](https://github.com/sufficit/sufficit-vscode-symposium/releases/latest) and either:
+
+```bash
+code --install-extension sufficit-vscode-symposium-<version>.vsix
+```
+
+or in VS Code: **Extensions → `···` → Install from VSIX...**
+
+The agent CLIs themselves are not bundled — install the ones you want to use
+(`claude`, `codex`, `copilot`) and make sure they are on your PATH.
+
 ## Development
 
 ```bash
