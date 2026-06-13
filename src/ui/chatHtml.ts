@@ -24,6 +24,22 @@ export function renderHtml(): string {
         height: 100vh; margin: 0; padding: 0; overflow: hidden;
     }
     *:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+    /* scrollbars: match the native VS Code overlay slider — thin, no arrow
+       buttons, transparent track, slider inset via a transparent border. */
+    ::-webkit-scrollbar { width: 14px; height: 14px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+        background-color: var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4));
+        border: 4px solid transparent; background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100,100,100,0.7));
+    }
+    ::-webkit-scrollbar-thumb:active {
+        background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(191,191,191,0.4));
+    }
     #root { display: flex; height: 100vh; position: relative; }
 
     /* ---- progress + loading indicators ---- */
