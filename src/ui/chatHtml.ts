@@ -480,19 +480,23 @@ export function renderHtml(): string {
         ctxMenu.style.top = Math.max(4, r.top - h - 4) + "px";
     }
     let modelValue = "", modelList = [], reasoningValue = "default", reasoningList = [];
+    let reasoningDefault = "", modelDefault = "";
     const modelLbl = modelPicker.querySelector(".lbl");
     const reasoningLbl = reasoningPicker.querySelector(".lbl");
-    function setModelLabel() { modelLbl.textContent = modelValue || "model"; }
-    function setReasoningLabel() { reasoningLbl.textContent = reasoningValue && reasoningValue !== "default" ? "effort: " + reasoningValue : "reasoning"; }
+    // "default" means: don't override — the backend uses its own default. When
+    // a default is configured in settings, show it in parens so it's not blind.
+    function defLabel(configured) { return configured && configured !== "default" ? "default (" + configured + ")" : "default"; }
+    function setModelLabel() { modelLbl.textContent = modelValue && modelValue !== "default" ? modelValue : defLabel(modelDefault); }
+    function setReasoningLabel() { reasoningLbl.textContent = reasoningValue && reasoningValue !== "default" ? "effort: " + reasoningValue : defLabel(reasoningDefault); }
     modelPicker.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (modelPicker.disabled || !modelList.length) return;
-        openChoiceMenu(modelPicker, modelList.map((m) => ({ value: m, label: m })), modelValue, (v) => { modelValue = v; setModelLabel(); });
+        openChoiceMenu(modelPicker, modelList.map((m) => ({ value: m, label: m === "default" ? defLabel(modelDefault) : m })), modelValue, (v) => { modelValue = v; setModelLabel(); });
     });
     reasoningPicker.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (reasoningPicker.disabled || !reasoningList.length) return;
-        openChoiceMenu(reasoningPicker, reasoningList.map((r) => ({ value: r, label: r === "default" ? "default" : r })), reasoningValue, (v) => { reasoningValue = v; setReasoningLabel(); });
+        openChoiceMenu(reasoningPicker, reasoningList.map((r) => ({ value: r, label: r === "default" ? defLabel(reasoningDefault) : r })), reasoningValue, (v) => { reasoningValue = v; setReasoningLabel(); });
     });
 
     // ---- tools & configuration menu (sliders) ----
@@ -1010,6 +1014,8 @@ export function renderHtml(): string {
                 layout();
                 activeSessionId = data.sessionId || "";
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + data.backend;
+                modelDefault = data.modelDefault || "";
+                reasoningDefault = data.reasoningDefault || "";
                 modelList = data.models || [];
                 modelValue = modelList[0] || "";
                 modelPicker.disabled = false;

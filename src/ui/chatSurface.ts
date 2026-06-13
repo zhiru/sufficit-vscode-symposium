@@ -312,6 +312,8 @@ export class ChatSurface {
             resumed: !!options.resumeSessionId,
             models: adapter.models?.() ?? [],
             reasoningLevels: adapter.reasoningLevels?.() ?? [],
+            reasoningDefault: vscode.workspace.getConfiguration("symposium." + adapter.backend).get<string>("reasoning", "default"),
+            modelDefault: vscode.workspace.getConfiguration("symposium." + adapter.backend).get<string>("model", ""),
             permissionModes: adapter.permissionModes?.() ?? [],
             permission: adapter.defaultPermission?.() ?? "default",
             sessionId: options.resumeSessionId ?? "",
