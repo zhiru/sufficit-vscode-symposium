@@ -34,6 +34,11 @@ export interface ChatSurfaceDeps {
     listSessions(): Promise<SessionInfo[]>;
     cwdFor(info: SessionInfo): string;
     runtime: LiveSessions;
+    /** Remembers the last active session so it can be restored next launch. */
+    lastActive: {
+        get(): { backend: string; sessionId: string } | undefined;
+        set(value: { backend: string; sessionId: string } | undefined): void;
+    };
 }
 
 /**
@@ -82,11 +87,10 @@ export class ChatSurface {
                     }
                     this.queue = [];
                     void this.refreshSessions();
-                    // No dialogue chosen yet (e.g. the sidebar Chat view was just
-                    // opened): start a fresh one so the composer is immediately live.
-                    // Skip when mirroring (follow) or driving a terminal session.
+                    // Nothing bound yet (view just opened): restore the last
+                    // active session if we have one, else start a fresh dialogue.
                     if (!this.controller && !this.followHandle && !this.terminalSession) {
-                        this.startDefaultDialogue();
+                        void this.restoreOrStart();
                     }
                     return;
                 }
@@ -155,6 +159,23 @@ export class ChatSurface {
                 event: { kind: "error", message: error instanceof Error ? error.message : String(error) },
             });
         }
+    }
+
+    /**
+     * Restores the last active session (resumed from its transcript, with a
+     * live controller reused if it is still running) or starts fresh.
+     */
+    private async restoreOrStart(): Promise<void> {
+        const last = this.deps.lastActive.get();
+        if (last) {
+            const sessions = await this.deps.listSessions();
+            const info = sessions.find((s) => s.sessionId === last.sessionId && s.backend === last.backend);
+            if (info) {
+                this.openSession(info);
+                return;
+            }
+        }
+        this.startDefaultDialogue();
     }
 
     /** Starts a new dialogue with the first available backend in the workspace cwd. */
@@ -288,9 +309,20 @@ export class ChatSurface {
             chatOnly: this.chatOnly,
             defaultSendMode: vscode.workspace.getConfiguration("symposium.chat").get("defaultSendMode", "send"),
         });
-        controller.attach((message) => this.post(message));
+        controller.attach((message) => {
+            // Capture a freshly-assigned session id so a brand-new dialogue
+            // also becomes the restorable "last active" one.
+            const ev = (message as any)?.event;
+            if (ev?.kind === "session" && ev.sessionId) {
+                this.deps.lastActive.set({ backend, sessionId: ev.sessionId });
+            }
+            this.post(message);
+        });
         if (!existing && info) {
             void controller.loadHistory(info);
+        }
+        if (options.resumeSessionId) {
+            this.deps.lastActive.set({ backend, sessionId: options.resumeSessionId });
         }
         this.postCommands(adapter);
         this.onTitleChange?.(`${title} · ${adapter.backend}`);

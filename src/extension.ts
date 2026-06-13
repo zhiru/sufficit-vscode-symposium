@@ -75,6 +75,11 @@ export function activate(context: vscode.ExtensionContext): void {
                 ? info.cwd
                 : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
         runtime,
+        lastActive: {
+            // Per-workspace: reopening the window restores the session you were on.
+            get: () => context.workspaceState.get("symposium.lastActive"),
+            set: (value) => void context.workspaceState.update("symposium.lastActive", value),
+        },
     };
 
     const chatView = new ChatViewProvider(deps);
