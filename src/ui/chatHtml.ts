@@ -58,7 +58,8 @@ export function renderHtml(): string {
     /* ---- sessions pane ---- */
     #sessionsPane {
         order: 1; width: 260px; min-width: 180px; flex-shrink: 0;
-        border-right: 1px solid var(--vscode-panel-border, #333);
+        border-right: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border, #333));
+        background: var(--vscode-sideBar-background, var(--vscode-editor-background));
         display: flex; flex-direction: column; overflow: hidden;
     }
     #root.side-right #sessionsPane {
@@ -82,15 +83,10 @@ export function renderHtml(): string {
     #sessionsList { flex: 1; overflow-y: auto; }
     .groupHeader {
         display: flex; align-items: center; justify-content: space-between;
-        padding: 8px 10px 3px 10px; font-size: 0.72em; text-transform: uppercase;
-        letter-spacing: 0.04em; opacity: 0.55; font-weight: 600;
+        padding: 10px 12px 4px 12px; font-size: 0.72em; text-transform: uppercase;
+        letter-spacing: 0.04em; opacity: 0.6; font-weight: 600;
     }
-    .groupHeader .gcount {
-        opacity: 0.8; font-weight: 600; font-size: 0.95em;
-        background: var(--vscode-badge-background, rgba(128,128,128,0.2));
-        color: var(--vscode-badge-foreground, inherit);
-        border-radius: 9px; padding: 0 6px; min-width: 16px; text-align: center;
-    }
+    .groupHeader .gcount { opacity: 0.6; font-weight: 400; font-variant-numeric: tabular-nums; }
     .sessionItem {
         padding: 7px 10px; cursor: pointer; border-left: 2px solid transparent;
         display: flex; align-items: center; gap: 8px;
