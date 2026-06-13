@@ -102,9 +102,11 @@ export function activate(context: vscode.ExtensionContext): void {
         backend === "claude" ? claudeConfig().model
             : backend === "codex" ? codexConfig().model
                 : copilotConfig().model;
+    const reasoningFor = (backend: string): string =>
+        vscode.workspace.getConfiguration(`symposium.${backend}`).get<string>("reasoning", "default");
 
     const startTerminal = (backend: string, options: { cwd: string; resumeSessionId?: string; tmuxName?: string }, title: string) => {
-        const opts = { ...options, env: envFor(backend), model: modelFor(backend) || undefined };
+        const opts = { ...options, env: envFor(backend), model: modelFor(backend) || undefined, reasoning: reasoningFor(backend) };
         if (inEditor()) {
             ChatPanel.show(context, deps).openTerminalDialogue(backend, opts, title);
         } else {

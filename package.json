@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -180,6 +180,19 @@
           "default": {},
           "description": "Extra environment variables for the Claude CLI process (e.g. ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN for a gateway)."
         },
+        "symposium.claude.reasoning": {
+          "type": "string",
+          "enum": [
+            "default",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "default": "default",
+          "description": "Default reasoning/thinking effort for Claude terminal sessions (claude --effort). 'default' omits the flag."
+        },
         "symposium.codex.executable": {
           "type": "string",
           "default": "codex",
@@ -190,6 +203,18 @@
           "default": "",
           "description": "Model passed to codex exec --model. Empty uses the CLI default."
         },
+        "symposium.codex.reasoning": {
+          "type": "string",
+          "enum": [
+            "default",
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "default",
+          "description": "Default reasoning effort for Codex terminal sessions (codex -c model_reasoning_effort). 'default' omits it."
+        },
         "symposium.copilot.executable": {
           "type": "string",
           "default": "copilot",
@@ -199,6 +224,18 @@
           "type": "string",
           "default": "",
           "description": "Model passed to copilot --model. Empty uses the CLI default."
+        },
+        "symposium.copilot.reasoning": {
+          "type": "string",
+          "enum": [
+            "default",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "default": "default",
+          "description": "Default reasoning effort for Copilot terminal sessions (copilot --reasoning-effort). 'default' omits it."
         },
         "symposium.chat.openIn": {
           "type": "string",

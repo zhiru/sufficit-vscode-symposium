@@ -6,6 +6,8 @@ export interface TerminalSessionOptions {
     /** Resume an existing session id instead of starting fresh. */
     resumeSessionId?: string;
     model?: string;
+    /** Reasoning/thinking effort level; mapped to the backend's CLI flag. */
+    reasoning?: string;
     /** Extra environment for the launched CLI (gateway routing, etc.). */
     env?: Record<string, string>;
     /**
@@ -55,6 +57,17 @@ export class TerminalSession {
         const args: string[] = [];
         if (this.options.model) {
             args.push("--model", this.options.model);
+        }
+        // Reasoning/thinking effort, mapped to each CLI's real flag.
+        const effort = this.options.reasoning;
+        if (effort && effort !== "default") {
+            if (this.adapter.backend === "claude") {
+                args.push("--effort", effort);
+            } else if (this.adapter.backend === "codex") {
+                args.push("-c", `model_reasoning_effort="${effort}"`);
+            } else if (this.adapter.backend === "copilot") {
+                args.push("--reasoning-effort", effort);
+            }
         }
         if (this.options.resumeSessionId) {
             args.push("--resume", this.options.resumeSessionId);
