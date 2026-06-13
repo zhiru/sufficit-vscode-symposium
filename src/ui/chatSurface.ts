@@ -51,6 +51,9 @@ export class ChatSurface {
         private readonly webview: vscode.Webview,
         private readonly deps: ChatSurfaceDeps,
         private readonly onTitleChange?: (title: string) => void,
+        // Editor panels show only the open conversation; the sidebar shows the
+        // sessions list beside it.
+        private readonly chatOnly = false,
     ) {
         webview.options = { enableScripts: true };
         webview.html = renderHtml();
@@ -197,6 +200,7 @@ export class ChatSurface {
             sessionId: info.sessionId,
             title: info.title,
             sessionsSide,
+            chatOnly: this.chatOnly,
         });
         if (adapter.history) {
             try {
@@ -235,6 +239,7 @@ export class ChatSurface {
             sessionId: options.resumeSessionId ?? "",
             title,
             sessionsSide,
+            chatOnly: this.chatOnly,
         });
         this.terminalSession = new TerminalSession(
             adapter,
@@ -264,6 +269,7 @@ export class ChatSurface {
             sessionId: options.resumeSessionId ?? "",
             title,
             sessionsSide,
+            chatOnly: this.chatOnly,
         });
         if (info) {
             void this.controller.loadHistory(info);

@@ -34,7 +34,8 @@ export class ChatPanel {
             { enableScripts: true, retainContextWhenHidden: true },
         );
         this.surface = new ChatSurface(this.panel.webview, deps,
-            (title) => { this.panel.title = title; });
+            (title) => { this.panel.title = title; },
+            /* chatOnly */ true);
         this.panel.onDidDispose(() => {
             this.surface.dispose();
             ChatPanel.current = undefined;

@@ -35,6 +35,8 @@ export function renderHtml(): string {
         border-left: 1px solid var(--vscode-panel-border, #333);
     }
     #root.narrow #sessionsPane { display: none; }
+    #root.chat-only #sessionsPane { display: none; }
+    #root.chat-only #listToggle { display: none; }
     #root.narrow.listOpen #sessionsPane {
         display: flex; position: absolute; z-index: 10; height: 100vh;
         background: var(--vscode-editor-background);
@@ -413,6 +415,7 @@ export function renderHtml(): string {
         switch (data.type) {
             case "meta": {
                 sideMode = data.sessionsSide || "auto";
+                root.classList.toggle("chat-only", !!data.chatOnly);
                 layout();
                 activeSessionId = data.sessionId || "";
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + data.backend;
