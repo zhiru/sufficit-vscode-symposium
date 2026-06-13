@@ -25,6 +25,7 @@ interface PendingMessage {
 export class ChatController {
     private session: AgentSession | undefined;
     private busy = false;
+    private firstTitle = "";
     private readonly queue: PendingMessage[] = [];
     private readonly log: unknown[] = [];   // replayable render messages
     private sink: ((message: unknown) => void) | null = null;
@@ -46,6 +47,11 @@ export class ChatController {
     get isBusy(): boolean {
         return this.busy;
     }
+
+    get backend(): string { return this.adapter.backend; }
+    get cwd(): string { return this.options.cwd; }
+    /** First user message, used as a title for a not-yet-persisted live session. */
+    get title(): string { return this.firstTitle || "New session"; }
 
     get attached(): boolean {
         return this.sink !== null;
@@ -158,6 +164,7 @@ export class ChatController {
             fullText += "\n\nAttached files (read them from disk):\n" +
                 msg.attachments.map((p) => `- ${p}`).join("\n");
         }
+        if (!this.firstTitle && msg.text.trim()) { this.firstTitle = msg.text.trim().slice(0, 60); }
         this.busy = true;
         this.onStatusChange?.();
         this.emit({ type: "user", text: msg.text, attachments: msg.attachments });

@@ -16,6 +16,12 @@ export class LiveSessions {
 
     /** Finds a running controller by its (live or resume) session id. */
     findBySessionId(sessionId: string): ChatController | undefined {
+        // Match the live session id, or the registry key (for brand-new
+        // sessions whose backend id hasn't arrived yet, listed as "new-N").
+        const byKey = this.controllers.get(sessionId);
+        if (byKey) {
+            return byKey;
+        }
         for (const controller of this.controllers.values()) {
             if (controller.sessionId === sessionId) {
                 return controller;
@@ -31,6 +37,21 @@ export class LiveSessions {
             return undefined;
         }
         return controller.isBusy ? "working" : "idle";
+    }
+
+    /** Live sessions for the list (incl. brand-new ones not yet on disk). */
+    liveInfos(): { backend: string; sessionId: string; title: string; cwd: string; status: "working" | "idle" }[] {
+        const out = [];
+        for (const [key, c] of this.controllers) {
+            out.push({
+                backend: c.backend,
+                sessionId: c.sessionId || key,
+                title: c.title,
+                cwd: c.cwd,
+                status: c.isBusy ? "working" as const : "idle" as const,
+            });
+        }
+        return out;
     }
 
     /** Creates and registers a new controller. */

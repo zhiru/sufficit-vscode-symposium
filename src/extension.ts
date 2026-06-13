@@ -72,8 +72,17 @@ export function activate(context: vscode.ExtensionContext): void {
         adapterByBackend,
         // Return ALL sessions (archived flag + live runtime status); the webview
         // list shows/hides archived itself and renders the working indicator.
-        listSessions: async () => store.decorate(await rawSessions(), true)
-            .map((s) => ({ ...s, status: runtime.statusFor(s.sessionId) })),
+        // Live sessions not yet written to disk are merged in (top) so a brand-
+        // new running session shows its working indicator immediately.
+        listSessions: async () => {
+            const disk = store.decorate(await rawSessions(), true)
+                .map((s) => ({ ...s, status: runtime.statusFor(s.sessionId) }));
+            const known = new Set(disk.map((s) => s.sessionId));
+            const live = runtime.liveInfos()
+                .filter((l) => !known.has(l.sessionId))
+                .map((l) => ({ ...l, updatedAt: new Date() } as SessionInfo));
+            return [...live, ...disk];
+        },
         // Resume must run in the session's original cwd: the CLIs scope sessions per directory.
         cwdFor: (info) =>
             info.cwd && path.isAbsolute(info.cwd)
