@@ -264,6 +264,7 @@ export class ChatSurface {
             title,
             sessionsSide,
             chatOnly: this.chatOnly,
+            cwd: options.cwd,
             defaultSendMode: vscode.workspace.getConfiguration("symposium.chat").get("defaultSendMode", "send"),
         });
         this.terminalSession = new TerminalSession(
@@ -311,6 +312,7 @@ export class ChatSurface {
             title,
             sessionsSide,
             chatOnly: this.chatOnly,
+            cwd: options.cwd,
             defaultSendMode: vscode.workspace.getConfiguration("symposium.chat").get("defaultSendMode", "send"),
         });
         controller.attach((message) => {

@@ -120,7 +120,13 @@ export function renderHtml(): string {
         color: var(--vscode-icon-foreground, var(--vscode-foreground));
         border-radius: 3px; font-size: 0.95em; line-height: 1;
     }
+    .sessionItem .acts button { display: inline-flex; align-items: center; }
+    .sessionItem .acts button svg { width: 14px; height: 14px; }
     .sessionItem .acts button:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.25)); }
+    .sessionItem .acts button.danger:hover { color: var(--vscode-errorForeground); }
+    .ttlIcon { width: 12px; height: 12px; vertical-align: -1px; margin-right: 4px; opacity: 0.7; }
+    #ctxMenu .miIcon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 8px; opacity: 0.85; }
+    #ctxMenu .mi { display: flex; align-items: center; }
     #ctxMenu {
         position: fixed; z-index: 50; display: none; min-width: 160px;
         background: var(--vscode-menu-background, var(--vscode-editor-background));
@@ -256,16 +262,29 @@ export function renderHtml(): string {
         transition: background-color 150ms ease, color 150ms ease;
     }
     .iconBtn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
-    /* Send = primary filled button, the one emphasized control */
-    #send {
-        height: 26px; min-width: 30px; justify-content: center;
+    /* Send = primary filled split button (send + mode caret) */
+    #sendGroup { display: inline-flex; height: 26px; border-radius: 5px; overflow: hidden; }
+    #sendGroup button {
+        border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
         background: var(--vscode-button-background); color: var(--vscode-button-foreground);
-        border-radius: 5px; padding: 0 9px;
         transition: background-color 150ms ease, opacity 150ms ease;
     }
-    #send:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
+    #sendGroup button:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
+    #send { padding: 0 9px; }
+    #sendCaret { padding: 0 4px; border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 25%, transparent); }
     #send svg { width: 15px; height: 15px; }
-    #send:disabled { opacity: 0.4; cursor: default; }
+    #sendCaret svg { width: 12px; height: 12px; }
+    #sendGroup button:disabled { opacity: 0.4; cursor: default; }
+
+    /* ---- footer status bar ---- */
+    #statusbar {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        padding: 3px 12px 6px 12px; font-size: 0.78em; opacity: 0.6;
+        border-top: 1px solid var(--vscode-panel-border, transparent);
+    }
+    #statusbar .seg { display: inline-flex; align-items: center; gap: 4px; }
+    #statusbar svg { width: 12px; height: 12px; }
+    #statusbar:empty { display: none; }
 
     /* ---- sessions pane resizer ---- */
     #resizer {
@@ -311,16 +330,18 @@ export function renderHtml(): string {
                 <select id="reasoningPicker" class="ctl" title="Reasoning/thinking effort (locked after the first message)"></select>
                 <span id="status"></span>
                 <span class="grow"></span>
-                <select id="sendMode" class="ctl" title="Send behavior">
+                <select id="sendMode" style="display:none">
                     <option value="send">Send</option>
                     <option value="queue">Queue</option>
                     <option value="steer">Steer</option>
                 </select>
-                <button id="send" class="iconBtn" title="Send (Enter)">
-                    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.176 2.824 3.06 8 1.176 13.176a.5.5 0 0 0 .708.605l13-5.5a.5.5 0 0 0 0-.918l-13-5.5a.5.5 0 0 0-.708.605L1.176 2.824ZM3.92 8.5 2.32 12.9l10.36-4.4H3.92Zm8.76-1L2.32 3.1l1.6 4.4h8.76Z"/></svg>
-                </button>
+                <div id="sendGroup">
+                    <button id="send" title="Send (Enter)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.2 2.8 3 8 1.2 13.2a.5.5 0 0 0 .7.6l13-5.5a.5.5 0 0 0 0-.9l-13-5.5a.5.5 0 0 0-.7.6Z"/></svg></button>
+                    <button id="sendCaret" title="Send mode"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4H4Z"/></svg></button>
+                </div>
             </div>
         </div>
+        <footer id="statusbar"></footer>
     </main>
 </div>
 <div id="ctxMenu"></div>
@@ -360,6 +381,32 @@ export function renderHtml(): string {
     function saveState(patch) { vscode.setState && vscode.setState(Object.assign({}, saved, patch)); Object.assign(saved, patch); }
     if (saved.sendMode) { sendMode.value = saved.sendMode; }
     sendMode.addEventListener("change", () => saveState({ sendMode: sendMode.value }));
+
+    // Split send-button: caret opens a small menu to choose Send/Queue/Steer.
+    const sendCaret = document.getElementById("sendCaret");
+    const MODE_LABELS = { send: "Send", queue: "Queue", steer: "Steer" };
+    const MODE_DESC = {
+        send: "Send now; queued while a turn runs",
+        queue: "Always wait for the current turn (FIFO)",
+        steer: "Interrupt the running turn and send now",
+    };
+    function updateSendTitle() { sendBtn.title = MODE_LABELS[sendMode.value] + " (Enter) — " + MODE_DESC[sendMode.value]; }
+    sendCaret.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        ctxMenu.textContent = "";
+        for (const mode of ["send", "queue", "steer"]) {
+            const mi = document.createElement("div"); mi.className = "mi";
+            mi.textContent = (sendMode.value === mode ? "✓ " : "    ") + MODE_LABELS[mode];
+            mi.title = MODE_DESC[mode];
+            mi.addEventListener("click", () => { sendMode.value = mode; saveState({ sendMode: mode }); updateSendTitle(); });
+            ctxMenu.appendChild(mi);
+        }
+        ctxMenu.style.display = "block";
+        const r = sendCaret.getBoundingClientRect(); const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
+        ctxMenu.style.left = Math.max(4, r.right - w) + "px";
+        ctxMenu.style.top = Math.max(4, r.top - h - 4) + "px";
+    });
+    updateSendTitle();
 
     // ---- resizable sessions pane ----
     const sessionsPane = document.getElementById("sessionsPane");
@@ -529,18 +576,39 @@ export function renderHtml(): string {
         syncProgress();
     }
 
+    // SVG icon paths (codicon-style, 16x16 viewBox), built as real SVG nodes.
+    const ICONS = {
+        terminal: "M2 2.5A1.5 1.5 0 0 1 3.5 1h9A1.5 1.5 0 0 1 14 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5v-11Zm2.3 2.2 2.5 2.3-2.5 2.3.7.7 3.2-3-3.2-3-.7.7ZM8 10h4v1H8v-1Z",
+        rename: "M12.1 1.6a1.4 1.4 0 0 1 2 2L5 12.7l-2.8.8.8-2.8 9.1-9.1Zm-1 1.4L3.6 10.4l-.4 1.4 1.4-.4 7.5-7.4-1-1Z",
+        eye: "M8 3C4.5 3 1.7 5.3 1 8c.7 2.7 3.5 5 7 5s6.3-2.3 7-5c-.7-2.7-3.5-5-7-5Zm0 8a3 3 0 1 1 0-6 3 3 0 0 1 0 6Zm0-1.5A1.5 1.5 0 1 0 8 6.5a1.5 1.5 0 0 0 0 3Z",
+        archive: "M2 3h12v3H2V3Zm1 4h10v6H3V7Zm3 2v1h4V9H6Z",
+        unarchive: "M8 2.5 3 6h2v6h6V6h2L8 2.5ZM7 8h2v3H7V8Z",
+        trash: "M6 1h4l.5 1H14v1H2V2h3.5L6 1Zm-2.5 3h9l-.7 10H4.2L3.5 4Zm2.5 2v6h1V6H6Zm3 0v6h1V6H9Z",
+        send: "M1.2 2.8 3 8 1.2 13.2a.5.5 0 0 0 .7.6l13-5.5a.5.5 0 0 0 0-.9l-13-5.5a.5.5 0 0 0-.7.6Z",
+        plus: "M8 1.5a.5.5 0 0 1 .5.5V7.5h5.5a.5.5 0 0 1 0 1H8.5V14a.5.5 0 0 1-1 0V8.5H2a.5.5 0 0 1 0-1h5.5V2a.5.5 0 0 1 .5-.5Z",
+        chevron: "M4 6l4 4 4-4H4Z",
+    };
+    function svgIcon(name) {
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("fill", "currentColor");
+        const p = document.createElementNS(ns, "path"); p.setAttribute("d", ICONS[name] || "");
+        svg.appendChild(p);
+        return svg;
+    }
+
     // Per-session actions, shown as hover icons on the right and in the
     // right-click menu. Each posts a session-action the extension handles.
     function actionsFor(s) {
         const list = [
-            { id: "open", icon: "▷", label: "Resume in terminal" },
-            { id: "rename", icon: "✎", label: "Rename" },
-            { id: "watch", icon: "👁", label: "Watch live (read-only)" },
+            { id: "open", icon: "terminal", label: "Resume in terminal" },
+            { id: "rename", icon: "rename", label: "Rename" },
+            { id: "watch", icon: "eye", label: "Watch live (read-only)" },
         ];
         list.push(s.archived
-            ? { id: "unarchive", icon: "↩", label: "Unarchive" }
-            : { id: "archive", icon: "🗄", label: "Archive" });
-        list.push({ id: "delete", icon: "🗑", label: "Delete permanently", danger: true });
+            ? { id: "unarchive", icon: "unarchive", label: "Unarchive" }
+            : { id: "archive", icon: "archive", label: "Archive" });
+        list.push({ id: "delete", icon: "trash", label: "Delete permanently", danger: true });
         return list;
     }
 
@@ -603,7 +671,8 @@ export function renderHtml(): string {
             body.className = "body";
             const ttl = document.createElement("div");
             ttl.className = "ttl";
-            ttl.textContent = (s.archived ? "🗄 " : "") + s.title;
+            if (s.archived) { const ar = svgIcon("archive"); ar.classList.add("ttlIcon"); ttl.appendChild(ar); }
+            ttl.appendChild(document.createTextNode(s.title));
             ttl.title = s.title + "\\n" + s.sessionId;
             const sub = document.createElement("span");
             sub.className = "sub";
@@ -623,7 +692,8 @@ export function renderHtml(): string {
             acts.className = "acts";
             for (const a of actionsFor(s)) {
                 const b = document.createElement("button");
-                b.textContent = a.icon;
+                if (a.danger) b.classList.add("danger");
+                b.appendChild(svgIcon(a.icon));
                 b.title = a.label;
                 b.addEventListener("click", (ev) => { ev.stopPropagation(); runAction(s, a.id); });
                 acts.appendChild(b);
@@ -647,7 +717,9 @@ export function renderHtml(): string {
             }
             const mi = document.createElement("div");
             mi.className = "mi" + (a.danger ? " danger" : "");
-            mi.textContent = a.icon + "  " + a.label;
+            const ic = svgIcon(a.icon); ic.classList.add("miIcon");
+            mi.appendChild(ic);
+            mi.appendChild(document.createTextNode(a.label));
             mi.addEventListener("click", () => runAction(s, a.id));
             ctxMenu.appendChild(mi);
         }
@@ -676,6 +748,24 @@ export function renderHtml(): string {
             chip.appendChild(x);
             chips.appendChild(chip);
         }
+    }
+
+    // Footer status bar: cwd · backend · permission/mode (like the native bar).
+    const statusbar = document.getElementById("statusbar");
+    function renderStatusbar(data) {
+        statusbar.textContent = "";
+        const seg = (iconName, text, title) => {
+            const s = document.createElement("span"); s.className = "seg"; if (title) s.title = title;
+            if (iconName) s.appendChild(svgIcon(iconName));
+            s.appendChild(document.createTextNode(text));
+            return s;
+        };
+        if (data.cwd) {
+            const base = String(data.cwd).split("/").filter(Boolean).pop() || data.cwd;
+            statusbar.appendChild(seg("terminal", base, data.cwd));
+        }
+        statusbar.appendChild(seg(null, data.backend + (data.permission && data.permission !== "default" ? " · " + data.permission : "")));
+        if (data.reasoning && data.reasoning !== "default") statusbar.appendChild(seg(null, "effort: " + data.reasoning));
     }
 
     function send() {
@@ -817,6 +907,7 @@ export function renderHtml(): string {
                     append("meta", data.backend + (data.resumed ? " · resumed session" : " · new session"));
                 }
                 renderSessions();
+                renderStatusbar(data);
                 setLoading(false);   // session resolved — reveal the conversation
                 break;
             }
