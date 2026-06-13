@@ -4,9 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as readline from "readline";
+import { builtinCommands } from "./builtins";
 import { resolveExecutable } from "./exec";
 import { removeMatchingFiles, scrubJsonlLines } from "./scrub";
-import { discoverSlashCommands, findNamedDirs } from "./skills";
+import { discoverSlashCommands, findNamedDirs, mergeCommands } from "./skills";
 import {
     AgentAdapter,
     AgentSession,
@@ -258,10 +259,12 @@ export class ClaudeAdapter implements AgentAdapter {
         const marketplaces = path.join(root, "plugins", "marketplaces");
         const pluginSkills = await findNamedDirs(marketplaces, "skills");
         const pluginCommands = await findNamedDirs(marketplaces, "commands");
-        return discoverSlashCommands(
+        const discovered = await discoverSlashCommands(
             [path.join(root, "skills"), ...pluginSkills],
             [path.join(root, "commands"), ...pluginCommands],
         );
+        const version = (await this.available()).version;
+        return mergeCommands(builtinCommands("claude", version, this.getConfig().log), discovered);
     }
 
     /**

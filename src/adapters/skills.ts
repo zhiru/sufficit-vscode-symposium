@@ -2,6 +2,19 @@ import * as fs from "fs";
 import * as path from "path";
 import { SlashCommand } from "./types";
 
+/** Merges command lists, first-wins on name, keeping built-ins ahead of skills. */
+export function mergeCommands(...lists: SlashCommand[][]): SlashCommand[] {
+    const byName = new Map<string, SlashCommand>();
+    for (const list of lists) {
+        for (const cmd of list) {
+            if (!byName.has(cmd.name)) {
+                byName.set(cmd.name, cmd);
+            }
+        }
+    }
+    return [...byName.values()];
+}
+
 /** Finds directories named `name` nested under `root` up to `maxDepth`. */
 export async function findNamedDirs(root: string, name: string, maxDepth = 5): Promise<string[]> {
     const found: string[] = [];

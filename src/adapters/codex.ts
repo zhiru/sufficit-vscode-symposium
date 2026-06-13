@@ -4,9 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as readline from "readline";
+import { builtinCommands } from "./builtins";
 import { resolveExecutable } from "./exec";
 import { scrubJsonlLines, scrubSqliteRows } from "./scrub";
-import { discoverSlashCommands, findNamedDirs } from "./skills";
+import { discoverSlashCommands, findNamedDirs, mergeCommands } from "./skills";
 import {
     AgentAdapter,
     AgentSession,
@@ -295,11 +296,13 @@ export class CodexAdapter implements AgentAdapter {
     async commands(): Promise<SlashCommand[]> {
         const root = path.join(os.homedir(), ".codex");
         const pluginSkills = await findNamedDirs(path.join(root, "plugins"), "skills");
-        return discoverSlashCommands(
+        const discovered = await discoverSlashCommands(
             // Codex's bundled skills live under skills/.system/<name>/SKILL.md.
             [path.join(root, "skills"), path.join(root, "skills", ".system"), ...pluginSkills],
             [path.join(root, "prompts")],
         );
+        const version = (await this.available()).version;
+        return mergeCommands(builtinCommands("codex", version), discovered);
     }
 
     async deleteSession(info: SessionInfo): Promise<string[]> {

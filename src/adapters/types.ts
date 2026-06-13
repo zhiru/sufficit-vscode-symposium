@@ -40,7 +40,7 @@ export interface FollowHandle {
 export interface SlashCommand {
     name: string;
     description?: string;
-    kind?: "skill" | "command";
+    kind?: "skill" | "command" | "builtin";
 }
 
 /** Options for starting or resuming a live session. */

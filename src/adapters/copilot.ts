@@ -3,8 +3,9 @@ import { EventEmitter } from "events";
 import * as readline from "readline";
 import * as os from "os";
 import * as path from "path";
+import { builtinCommands } from "./builtins";
 import { resolveExecutable } from "./exec";
-import { discoverSlashCommands, findNamedDirs } from "./skills";
+import { discoverSlashCommands, findNamedDirs, mergeCommands } from "./skills";
 import {
     AgentAdapter,
     AgentSession,
@@ -174,9 +175,11 @@ export class CopilotAdapter implements AgentAdapter {
     async commands(): Promise<SlashCommand[]> {
         const root = path.join(os.homedir(), ".copilot");
         const pluginSkills = await findNamedDirs(path.join(root, "plugins"), "skills");
-        return discoverSlashCommands(
+        const discovered = await discoverSlashCommands(
             [path.join(root, "skills"), ...pluginSkills],
             [path.join(root, "prompts"), path.join(root, "commands")],
         );
+        const version = (await this.available()).version;
+        return mergeCommands(builtinCommands("copilot", version), discovered);
     }
 }
