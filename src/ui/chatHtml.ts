@@ -47,7 +47,7 @@ export function renderHtml(): string {
     #sessionsList { flex: 1; overflow-y: auto; }
     .sessionItem {
         padding: 6px 10px; cursor: pointer; border-left: 2px solid transparent;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        display: flex; align-items: center; gap: 6px;
     }
     .sessionItem:hover { background: var(--vscode-list-hoverBackground); }
     .sessionItem.active {
@@ -55,7 +55,29 @@ export function renderHtml(): string {
         color: var(--vscode-list-activeSelectionForeground);
         border-left-color: var(--vscode-focusBorder);
     }
-    .sessionItem .sub { opacity: 0.6; font-size: 0.82em; display: block; }
+    .sessionItem .body { flex: 1; min-width: 0; }
+    .sessionItem .ttl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sessionItem .sub { opacity: 0.6; font-size: 0.82em; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sessionItem.archived .ttl { opacity: 0.6; font-style: italic; }
+    .sessionItem .acts { display: none; flex-shrink: 0; gap: 1px; }
+    .sessionItem:hover .acts { display: flex; }
+    .sessionItem .acts button {
+        background: none; border: none; cursor: pointer; padding: 2px 3px;
+        color: var(--vscode-icon-foreground, var(--vscode-foreground));
+        border-radius: 3px; font-size: 0.95em; line-height: 1;
+    }
+    .sessionItem .acts button:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.25)); }
+    #ctxMenu {
+        position: fixed; z-index: 50; display: none; min-width: 160px;
+        background: var(--vscode-menu-background, var(--vscode-editor-background));
+        color: var(--vscode-menu-foreground, var(--vscode-foreground));
+        border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, #454545));
+        border-radius: 5px; padding: 4px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    }
+    #ctxMenu .mi { padding: 5px 14px; cursor: pointer; font-size: 0.9em; white-space: nowrap; }
+    #ctxMenu .mi:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground)); color: var(--vscode-menu-selectionForeground, inherit); }
+    #ctxMenu .mi.danger { color: var(--vscode-errorForeground); }
+    #ctxMenu .sep { height: 1px; margin: 4px 0; background: var(--vscode-menu-separatorBackground, rgba(128,128,128,0.3)); }
 
     /* ---- chat column ---- */
     #chatCol { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -137,7 +159,13 @@ export function renderHtml(): string {
 <body>
 <div id="root">
     <aside id="sessionsPane">
-        <div id="sessionsHeader"><span>Sessions</span></div>
+        <div id="sessionsHeader">
+            <span>Sessions</span>
+            <span>
+                <button id="newSessionBtn" class="iconBtn" title="New session">＋</button>
+                <button id="archToggle" class="iconBtn" title="Show/hide archived">🗄</button>
+            </span>
+        </div>
         <div id="sessionsList"></div>
     </aside>
     <main id="chatCol">
@@ -161,6 +189,7 @@ export function renderHtml(): string {
         </div>
     </main>
 </div>
+<div id="ctxMenu"></div>
 <script>
     const vscode = acquireVsCodeApi();
     window.addEventListener("error", (e) => {
@@ -183,6 +212,10 @@ export function renderHtml(): string {
     let activeSessionId = "";
     let busy = false;
     let sessions = [];
+    let showArchived = false;
+
+    document.getElementById("newSessionBtn").addEventListener("click", () => vscode.postMessage({ type: "new-session" }));
+    document.getElementById("archToggle").addEventListener("click", () => { showArchived = !showArchived; renderSessions(); });
 
     let sideMode = "auto"; // "auto" | "left" | "right", from config
 
@@ -225,24 +258,87 @@ export function renderHtml(): string {
         status.textContent = busy ? "thinking..." : (activeModel ? "model: " + activeModel : "");
     }
 
+    // Per-session actions, shown as hover icons on the right and in the
+    // right-click menu. Each posts a session-action the extension handles.
+    function actionsFor(s) {
+        const list = [
+            { id: "open", icon: "▷", label: "Resume in terminal" },
+            { id: "rename", icon: "✎", label: "Rename" },
+            { id: "watch", icon: "👁", label: "Watch live (read-only)" },
+        ];
+        list.push(s.archived
+            ? { id: "unarchive", icon: "↩", label: "Unarchive" }
+            : { id: "archive", icon: "🗄", label: "Archive" });
+        list.push({ id: "delete", icon: "🗑", label: "Delete permanently", danger: true });
+        return list;
+    }
+
+    function runAction(s, action) {
+        hideCtx();
+        vscode.postMessage({ type: "session-action", action, sessionId: s.sessionId, backend: s.backend });
+    }
+
     function renderSessions() {
         sessionsList.textContent = "";
         for (const s of sessions) {
+            if (s.archived && !showArchived) continue;
             const el = document.createElement("div");
-            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "");
-            el.title = s.title;
-            el.textContent = s.title;
+            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "");
+
+            const body = document.createElement("div");
+            body.className = "body";
+            const ttl = document.createElement("div");
+            ttl.className = "ttl";
+            ttl.textContent = (s.archived ? "🗄 " : "") + s.title;
+            ttl.title = s.title + "\\n" + s.sessionId;
             const sub = document.createElement("span");
             sub.className = "sub";
             sub.textContent = s.backend + (s.updatedAt ? " · " + new Date(s.updatedAt).toLocaleString() : "");
-            el.appendChild(sub);
-            el.addEventListener("click", () => {
+            body.appendChild(ttl);
+            body.appendChild(sub);
+            body.addEventListener("click", () => {
                 root.classList.remove("listOpen");
                 vscode.postMessage({ type: "open-session", sessionId: s.sessionId, backend: s.backend });
             });
+
+            const acts = document.createElement("div");
+            acts.className = "acts";
+            for (const a of actionsFor(s)) {
+                const b = document.createElement("button");
+                b.textContent = a.icon;
+                b.title = a.label;
+                b.addEventListener("click", (ev) => { ev.stopPropagation(); runAction(s, a.id); });
+                acts.appendChild(b);
+            }
+
+            el.appendChild(body);
+            el.appendChild(acts);
+            el.addEventListener("contextmenu", (ev) => { ev.preventDefault(); showCtx(ev, s); });
             sessionsList.appendChild(el);
         }
     }
+
+    const ctxMenu = document.getElementById("ctxMenu");
+    function hideCtx() { ctxMenu.style.display = "none"; }
+    function showCtx(ev, s) {
+        ctxMenu.textContent = "";
+        for (const a of actionsFor(s)) {
+            if (a.danger) {
+                const sep = document.createElement("div"); sep.className = "sep"; ctxMenu.appendChild(sep);
+            }
+            const mi = document.createElement("div");
+            mi.className = "mi" + (a.danger ? " danger" : "");
+            mi.textContent = a.icon + "  " + a.label;
+            mi.addEventListener("click", () => runAction(s, a.id));
+            ctxMenu.appendChild(mi);
+        }
+        ctxMenu.style.display = "block";
+        const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
+        ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - w - 4) + "px";
+        ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
+    }
+    document.addEventListener("click", hideCtx);
+    document.addEventListener("scroll", hideCtx, true);
 
     function renderChips() {
         chips.querySelectorAll(".chip").forEach((el) => el.remove());
@@ -309,7 +405,8 @@ export function renderHtml(): string {
             }
         }
     }
-    input.addEventListener("paste", handlePaste);
+    // Single listener on the document (paste bubbles up from the textarea);
+    // adding it to both the input and the document fired it twice.
     document.addEventListener("paste", handlePaste);
 
     window.addEventListener("message", ({ data }) => {

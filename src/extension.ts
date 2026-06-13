@@ -4,7 +4,6 @@ import { ClaudeAdapter, ClaudeAdapterConfig } from "./adapters/claude";
 import { CodexAdapter, CodexAdapterConfig } from "./adapters/codex";
 import { CopilotAdapter, CopilotAdapterConfig } from "./adapters/copilot";
 import { AgentAdapter, SessionInfo } from "./adapters/types";
-import { SessionsTreeProvider } from "./sessions/tree";
 import { SessionStore } from "./sessions/store";
 import { ChatPanel } from "./ui/chatPanel";
 import { ChatSurfaceDeps } from "./ui/chatSurface";
@@ -54,7 +53,6 @@ export function activate(context: vscode.ExtensionContext): void {
         adapters.map((adapter) => [adapter.backend, adapter]));
 
     const store = new SessionStore(context.globalState);
-    let showArchived = false;
 
     const rawSessions = async (): Promise<SessionInfo[]> => {
         const all = await Promise.all(adapters.map((adapter) =>
@@ -65,8 +63,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const deps: ChatSurfaceDeps = {
         adapterByBackend,
-        // Chat surfaces never show archived sessions in their list.
-        listSessions: async () => store.decorate(await rawSessions(), false),
+        // Return ALL sessions with the archived flag set; the webview list
+        // shows/hides archived itself via its own toggle.
+        listSessions: async () => store.decorate(await rawSessions(), true),
         // Resume must run in the session's original cwd: the CLIs scope sessions per directory.
         cwdFor: (info) =>
             info.cwd && path.isAbsolute(info.cwd)
@@ -74,12 +73,9 @@ export function activate(context: vscode.ExtensionContext): void {
                 : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
     };
 
-    // The tree can also show archived sessions when toggled on.
-    const tree = new SessionsTreeProvider(async () => store.decorate(await rawSessions(), showArchived));
     const chatView = new ChatViewProvider(deps);
 
     const refreshAll = () => {
-        tree.refresh();
         void chatView.refreshSessions();
         ChatPanel.refreshSessions();
     };
@@ -107,10 +103,9 @@ export function activate(context: vscode.ExtensionContext): void {
     };
 
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider("symposium.sessions", tree),
         vscode.window.registerWebviewViewProvider(ChatViewProvider.viewId, chatView,
             { webviewOptions: { retainContextWhenHidden: true } }),
-        vscode.commands.registerCommand("symposium.refreshSessions", () => tree.refresh()),
+        vscode.commands.registerCommand("symposium.refreshSessions", () => refreshAll()),
 
         // dev convenience: reload the freshly installed vsix without reloading the window
         vscode.commands.registerCommand("symposium.restartExtensionHost", () =>
@@ -247,12 +242,6 @@ export function activate(context: vscode.ExtensionContext): void {
             } catch (error) {
                 void vscode.window.showErrorMessage(`Delete failed: ${error instanceof Error ? error.message : error}`);
             }
-        }),
-
-        vscode.commands.registerCommand("symposium.toggleArchived", () => {
-            showArchived = !showArchived;
-            void vscode.window.showInformationMessage(`Symposium: archived sessions ${showArchived ? "shown" : "hidden"}.`);
-            tree.refresh();
         }),
     );
 }

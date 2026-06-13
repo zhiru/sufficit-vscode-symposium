@@ -104,6 +104,29 @@ export class ChatSurface {
                     }
                     return;
                 }
+                case "new-session": {
+                    await vscode.commands.executeCommand("symposium.newSession");
+                    return;
+                }
+                case "session-action": {
+                    const sessions = await this.deps.listSessions();
+                    const info = sessions.find((s) => s.sessionId === message.sessionId && s.backend === message.backend);
+                    if (!info) {
+                        return;
+                    }
+                    const command = {
+                        open: "symposium.resumeInTerminal",
+                        rename: "symposium.renameSession",
+                        watch: "symposium.followSession",
+                        archive: "symposium.archiveSession",
+                        unarchive: "symposium.unarchiveSession",
+                        delete: "symposium.deleteSession",
+                    }[message.action as string];
+                    if (command) {
+                        await vscode.commands.executeCommand(command, info);
+                    }
+                    return;
+                }
                 default: {
                     if (this.terminalSession && message?.type === "send") {
                         this.terminalSession.send(message.text);

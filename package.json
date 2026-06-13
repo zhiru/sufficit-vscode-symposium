@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -30,11 +30,6 @@
     },
     "views": {
       "symposium": [
-        {
-          "id": "symposium.sessions",
-          "name": "Sessions",
-          "icon": "media/symposium.svg"
-        },
         {
           "id": "symposium.chat",
           "type": "webview",
@@ -94,11 +89,6 @@
         "icon": "$(trash)"
       },
       {
-        "command": "symposium.toggleArchived",
-        "title": "Symposium: Show/Hide Archived Sessions",
-        "icon": "$(archive)"
-      },
-      {
         "command": "symposium.refreshSessions",
         "title": "Symposium: Refresh Sessions",
         "icon": "$(refresh)"
@@ -113,65 +103,23 @@
       "view/title": [
         {
           "command": "symposium.newSession",
-          "when": "view == symposium.sessions",
-          "group": "navigation"
+          "when": "view == symposium.chat",
+          "group": "navigation@1"
         },
         {
           "command": "symposium.newTerminalSession",
-          "when": "view == symposium.sessions",
-          "group": "navigation"
-        },
-        {
-          "command": "symposium.toggleArchived",
-          "when": "view == symposium.sessions",
-          "group": "navigation"
+          "when": "view == symposium.chat",
+          "group": "navigation@2"
         },
         {
           "command": "symposium.refreshSessions",
-          "when": "view == symposium.sessions",
-          "group": "navigation"
+          "when": "view == symposium.chat",
+          "group": "navigation@3"
         },
         {
           "command": "symposium.restartExtensionHost",
-          "when": "view == symposium.sessions",
+          "when": "view == symposium.chat",
           "group": "navigation@9"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "symposium.resumeInTerminal",
-          "when": "view == symposium.sessions",
-          "group": "inline@1"
-        },
-        {
-          "command": "symposium.openSessionInEditor",
-          "when": "view == symposium.sessions",
-          "group": "inline@2"
-        },
-        {
-          "command": "symposium.renameSession",
-          "when": "view == symposium.sessions",
-          "group": "1_modify@1"
-        },
-        {
-          "command": "symposium.followSession",
-          "when": "view == symposium.sessions",
-          "group": "1_modify@2"
-        },
-        {
-          "command": "symposium.archiveSession",
-          "when": "view == symposium.sessions && viewItem == session",
-          "group": "1_modify@3"
-        },
-        {
-          "command": "symposium.unarchiveSession",
-          "when": "view == symposium.sessions && viewItem == session-archived",
-          "group": "1_modify@3"
-        },
-        {
-          "command": "symposium.deleteSession",
-          "when": "view == symposium.sessions",
-          "group": "9_danger@1"
         }
       ]
     },
