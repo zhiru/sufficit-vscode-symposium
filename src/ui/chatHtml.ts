@@ -166,25 +166,36 @@ export function renderHtml(): string {
     #chatTitle { flex: 1; opacity: 0.75; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #listToggle { display: none; }
     #root.narrow #listToggle { display: inline-flex; }
-    #log { flex: 1; overflow-y: auto; padding: 12px 14px 4px 14px; user-select: text; cursor: text; }
-    .msg { margin: 0 0 14px 0; word-break: break-word; line-height: 1.55; user-select: text; -webkit-user-select: text; }
+    #log { flex: 1; overflow-y: auto; padding: 16px 16px 6px 16px; user-select: text; cursor: text; }
+    .msg { margin: 0 0 18px 0; word-break: break-word; line-height: 1.6; user-select: text; -webkit-user-select: text; }
     .msg.plain { white-space: pre-wrap; }
-    .role { font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.55; margin-bottom: 3px; display: flex; align-items: center; gap: 5px; }
-    .role .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .role.user .dot { background: var(--vscode-charts-blue, #3794ff); }
-    .role.assistant .dot { background: var(--vscode-charts-green, #89d185); }
+    .role { font-size: 0.78em; opacity: 0.7; margin-bottom: 5px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+    .role .avatar {
+        width: 19px; height: 19px; border-radius: 5px; flex-shrink: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: var(--vscode-badge-background, rgba(128,128,128,0.2)); color: var(--vscode-badge-foreground, inherit);
+    }
+    .role .avatar svg { width: 12px; height: 12px; }
     /* user turns: right-aligned bubble */
     .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
-    .msg.user .role { flex-direction: row-reverse; }
+    .msg.user .role { opacity: 0.5; }
     .ubody {
-        background: var(--vscode-chat-requestBackground, var(--vscode-input-background));
-        border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-input-border, transparent));
-        border-radius: 10px 10px 2px 10px; padding: 8px 11px; white-space: pre-wrap;
-        max-width: 82%; text-align: left;
+        background: var(--vscode-chat-requestBackground, rgba(128,128,128,0.12));
+        border-radius: 12px 12px 3px 12px; padding: 9px 13px; white-space: pre-wrap;
+        max-width: 80%; text-align: left;
     }
     .ubody .chips { margin-top: 6px; }
     /* assistant turns: full width, no bubble */
     .msg.assistant { padding: 0 2px; }
+    .msgTools { margin-top: 4px; height: 20px; }
+    .msgCopy {
+        background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: 4px;
+        color: var(--vscode-icon-foreground, var(--vscode-foreground)); opacity: 0; transition: opacity 150ms ease, background-color 150ms ease;
+    }
+    .msg.assistant:hover .msgCopy { opacity: 0.6; }
+    .msgCopy:hover { opacity: 1 !important; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
+    .msgCopy.done { opacity: 1 !important; color: var(--vscode-charts-green, #89d185); }
+    .msgCopy svg { width: 13px; height: 13px; }
     /* markdown content */
     .md p { margin: 0 0 8px 0; }
     .md p:last-child { margin-bottom: 0; }
@@ -397,6 +408,7 @@ export function renderHtml(): string {
     let attachments = [];   // [{path, name}]
     let activeFile = null;  // active editor path, offered as removable context
     let activeFileDismissed = false;
+    let currentBackend = "";
     let activeModel = "";
     let activeSessionId = "";
     let busy = false;
@@ -611,20 +623,37 @@ export function renderHtml(): string {
 
     // A chat message with a small role label (user/assistant); assistant text
     // is rendered as markdown.
+    const BACKEND_NAMES = { claude: "Claude", codex: "Codex", copilot: "Copilot" };
     function message(role, text) {
         const stick = nearBottom();
         const wrap = document.createElement("div");
         wrap.className = "msg " + role;
         const label = document.createElement("div");
         label.className = "role " + role;
-        const dot = document.createElement("span"); dot.className = "dot";
-        const name = document.createElement("span"); name.textContent = role === "user" ? "You" : "Agent";
-        label.appendChild(dot); label.appendChild(name);
+        if (role === "assistant") {
+            const av = document.createElement("span"); av.className = "avatar"; av.appendChild(svgIcon("robot"));
+            const name = document.createElement("span"); name.textContent = BACKEND_NAMES[currentBackend] || "Agent";
+            label.appendChild(av); label.appendChild(name);
+        } else {
+            const name = document.createElement("span"); name.textContent = "You";
+            label.appendChild(name);
+        }
         wrap.appendChild(label);
         const body = document.createElement("div");
         if (role === "assistant") { body.className = "md"; renderMarkdown(body, text); }
         else { body.className = "ubody"; body.textContent = text; }
         wrap.appendChild(body);
+        if (role === "assistant") {
+            const tools = document.createElement("div"); tools.className = "msgTools";
+            const cp = document.createElement("button"); cp.className = "msgCopy"; cp.title = "Copy message";
+            cp.appendChild(svgIcon("copy"));
+            cp.addEventListener("click", () => {
+                navigator.clipboard && navigator.clipboard.writeText(text);
+                cp.classList.add("done"); setTimeout(() => cp.classList.remove("done"), 1000);
+            });
+            tools.appendChild(cp);
+            wrap.appendChild(tools);
+        }
         log.appendChild(wrap);
         autoScroll(stick);
         return wrap;
@@ -725,6 +754,8 @@ export function renderHtml(): string {
         send: "M1.2 2.8 3 8 1.2 13.2a.5.5 0 0 0 .7.6l13-5.5a.5.5 0 0 0 0-.9l-13-5.5a.5.5 0 0 0-.7.6Z",
         chat: "M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6A1.5 1.5 0 0 1 12.5 11H6l-3 3v-3H3.5A1.5 1.5 0 0 1 2 9.5v-6Z",
         file: "M4 1h5l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1Zm5 1v3h3L9 2Z",
+        robot: "M7.5 1.5h1V3H11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2.5V1.5ZM6 6.5A1 1 0 1 0 6 8.5 1 1 0 0 0 6 6.5Zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM1 6h1v4H1V6Zm13 0h1v4h-1V6Z",
+        copy: "M5 2h6a1 1 0 0 1 1 1v8h-1V3H5V2ZM3 4h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm0 1v8h6V5H3Z",
         plus: "M8 1.5a.5.5 0 0 1 .5.5V7.5h5.5a.5.5 0 0 1 0 1H8.5V14a.5.5 0 0 1-1 0V8.5H2a.5.5 0 0 1 0-1h5.5V2a.5.5 0 0 1 .5-.5Z",
         chevron: "M4 6l4 4 4-4H4Z",
     };
@@ -1033,6 +1064,7 @@ export function renderHtml(): string {
                 root.classList.toggle("chat-only", !!data.chatOnly);
                 layout();
                 activeSessionId = data.sessionId || "";
+                currentBackend = data.backend || "";
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + data.backend;
                 modelDefault = data.modelDefault || "";
                 reasoningDefault = data.reasoningDefault || "";
