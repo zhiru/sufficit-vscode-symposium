@@ -315,7 +315,12 @@ export function renderHtml(): string {
     #send { padding: 0 9px; }
     #sendCaret { padding: 0 4px; border-left: 1px solid color-mix(in srgb, var(--vscode-button-foreground) 25%, transparent); }
     #send svg { width: 15px; height: 15px; }
+    #send #sendIcon { display: inline-flex; }
     #sendCaret svg { width: 12px; height: 12px; }
+    #ctxMenu .mi .mikbd {
+        flex-shrink: 0; opacity: 0.6; font-size: 0.82em; margin-left: 10px;
+        font-family: var(--vscode-editor-font-family, monospace);
+    }
     #sendGroup button:disabled { opacity: 0.4; cursor: default; }
 
     /* ---- footer status bar ---- */
@@ -381,7 +386,7 @@ export function renderHtml(): string {
                     <option value="steer">Steer</option>
                 </select>
                 <div id="sendGroup">
-                    <button id="send" title="Send (Enter)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.2 2.8 3 8 1.2 13.2a.5.5 0 0 0 .7.6l13-5.5a.5.5 0 0 0 0-.9l-13-5.5a.5.5 0 0 0-.7.6Z"/></svg></button>
+                    <button id="send" title="Send (Enter)"><span id="sendIcon"></span></button>
                     <button id="sendCaret" title="Send mode"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4H4Z"/></svg></button>
                 </div>
             </div>
@@ -431,21 +436,46 @@ export function renderHtml(): string {
     sendMode.addEventListener("change", () => saveState({ sendMode: sendMode.value }));
 
     // Split send-button: caret opens a small menu to choose Send/Queue/Steer.
+    // Each mode has its own icon and its own keyboard shortcut (like the
+    // native chat): Enter sends with the selected default mode, while the
+    // modifier shortcuts force a specific mode regardless of the default.
     const sendCaret = document.getElementById("sendCaret");
+    const sendIcon = document.getElementById("sendIcon");
+    const isMac = navigator.platform.indexOf("Mac") === 0;
+    const MOD = isMac ? "⌘" : "Ctrl";
+    const ALT = isMac ? "⌥" : "Alt";
     const MODE_LABELS = { send: "Send", queue: "Queue", steer: "Steer" };
+    const MODE_KBD = { send: "Enter", queue: ALT + "+Enter", steer: MOD + "+Enter" };
+    const MODE_ICONS = {
+        // paper plane
+        send: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.2 2.8 3 8 1.2 13.2a.5.5 0 0 0 .7.6l13-5.5a.5.5 0 0 0 0-.9l-13-5.5a.5.5 0 0 0-.7.6Z"/></svg>',
+        // clock (wait, then send)
+        queue: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 12.5A5.5 5.5 0 1 1 8 2.5a5.5 5.5 0 0 1 0 11Z"/><path d="M7.25 4h1.5v4.1l2.9 1.7-.75 1.3-3.65-2.15V4Z"/></svg>',
+        // lightning bolt (interrupt and send now)
+        steer: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.4 1 3 9h3.6l-1.3 6 7.7-9.2H9.2L10.5 1H9.4Z"/></svg>',
+    };
     const MODE_DESC = {
         send: "Send now; queued while a turn runs",
         queue: "Always wait for the current turn (FIFO)",
         steer: "Interrupt the running turn and send now",
     };
-    function updateSendTitle() { sendBtn.title = MODE_LABELS[sendMode.value] + " (Enter) — " + MODE_DESC[sendMode.value]; }
+    function updateSendTitle() {
+        const m = sendMode.value;
+        sendIcon.innerHTML = MODE_ICONS[m];
+        sendBtn.title = MODE_LABELS[m] + " (" + MODE_KBD[m] + ") — " + MODE_DESC[m];
+    }
     sendCaret.addEventListener("click", (ev) => {
         ev.stopPropagation();
         ctxMenu.textContent = "";
         for (const mode of ["send", "queue", "steer"]) {
             const mi = document.createElement("div"); mi.className = "mi";
-            mi.textContent = (sendMode.value === mode ? "✓ " : "    ") + MODE_LABELS[mode];
             mi.title = MODE_DESC[mode];
+            const tick = document.createElement("span"); tick.className = "tick";
+            tick.textContent = sendMode.value === mode ? "✓" : "";
+            const ic = document.createElement("span"); ic.className = "miIcon"; ic.innerHTML = MODE_ICONS[mode];
+            const lbl = document.createElement("span"); lbl.className = "milbl"; lbl.textContent = MODE_LABELS[mode];
+            const kbd = document.createElement("span"); kbd.className = "mikbd"; kbd.textContent = MODE_KBD[mode];
+            mi.append(tick, ic, lbl, kbd);
             mi.addEventListener("click", () => { sendMode.value = mode; saveState({ sendMode: mode }); updateSendTitle(); });
             ctxMenu.appendChild(mi);
         }
@@ -952,7 +982,7 @@ export function renderHtml(): string {
         if (data.reasoning && data.reasoning !== "default") statusbar.appendChild(seg(null, "effort: " + data.reasoning));
     }
 
-    function send() {
+    function send(modeOverride) {
         const text = input.value.trim();
         if (!text) return;
         // While a turn runs, only queue/steer may submit; plain send waits too
@@ -969,7 +999,7 @@ export function renderHtml(): string {
             model: modelValue,
             reasoning: reasoningValue,
             permission: permissionValue,
-            mode: sendMode.value,
+            mode: modeOverride || sendMode.value,
         });
         if (!busy) { busy = true; setStatus(); }
         attachments = [];
@@ -1026,7 +1056,14 @@ export function renderHtml(): string {
             if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); acceptSlash(slashSel); return; }
             if (e.key === "Escape") { e.preventDefault(); slash.style.display = "none"; return; }
         }
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            // Per-mode shortcuts: Ctrl/Cmd+Enter steers, Alt+Enter queues,
+            // plain Enter uses the selected default mode.
+            if (e.ctrlKey || e.metaKey) send("steer");
+            else if (e.altKey) send("queue");
+            else send();
+        }
         if (e.key === "Escape" && busy) { vscode.postMessage({ type: "cancel" }); }
     });
     input.addEventListener("input", () => {
