@@ -25,6 +25,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     constructor(private readonly deps: ChatSurfaceDeps) { }
 
+    /** True when the sidebar Chat view is resolved and currently visible. */
+    get visible(): boolean {
+        return this.view?.visible ?? false;
+    }
+
     resolveWebviewView(webviewView: vscode.WebviewView): void {
         this.view = webviewView;
         this.surface = new ChatSurface(webviewView.webview, this.deps,

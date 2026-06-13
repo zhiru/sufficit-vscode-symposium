@@ -130,8 +130,12 @@ export function activate(context: vscode.ExtensionContext): void {
     const infoOf = (item: { info?: SessionInfo } | SessionInfo): SessionInfo =>
         "info" in item && item.info ? item.info : item as SessionInfo;
 
+    // Open in the editor only when configured to AND the sidebar isn't the
+    // surface in use: if the user acts from the visible sidebar view, the new
+    // session stays there instead of jumping to a central editor panel.
     const inEditor = () =>
-        vscode.workspace.getConfiguration("symposium.chat").get<string>("openIn", "editor") === "editor";
+        vscode.workspace.getConfiguration("symposium.chat").get<string>("openIn", "editor") === "editor"
+        && !chatView.visible;
 
     // Per-backend env for terminal-backed sessions (e.g. gateway routing).
     const envFor = (backend: string): Record<string, string> =>
