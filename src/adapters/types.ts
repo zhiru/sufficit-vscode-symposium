@@ -21,6 +21,8 @@ export interface SessionInfo {
     updatedAt?: Date;
     /** Path to the stored transcript, when the backend keeps one. */
     transcriptPath?: string;
+    /** Set by the session store; true when the user archived it. */
+    archived?: boolean;
 }
 
 /** One past message reconstructed from a stored transcript. */
@@ -79,4 +81,6 @@ export interface AgentAdapter {
     follow?(info: SessionInfo, onMessage: (message: HistoryMessage) => void): FollowHandle;
     /** Models offered in the chat panel picker; first entry is the default. */
     models?(): string[];
+    /** Permanently removes a session's stored transcript from disk. */
+    deleteSession?(info: SessionInfo): Promise<void>;
 }

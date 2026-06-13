@@ -280,6 +280,12 @@ export class CodexAdapter implements AgentAdapter {
         const known = ["gpt-5.2-codex", "gpt-5.2", "o4-mini"];
         return [...new Set([configured || "default", ...known])];
     }
+
+    async deleteSession(info: SessionInfo): Promise<void> {
+        if (info.transcriptPath) {
+            await fs.promises.rm(info.transcriptPath, { force: true });
+        }
+    }
 }
 
 /** Reads the session_meta line (id, cwd) and first real user prompt (title). */

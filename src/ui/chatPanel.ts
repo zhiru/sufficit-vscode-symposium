@@ -21,6 +21,11 @@ export class ChatPanel {
         return ChatPanel.current;
     }
 
+    /** Re-pushes the sessions list to the open panel, if any. */
+    static refreshSessions(): void {
+        void ChatPanel.current?.surface.refreshSessions();
+    }
+
     private constructor(context: vscode.ExtensionContext, deps: ChatSurfaceDeps) {
         this.panel = vscode.window.createWebviewPanel(
             "symposium.chat",

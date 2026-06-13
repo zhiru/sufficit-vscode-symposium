@@ -250,6 +250,13 @@ export class ClaudeAdapter implements AgentAdapter {
         return [...new Set([configured || "default", ...known])];
     }
 
+    async deleteSession(info: SessionInfo): Promise<void> {
+        const file = info.transcriptPath ?? await this.findTranscript(info.sessionId);
+        if (file) {
+            await fs.promises.rm(file, { force: true });
+        }
+    }
+
     /**
      * Rebuilds the dialogue from the transcript JSONL. Tool noise is
      * reduced to one line per tool call; meta/system entries are skipped.

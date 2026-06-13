@@ -1,12 +1,15 @@
 import * as vscode from "vscode";
-import { AgentAdapter, SessionInfo } from "../adapters/types";
+import { SessionInfo } from "../adapters/types";
+import { SessionStore } from "./store";
 
 export class SessionTreeItem extends vscode.TreeItem {
     constructor(readonly info: SessionInfo) {
-        super(info.title, vscode.TreeItemCollapsibleState.None);
+        super(info.archived ? `🗄 ${info.title}` : info.title, vscode.TreeItemCollapsibleState.None);
         this.description = `${info.backend} · ${info.updatedAt?.toLocaleString() ?? ""}`;
         this.tooltip = `${info.sessionId}\n${info.cwd ?? ""}`;
-        this.iconPath = new vscode.ThemeIcon("comment-discussion");
+        this.iconPath = new vscode.ThemeIcon(info.archived ? "archive" : "comment-discussion");
+        // contextValue drives which inline/context actions show (see package.json `when`).
+        this.contextValue = info.archived ? "session-archived" : "session";
         this.command = {
             command: "symposium.openSession",
             title: "Open Session",
@@ -19,7 +22,9 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionTree
     private readonly emitter = new vscode.EventEmitter<void>();
     readonly onDidChangeTreeData = this.emitter.event;
 
-    constructor(private readonly adapters: AgentAdapter[]) { }
+    constructor(
+        private readonly listSessions: () => Promise<SessionInfo[]>,
+    ) { }
 
     refresh(): void {
         this.emitter.fire();
@@ -30,10 +35,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionTree
     }
 
     async getChildren(): Promise<SessionTreeItem[]> {
-        const all = await Promise.all(this.adapters.map((adapter) =>
-            adapter.listSessions().catch(() => [] as SessionInfo[])));
-        return all.flat()
-            .sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0))
-            .map((info) => new SessionTreeItem(info));
+        const sessions = await this.listSessions();
+        return sessions.map((info) => new SessionTreeItem(info));
     }
 }

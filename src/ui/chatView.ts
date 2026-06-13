@@ -37,6 +37,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.consumePending();
     }
 
+    /** Re-pushes the sessions list to the webview (after rename/archive/delete). */
+    refreshSessions(): void {
+        void this.surface?.refreshSessions();
+    }
+
     async openSession(info: SessionInfo): Promise<void> {
         this.pending = { kind: "session", info };
         await this.reveal();

@@ -5,6 +5,7 @@ import { CodexAdapter, CodexAdapterConfig } from "./adapters/codex";
 import { CopilotAdapter, CopilotAdapterConfig } from "./adapters/copilot";
 import { AgentAdapter, SessionInfo } from "./adapters/types";
 import { SessionsTreeProvider } from "./sessions/tree";
+import { SessionStore } from "./sessions/store";
 import { ChatPanel } from "./ui/chatPanel";
 import { ChatSurfaceDeps } from "./ui/chatSurface";
 import { ChatViewProvider } from "./ui/chatView";
@@ -52,14 +53,20 @@ export function activate(context: vscode.ExtensionContext): void {
     const adapterByBackend = new Map<string, AgentAdapter>(
         adapters.map((adapter) => [adapter.backend, adapter]));
 
+    const store = new SessionStore(context.globalState);
+    let showArchived = false;
+
+    const rawSessions = async (): Promise<SessionInfo[]> => {
+        const all = await Promise.all(adapters.map((adapter) =>
+            adapter.listSessions().catch(() => [] as SessionInfo[])));
+        return all.flat()
+            .sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0));
+    };
+
     const deps: ChatSurfaceDeps = {
         adapterByBackend,
-        listSessions: async () => {
-            const all = await Promise.all(adapters.map((adapter) =>
-                adapter.listSessions().catch(() => [] as SessionInfo[])));
-            return all.flat()
-                .sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0));
-        },
+        // Chat surfaces never show archived sessions in their list.
+        listSessions: async () => store.decorate(await rawSessions(), false),
         // Resume must run in the session's original cwd: the CLIs scope sessions per directory.
         cwdFor: (info) =>
             info.cwd && path.isAbsolute(info.cwd)
@@ -67,8 +74,17 @@ export function activate(context: vscode.ExtensionContext): void {
                 : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
     };
 
-    const tree = new SessionsTreeProvider(adapters);
+    // The tree can also show archived sessions when toggled on.
+    const tree = new SessionsTreeProvider(async () => store.decorate(await rawSessions(), showArchived));
     const chatView = new ChatViewProvider(deps);
+
+    const refreshAll = () => {
+        tree.refresh();
+        void chatView.refreshSessions();
+        ChatPanel.refreshSessions();
+    };
+    const infoOf = (item: { info?: SessionInfo } | SessionInfo): SessionInfo =>
+        "info" in item && item.info ? item.info : item as SessionInfo;
 
     const inEditor = () =>
         vscode.workspace.getConfiguration("symposium.chat").get<string>("openIn", "editor") === "editor";
@@ -175,8 +191,62 @@ export function activate(context: vscode.ExtensionContext): void {
         }),
 
         vscode.commands.registerCommand("symposium.resumeInTerminal", (item: { info?: SessionInfo } | SessionInfo) => {
-            const info = "info" in item && item.info ? item.info : item as SessionInfo;
+            const info = infoOf(item);
             startTerminal(info.backend, { cwd: deps.cwdFor(info), resumeSessionId: info.sessionId }, info.title);
+        }),
+
+        vscode.commands.registerCommand("symposium.renameSession", async (item: { info?: SessionInfo } | SessionInfo) => {
+            const info = infoOf(item);
+            const value = await vscode.window.showInputBox({
+                prompt: "Rename session",
+                value: info.title,
+                valueSelection: [0, info.title.length],
+            });
+            if (value === undefined) {
+                return; // cancelled
+            }
+            await store.setTitle(info, value);
+            refreshAll();
+        }),
+
+        vscode.commands.registerCommand("symposium.archiveSession", async (item: { info?: SessionInfo } | SessionInfo) => {
+            await store.setArchived(infoOf(item), true);
+            refreshAll();
+        }),
+
+        vscode.commands.registerCommand("symposium.unarchiveSession", async (item: { info?: SessionInfo } | SessionInfo) => {
+            await store.setArchived(infoOf(item), false);
+            refreshAll();
+        }),
+
+        vscode.commands.registerCommand("symposium.deleteSession", async (item: { info?: SessionInfo } | SessionInfo) => {
+            const info = infoOf(item);
+            const adapter = adapterByBackend.get(info.backend);
+            if (!adapter?.deleteSession) {
+                void vscode.window.showWarningMessage(`Deleting ${info.backend} sessions is not supported.`);
+                return;
+            }
+            const confirm = await vscode.window.showWarningMessage(
+                `Permanently delete "${info.title}"? This removes the transcript from disk and cannot be undone.`,
+                { modal: true },
+                "Delete",
+            );
+            if (confirm !== "Delete") {
+                return;
+            }
+            try {
+                await adapter.deleteSession(info);
+                await store.forget(info);
+                refreshAll();
+            } catch (error) {
+                void vscode.window.showErrorMessage(`Delete failed: ${error instanceof Error ? error.message : error}`);
+            }
+        }),
+
+        vscode.commands.registerCommand("symposium.toggleArchived", () => {
+            showArchived = !showArchived;
+            void vscode.window.showInformationMessage(`Symposium: archived sessions ${showArchived ? "shown" : "hidden"}.`);
+            tree.refresh();
         }),
     );
 }
