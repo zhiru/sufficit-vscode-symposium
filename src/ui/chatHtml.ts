@@ -278,10 +278,15 @@ export function renderHtml(): string {
     }
     .codeblock .cbcopy { background: none; border: none; cursor: pointer; color: inherit; opacity: 0.7; font-size: 0.95em; padding: 2px 6px; border-radius: 4px; }
     .codeblock .cbcopy:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
-    .codeblock pre { margin: 0; padding: 8px 10px; overflow-x: auto; }
+    .codeblock pre {
+        margin: 0; padding: 8px 10px; overflow-x: auto;
+        background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.1));
+    }
     .codeblock code {
+        display: block; background: none; border: none; padding: 0;
         font-family: var(--vscode-editor-font-family, monospace);
         font-size: var(--vscode-editor-font-size, 0.9em); white-space: pre;
+        color: var(--vscode-editor-foreground, var(--vscode-foreground));
     }
     .tool { opacity: 0.6; font-size: 0.9em; padding-left: 4px; font-family: var(--vscode-editor-font-family, monospace); }
     /* tool invocation row — native-chat look: icon + verb + muted target */
