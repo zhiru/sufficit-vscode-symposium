@@ -183,9 +183,17 @@ export function renderHtml(): string {
         flex: 1; overflow-y: auto; padding: 16px 16px 6px 16px; user-select: text; cursor: text;
         font-size: 13.5px; line-height: 1.65;
     }
-    .msg { margin: 0 0 20px 0; word-break: break-word; line-height: 1.65; user-select: text; -webkit-user-select: text; }
+    .msg { margin: 0 0 18px 0; word-break: break-word; line-height: 1.65; user-select: text; -webkit-user-select: text; }
     .msg.plain { white-space: pre-wrap; }
-    .role { font-size: 0.8em; opacity: 0.85; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: 0.01em; }
+    /* Clear separation between message blocks (not between tool rows): a hairline
+       rule + breathing room above each user/assistant turn marks where one ends
+       and the next begins. */
+    .msg.user, .msg.assistant {
+        margin-top: 20px; padding-top: 20px;
+        border-top: 1px solid var(--vscode-panel-border, color-mix(in srgb, var(--vscode-foreground) 14%, transparent));
+    }
+    #log > .msg.user:first-child, #log > .msg.assistant:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+    .role { font-size: 0.82em; opacity: 1; margin-bottom: 7px; display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: 0.02em; color: var(--vscode-foreground); }
     .role .avatar {
         width: 19px; height: 19px; border-radius: 5px; flex-shrink: 0;
         display: inline-flex; align-items: center; justify-content: center;
@@ -196,7 +204,7 @@ export function renderHtml(): string {
     .role .avatar svg { width: 12px; height: 12px; }
     /* user turns: right-aligned bubble */
     .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
-    .msg.user .role { opacity: 0.5; }
+    .msg.user .role { opacity: 0.75; }
     /* user bubble: a subtle blue tint derived from the theme accent
        (focusBorder), mirroring the native chat — many themes leave
        chat.requestBackground as a near-invisible translucent editor bg, so we
@@ -252,7 +260,7 @@ export function renderHtml(): string {
         padding: 1px 5px; border-radius: 4px;
         border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
     }
-    .md strong { font-weight: 650; color: var(--vscode-foreground); }
+    .md strong { font-weight: 700; color: var(--vscode-foreground); }
     .md em { font-style: italic; }
     .codeblock { margin: 8px 0; border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3)); border-radius: 6px; overflow: hidden; }
     .codeblock .cbhead {
@@ -1596,12 +1604,10 @@ export function renderHtml(): string {
                 renderChips();
                 break;
             }
-            case "file-approved": {
-                const c = curChanged()[data.path];
-                if (c) { c.approved = true; renderChangedFiles(); }
-                break;
-            }
+            case "file-approved":
             case "file-removed": {
+                // Approve (accept) and reject (revert) both clear the file from
+                // the session's working set.
                 if (curChanged()[data.path]) { delete curChanged()[data.path]; renderChangedFiles(); }
                 break;
             }
