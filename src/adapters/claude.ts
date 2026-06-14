@@ -6,6 +6,7 @@ import * as path from "path";
 import * as readline from "readline";
 import { builtinCommands } from "./builtins";
 import { resolveExecutable } from "./exec";
+import { snapshots } from "../snapshots";
 import { removeMatchingFiles, scrubJsonlLines } from "./scrub";
 import { discoverSlashCommands, findNamedDirs, mergeCommands } from "./skills";
 import {
@@ -125,6 +126,10 @@ class ClaudeSession extends EventEmitter implements AgentSession {
                         this.emit("event", { kind: "text", text: block.text });
                     } else if (block.type === "tool_use") {
                         const counts = diffCounts(block.name, block.input);
+                        // Snapshot the file BEFORE the CLI applies the edit, so the
+                        // change can be reverted later without relying on git.
+                        const editPath = counts ? (block.input as any)?.file_path : undefined;
+                        if (editPath && this.sessionId) { snapshots.capture(this.sessionId, editPath); }
                         this.emit("event", {
                             kind: "tool-start",
                             toolName: block.name,

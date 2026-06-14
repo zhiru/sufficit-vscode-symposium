@@ -27,6 +27,7 @@ import { LiveSessions } from "./sessions/runtime";
 import { ChatPanel } from "./ui/chatPanel";
 import { ChatSurfaceDeps } from "./ui/chatSurface";
 import { ChatViewProvider } from "./ui/chatView";
+import { snapshots } from "./snapshots";
 
 function claudeConfig(): ClaudeAdapterConfig {
     const config = vscode.workspace.getConfiguration("symposium.claude");
@@ -361,6 +362,7 @@ export function activate(context: vscode.ExtensionContext): void {
             }
             try {
                 runtime.disposeBySessionId(info.sessionId); // stop it if running
+                snapshots.clearSession(info.sessionId);      // drop in-memory baselines
                 const residual = await adapter.deleteSession(info);
                 await store.forget(info);
                 refreshAll();

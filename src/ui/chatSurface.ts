@@ -9,6 +9,7 @@ import { TerminalSession } from "./terminalSession";
 import { LiveSessions } from "../sessions/runtime";
 import { symposiumLog } from "../extension";
 import { approveChange, gitRoot, headContent, rejectChange } from "../git";
+import { snapshots } from "../snapshots";
 
 /** Directory to run git in for a file — git discovers the enclosing repo upward. */
 function repoCwd(file: string): string {
@@ -150,41 +151,36 @@ export class ChatSurface {
                     return;
                 }
                 case "file-approve": {
-                    if (typeof message.path === "string" && await this.ensureRepoFor(message.path)) {
-                        const ok = await approveChange(repoCwd(message.path), message.path);
-                        if (ok) { this.post({ type: "file-approved", path: message.path }); }
-                        else { void vscode.window.showWarningMessage("Could not stage " + message.path); }
+                    if (typeof message.path === "string") {
+                        await this.approveFile(message.path);
+                        this.post({ type: "file-approved", path: message.path });
                     }
                     return;
                 }
                 case "file-reject": {
-                    if (typeof message.path === "string" && await this.ensureRepoFor(message.path)) {
-                        const ok = await rejectChange(repoCwd(message.path), message.path);
-                        if (ok) { this.post({ type: "file-removed", path: message.path }); }
+                    if (typeof message.path === "string") {
+                        if (await this.rejectFile(message.path)) { this.post({ type: "file-removed", path: message.path }); }
                         else { void vscode.window.showWarningMessage("Could not revert " + message.path); }
                     }
                     return;
                 }
                 case "file-approve-all": {
                     const paths: string[] = Array.isArray(message.paths) ? message.paths : [];
-                    if (!paths.length || !(await this.ensureRepoFor(paths[0]))) { return; }
-                    let failed = 0;
                     for (const p of paths) {
-                        if (await approveChange(repoCwd(p), p)) { this.post({ type: "file-approved", path: p }); }
-                        else { failed++; }
+                        await this.approveFile(p);
+                        this.post({ type: "file-approved", path: p });
                     }
-                    if (failed) { void vscode.window.showWarningMessage(`Could not stage ${failed} file(s).`); }
                     return;
                 }
                 case "file-reject-all": {
                     const paths: string[] = Array.isArray(message.paths) ? message.paths : [];
-                    if (!paths.length || !(await this.ensureRepoFor(paths[0]))) { return; }
+                    if (!paths.length) { return; }
                     const pick = await vscode.window.showWarningMessage(
-                        `Revert ${paths.length} file(s) to their last committed state? This discards the agent's changes.`,
+                        `Revert ${paths.length} file(s) to their pre-edit state? This discards the agent's changes.`,
                         { modal: true }, "Revert");
                     if (pick !== "Revert") { return; }
                     for (const p of paths) {
-                        if (await rejectChange(repoCwd(p), p)) { this.post({ type: "file-removed", path: p }); }
+                        if (await this.rejectFile(p)) { this.post({ type: "file-removed", path: p }); }
                     }
                     return;
                 }
@@ -459,37 +455,63 @@ export class ChatSurface {
             ?? process.cwd();
     }
 
-    /** Warns (and returns false) when a file isn't inside a git repository. */
-    private async ensureRepoFor(file: string | undefined): Promise<boolean> {
-        if (typeof file !== "string") { return false; }
-        const root = await gitRoot(repoCwd(file));
-        if (!root) {
-            void vscode.window.showWarningMessage(
-                `Approve/Reject needs a git repository — this file isn't inside one: ${file}`);
-            return false;
-        }
-        return true;
+    /** Active session id (snapshots are keyed by it). */
+    private sid(): string {
+        return this.controller?.sessionId ?? "";
     }
 
     /**
-     * Opens a diff of an edited file against its HEAD version. Newly created
-     * (untracked) files have no HEAD side, so they just open.
+     * Accepts a file's changes. The session snapshot baseline is dropped so it
+     * can't be reverted anymore; if the file is in a git repo we also stage it.
+     */
+    private async approveFile(filePath: string): Promise<void> {
+        snapshots.accept(this.sid(), filePath);
+        if (await gitRoot(repoCwd(filePath))) {
+            void approveChange(repoCwd(filePath), filePath);
+        }
+    }
+
+    /**
+     * Reverts a file to its pre-edit state. Prefers the session snapshot (works
+     * with or without git, even for new files); falls back to git restore for
+     * resumed sessions that have no snapshot.
+     */
+    private async rejectFile(filePath: string): Promise<boolean> {
+        if (snapshots.has(this.sid(), filePath)) {
+            return snapshots.revert(this.sid(), filePath);
+        }
+        if (await gitRoot(repoCwd(filePath))) {
+            return rejectChange(repoCwd(filePath), filePath);
+        }
+        void vscode.window.showWarningMessage(
+            "No pre-edit snapshot for this file (edited before this session started) and it's not in a git repo, so it can't be reverted: " + filePath);
+        return false;
+    }
+
+    /**
+     * Diffs an edited file against its baseline: the session snapshot if we have
+     * one, else the git HEAD version. New files with no baseline just open.
      */
     private async openFileDiff(filePath: unknown): Promise<void> {
         if (typeof filePath !== "string") { return; }
         const fileUri = vscode.Uri.file(filePath);
         const name = path.basename(filePath);
-        const head = await headContent(repoCwd(filePath), filePath);
-        if (head === undefined) {
+        let base: string | null | undefined = snapshots.baseline(this.sid(), filePath);
+        let label = "before ↔ now";
+        if (base === undefined) {
+            base = await headContent(repoCwd(filePath), filePath);
+            label = "HEAD ↔ working";
+        }
+        if (base === undefined || base === null) {
             await vscode.window.showTextDocument(fileUri, { preview: true });
             return;
         }
         const tmp = path.join(os.tmpdir(), "symposium-diff");
         await fs.promises.mkdir(tmp, { recursive: true });
-        const headFile = path.join(tmp, `HEAD-${Date.now()}-${name}`);
-        await fs.promises.writeFile(headFile, head);
+        const baseFile = path.join(tmp, `base-${Date.now()}-${name}`);
+        await fs.promises.writeFile(baseFile, base);
         await vscode.commands.executeCommand(
-            "vscode.diff", vscode.Uri.file(headFile), fileUri, `${name} (HEAD ↔ working)`);
+            "vscode.diff", vscode.Uri.file(baseFile), fileUri, `${name} (${label})`);
     }
 
     dispose(): void {
