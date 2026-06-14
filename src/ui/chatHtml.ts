@@ -337,6 +337,13 @@ export function renderHtml(): string {
         color: var(--vscode-icon-foreground, var(--vscode-foreground)); display: inline-flex; opacity: 0.8;
     }
     .cfbtn svg { width: 13px; height: 13px; }
+    .cfbtn.labeled {
+        gap: 4px; padding: 3px 8px; font-size: 0.9em; font-weight: 500;
+        align-items: center; opacity: 0.85;
+        border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+    }
+    .cfbtn.labeled.ok:hover { background: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #4ec94e) 18%, transparent); color: var(--vscode-foreground); }
+    .cfbtn.labeled.no:hover { background: color-mix(in srgb, var(--vscode-gitDecoration-deletedResourceForeground, #d16969) 18%, transparent); color: var(--vscode-foreground); }
     .cfbtn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .cfbtn.ok:hover { color: var(--vscode-gitDecoration-addedResourceForeground, #4ec94e); }
     .cfbtn.no:hover { color: var(--vscode-gitDecoration-deletedResourceForeground, #d16969); }
@@ -1093,6 +1100,13 @@ export function renderHtml(): string {
         b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
         return b;
     }
+    function cfLabelBtn(icon, label, title, cls, onClick) {
+        const b = document.createElement("button"); b.className = "cfbtn labeled " + (cls || ""); b.title = title;
+        b.appendChild(svgIcon(icon));
+        const t = document.createElement("span"); t.textContent = label; b.appendChild(t);
+        b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
+        return b;
+    }
     function renderChangedFiles() {
         const changed = curChanged();
         const paths = Object.keys(changed);
@@ -1107,8 +1121,8 @@ export function renderHtml(): string {
         // Bulk approve/reject for everything still pending in this session.
         if (pending.length) {
             const acts = document.createElement("span"); acts.className = "cfheadActs";
-            acts.appendChild(cfActionBtn("check", "Approve all (git add)", "ok", () => vscode.postMessage({ type: "file-approve-all", paths: pending })));
-            acts.appendChild(cfActionBtn("x", "Reject all (revert to HEAD)", "no", () => vscode.postMessage({ type: "file-reject-all", paths: pending })));
+            acts.appendChild(cfLabelBtn("check", "Approve all", "Stage all pending files (git add)", "ok", () => vscode.postMessage({ type: "file-approve-all", paths: pending })));
+            acts.appendChild(cfLabelBtn("x", "Reject all", "Revert all pending files to HEAD", "no", () => vscode.postMessage({ type: "file-reject-all", paths: pending })));
             head.appendChild(acts);
         }
         head.addEventListener("click", () => changedFiles.classList.toggle("collapsed"));
