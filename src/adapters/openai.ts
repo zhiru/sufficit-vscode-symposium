@@ -9,6 +9,8 @@ import {
 import { TODO_INJECTION } from "./todos";
 
 export interface OpenAIAdapterConfig {
+    /** Which API to call: chat completions or the Responses API. */
+    api: "chat" | "responses";
     /** Base URL of an OpenAI-compatible API, e.g. https://api.sufficit-ai/v1 */
     baseUrl: string;
     /** Default model (empty = first of models). */
@@ -72,15 +74,18 @@ class OpenAISession extends EventEmitter implements AgentSession {
 
     private async run(): Promise<void> {
         this.abort = new AbortController();
-        const url = this.cfg.baseUrl.replace(/\/+$/, "") + "/chat/completions";
-        const body: Record<string, unknown> = {
-            model: this.model(),
-            messages: this.messages,
-            stream: true,
-        };
+        const responses = this.cfg.api === "responses";
+        const base = this.cfg.baseUrl.replace(/\/+$/, "");
+        const url = base + (responses ? "/responses" : "/chat/completions");
         const effort = this.options.reasoning;
-        if (effort && effort !== "default") { body.reasoning_effort = effort; }
-        this.cfg.log?.(`[openai] POST ${url} model=${this.model()}`);
+        const body: Record<string, unknown> = responses
+            ? { model: this.model(), input: this.messages, stream: true }
+            : { model: this.model(), messages: this.messages, stream: true };
+        if (effort && effort !== "default") {
+            if (responses) { body.reasoning = { effort }; }
+            else { body.reasoning_effort = effort; }
+        }
+        this.cfg.log?.(`[${this.backend}] POST ${url} api=${this.cfg.api} model=${this.model()}`);
         let assistant = "";
         try {
             const res = await fetch(url, {
@@ -105,8 +110,9 @@ class OpenAISession extends EventEmitter implements AgentSession {
         this.emit("event", { kind: "turn-end" });
     }
 
-    /** Reads an SSE stream of chat-completion chunks, emitting text deltas. */
+    /** Reads an SSE stream, emitting text deltas for chat or responses shape. */
     private async consume(stream: ReadableStream<Uint8Array>): Promise<string> {
+        const responses = this.cfg.api === "responses";
         const reader = stream.getReader();
         const decoder = new TextDecoder();
         let buf = "";
@@ -124,7 +130,14 @@ class OpenAISession extends EventEmitter implements AgentSession {
                 if (payload === "[DONE]") { return assistant; }
                 try {
                     const json = JSON.parse(payload);
-                    const delta = json?.choices?.[0]?.delta?.content;
+                    let delta: unknown;
+                    if (responses) {
+                        // Responses API: streamed as response.output_text.delta events.
+                        if (json?.type === "response.output_text.delta") { delta = json.delta; }
+                        else if (json?.type === "response.error") { this.emit("event", { kind: "error", message: String(json?.error?.message ?? "response error") }); }
+                    } else {
+                        delta = json?.choices?.[0]?.delta?.content;
+                    }
                     if (typeof delta === "string" && delta) {
                         assistant += delta;
                         this.emit("event", { kind: "text", text: delta });

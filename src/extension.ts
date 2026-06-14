@@ -60,6 +60,7 @@ function codexConfig(): CodexAdapterConfig {
 function openaiConfig(): OpenAIAdapterConfig {
     const config = vscode.workspace.getConfiguration("symposium.openai");
     return {
+        api: config.get<"chat" | "responses">("api", "chat"),
         baseUrl: config.get<string>("baseUrl", "https://api.openai.com/v1"),
         model: config.get<string>("model", ""),
         models: config.get<string[]>("models", []),
@@ -72,6 +73,7 @@ function openaiConfig(): OpenAIAdapterConfig {
 interface CustomAdapterDef {
     id: string;
     name?: string;
+    api?: "chat" | "responses";
     baseUrl: string;
     model?: string;
     models?: string[];
@@ -91,6 +93,7 @@ function buildCustomAdapters(): OpenAIAdapter[] {
         new OpenAIAdapter(def.id, def.name || def.id, () => {
             const e = customAdapterDefs().find((x) => x.id === def.id) ?? def;
             return {
+                api: e.api === "responses" ? "responses" : "chat",
                 baseUrl: e.baseUrl,
                 model: e.model ?? "",
                 models: e.models ?? [],

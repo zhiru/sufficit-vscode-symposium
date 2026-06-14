@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "0.52.1",
+  "version": "0.53.0",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -266,9 +266,18 @@
                 "type": "string",
                 "description": "Display name shown in the UI."
               },
+              "api": {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "responses"
+                ],
+                "default": "chat",
+                "description": "Request type: 'chat' (POST <baseUrl>/chat/completions) or 'responses' (POST <baseUrl>/responses)."
+              },
               "baseUrl": {
                 "type": "string",
-                "description": "OpenAI-compatible base URL; POSTs to <baseUrl>/chat/completions."
+                "description": "OpenAI-compatible base URL."
               },
               "apiKey": {
                 "type": "string",
@@ -295,10 +304,19 @@
             }
           }
         },
+        "symposium.openai.api": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "responses"
+          ],
+          "default": "chat",
+          "description": "Request type for the built-in OpenAI adapter: 'chat' (/chat/completions) or 'responses' (/responses)."
+        },
         "symposium.openai.baseUrl": {
           "type": "string",
           "default": "https://api.openai.com/v1",
-          "description": "Base URL of an OpenAI-compatible API (e.g. the Sufficit AI gateway). The adapter POSTs to <baseUrl>/chat/completions."
+          "description": "Base URL of an OpenAI-compatible API (e.g. the Sufficit AI gateway)."
         },
         "symposium.openai.apiKey": {
           "type": "string",
