@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "0.57.0",
+  "version": "0.58.0",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -250,17 +250,16 @@
         "symposium.adapters": {
           "type": "array",
           "default": [],
-          "markdownDescription": "Extra OpenAI-compatible adapters (e.g. multiple Sufficit AI gateways). Each entry: `{ id, name, baseUrl, headers, apiKey, model, models }`. Leave `models` empty to auto-discover from `GET <baseUrl>/models`. Edit as JSON via the command 'Symposium: Edit Adapters (JSON)'.",
+          "markdownDescription": "Extra OpenAI-compatible adapters (e.g. multiple Sufficit AI gateways). Each entry: `{ name, baseUrl, headers, apiKey, model, models }`. `id` is auto-generated (GUID) on save if omitted — keeps sessions stable when you rename. Leave `models` empty to auto-discover from `GET <baseUrl>/models`. Edit via 'Symposium: Edit Adapters (JSON)'.",
           "items": {
             "type": "object",
             "required": [
-              "id",
               "baseUrl"
             ],
             "properties": {
               "id": {
                 "type": "string",
-                "description": "Unique id (also the backend key)."
+                "description": "Stable backend key. Auto-generated (GUID, no hyphens) on save if omitted; set manually in any format if you prefer."
               },
               "name": {
                 "type": "string",

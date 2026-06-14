@@ -1,4 +1,5 @@
 import * as cp from "child_process";
+import { randomUUID } from "crypto";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -87,9 +88,25 @@ function customAdapterDefs(): CustomAdapterDef[] {
     return Array.isArray(arr) ? arr.filter((a) => a && a.id && a.baseUrl) : [];
 }
 
+/**
+ * Ensures every adapter has a stable id (so renaming `name` never breaks its
+ * sessions). Missing ids get an auto-generated GUID without hyphens; manual ids
+ * in any format are kept. Persists generated ids back to settings.json.
+ */
+function normalizeAdapterDefs(): CustomAdapterDef[] {
+    const cfg = vscode.workspace.getConfiguration("symposium");
+    const arr = (cfg.get<CustomAdapterDef[]>("adapters", []) ?? []).filter((a) => a && a.baseUrl);
+    let changed = false;
+    for (const a of arr) {
+        if (!a.id) { a.id = randomUUID().replace(/-/g, ""); changed = true; }
+    }
+    if (changed) { void cfg.update("adapters", arr, vscode.ConfigurationTarget.Global); }
+    return arr;
+}
+
 /** One OpenAIAdapter per custom def, re-reading its entry live by id. */
-function buildCustomAdapters(): OpenAIAdapter[] {
-    return customAdapterDefs().map((def) =>
+function buildCustomAdapters(defs: CustomAdapterDef[]): OpenAIAdapter[] {
+    return defs.map((def) =>
         new OpenAIAdapter(def.id, def.name || def.id, () => {
             const e = customAdapterDefs().find((x) => x.id === def.id) ?? def;
             return {
@@ -120,7 +137,7 @@ export function activate(context: vscode.ExtensionContext): void {
         new CodexAdapter(codexConfig),
         new CopilotAdapter(copilotConfig),
         new OpenAIAdapter("openai", "Sufficit AI", openaiConfig),
-        ...buildCustomAdapters(),
+        ...buildCustomAdapters(normalizeAdapterDefs()),
     ];
     const adapterByBackend = new Map<string, AgentAdapter>(
         adapters.map((adapter) => [adapter.backend, adapter]));
