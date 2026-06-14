@@ -221,20 +221,39 @@ export function renderHtml(): string {
     .msgCopy svg { width: 13px; height: 13px; }
     /* markdown content */
     .md { line-height: 1.65; }
+    .md > :first-child { margin-top: 0; }
+    .md > :last-child { margin-bottom: 0; }
     .md p { margin: 0 0 10px 0; }
-    .md p:last-child { margin-bottom: 0; }
     .md ul, .md ol { margin: 6px 0 10px 0; padding-left: 22px; }
     .md li { margin: 3px 0; }
     .md li::marker { color: var(--vscode-descriptionForeground); }
-    .md h1, .md h2, .md h3 { margin: 14px 0 7px 0; line-height: 1.3; }
-    .md h1 { font-size: 1.25em; } .md h2 { font-size: 1.15em; } .md h3 { font-size: 1.05em; }
-    .md a { color: var(--vscode-textLink-foreground); }
-    .md code.inline {
-        font-family: var(--vscode-editor-font-family, monospace); font-size: 0.92em;
-        background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.17));
-        padding: 1px 5px; border-radius: 4px;
+    .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+        margin: 16px 0 8px 0; line-height: 1.3; font-weight: 600; color: var(--vscode-foreground);
     }
-    .md strong { font-weight: 600; }
+    .md h1 { font-size: 1.4em; padding-bottom: 4px; border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25)); }
+    .md h2 { font-size: 1.22em; padding-bottom: 3px; border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.18)); }
+    .md h3 { font-size: 1.1em; }
+    .md h4 { font-size: 1em; opacity: 0.95; }
+    .md h5, .md h6 { font-size: 0.92em; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.03em; }
+    .md a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+    .md a:hover { text-decoration: underline; }
+    .md hr { border: none; border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25)); margin: 14px 0; }
+    .md blockquote {
+        margin: 8px 0; padding: 2px 0 2px 12px;
+        border-left: 3px solid var(--vscode-textBlockQuote-border, var(--vscode-focusBorder));
+        background: var(--vscode-textBlockQuote-background, transparent);
+        color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+    }
+    .md blockquote p { margin: 2px 0; }
+    .md code.inline {
+        font-family: var(--vscode-editor-font-family, monospace); font-size: 0.9em;
+        color: var(--vscode-textPreformat-foreground, var(--vscode-foreground));
+        background: var(--vscode-textPreformat-background, var(--vscode-textCodeBlock-background, rgba(128,128,128,0.17)));
+        padding: 1px 5px; border-radius: 4px;
+        border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+    }
+    .md strong { font-weight: 650; color: var(--vscode-foreground); }
+    .md em { font-style: italic; }
     .codeblock { margin: 8px 0; border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3)); border-radius: 6px; overflow: hidden; }
     .codeblock .cbhead {
         display: flex; align-items: center; justify-content: space-between;
@@ -847,8 +866,20 @@ export function renderHtml(): string {
                 container.appendChild(codeBlock(lang, buf.join("\\n")));
                 continue;
             }
-            const h = line.match(/^(#{1,3})\\s+(.*)$/);
+            const h = line.match(/^(#{1,6})\\s+(.*)$/);
             if (h) { flushList(); const el = document.createElement("h" + h[1].length); inline(el, h[2]); container.appendChild(el); i++; continue; }
+            if (/^\\s*([-*_])(\\s*\\1){2,}\\s*$/.test(line)) { flushList(); container.appendChild(document.createElement("hr")); i++; continue; }
+            const bq = line.match(/^\\s*>\\s?(.*)$/);
+            if (bq) {
+                flushList();
+                const quote = document.createElement("blockquote");
+                while (i < lines.length) {
+                    const q = lines[i].match(/^\\s*>\\s?(.*)$/);
+                    if (!q) break;
+                    const p = document.createElement("p"); inline(p, q[1]); quote.appendChild(p); i++;
+                }
+                container.appendChild(quote); continue;
+            }
             const li = line.match(/^\\s*[-*]\\s+(.*)$/);
             const oli = line.match(/^\\s*\\d+\\.\\s+(.*)$/);
             if (li || oli) {
@@ -860,7 +891,7 @@ export function renderHtml(): string {
             // paragraph: gather consecutive non-empty, non-special lines
             flushList();
             const para = [line]; i++;
-            while (i < lines.length && lines[i].trim() && !/^(#{1,3}\\s|\\s*[-*]\\s|\\s*\\d+\\.\\s|\`\`\`)/.test(lines[i])) { para.push(lines[i]); i++; }
+            while (i < lines.length && lines[i].trim() && !/^(#{1,6}\\s|\\s*[-*]\\s|\\s*\\d+\\.\\s|\\s*>\\s|\`\`\`)/.test(lines[i])) { para.push(lines[i]); i++; }
             const p = document.createElement("p"); inline(p, para.join(" ")); container.appendChild(p);
         }
     }
