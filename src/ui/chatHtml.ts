@@ -194,6 +194,8 @@ export function renderHtml(): string {
     }
     #log > .msg.user:first-child, #log > .msg.assistant:first-child { margin-top: 0; padding-top: 0; border-top: none; }
     .role { font-size: 0.82em; opacity: 1; margin-bottom: 7px; display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: 0.02em; color: var(--vscode-foreground); }
+    .role .msgTime { font-weight: 400; opacity: 0; font-size: 0.92em; color: var(--vscode-descriptionForeground); transition: opacity 150ms ease; }
+    .msg:hover .role .msgTime { opacity: 0.7; }
     .role .avatar {
         width: 19px; height: 19px; border-radius: 5px; flex-shrink: 0;
         display: inline-flex; align-items: center; justify-content: center;
@@ -918,7 +920,7 @@ export function renderHtml(): string {
     // A chat message with a small role label (user/assistant); assistant text
     // is rendered as markdown.
     const BACKEND_NAMES = { claude: "Claude", codex: "Codex", copilot: "Copilot", openai: "Sufficit AI" };
-    function message(role, text) {
+    function message(role, text, ts) {
         const stick = nearBottom();
         endToolGroup();
         const wrap = document.createElement("div");
@@ -932,6 +934,14 @@ export function renderHtml(): string {
         } else {
             const name = document.createElement("span"); name.textContent = "You";
             label.appendChild(name);
+        }
+        // Hover-only timestamp next to the role (only when we have a real time).
+        if (ts) {
+            const d = new Date(ts);
+            const t = document.createElement("span"); t.className = "msgTime";
+            t.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            t.title = d.toLocaleString();
+            label.appendChild(t);
         }
         wrap.appendChild(label);
         const body = document.createElement("div");
@@ -1756,7 +1766,7 @@ export function renderHtml(): string {
                 break;
             }
             case "user": {
-                const el = message("user", data.text);
+                const el = message("user", data.text, Date.now());
                 if (data.attachments?.length) {
                     const list = document.createElement("div");
                     list.className = "tool";
@@ -1780,7 +1790,7 @@ export function renderHtml(): string {
             }
             case "event": {
                 const ev = data.event;
-                if (ev.kind === "text") message("assistant", ev.text);
+                if (ev.kind === "text") message("assistant", ev.text, Date.now());
                 else if (ev.kind === "tool-start") renderTool(ev.toolName, ev.detail || "", { toolId: ev.toolId, input: ev.input, added: ev.added, removed: ev.removed, todos: ev.todos, path: ev.path });
                 else if (ev.kind === "tool-end") fillToolResult(ev.toolId, ev.result);
                 else if (ev.kind === "error") append("error", "✖ " + ev.message);
