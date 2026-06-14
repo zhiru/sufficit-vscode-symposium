@@ -313,21 +313,23 @@ export function renderHtml(): string {
     .tAdd { color: var(--vscode-gitDecoration-addedResourceForeground, #4ec94e); }
     .tDel { color: var(--vscode-gitDecoration-deletedResourceForeground, #d16969); margin-left: 5px; }
     .tSpacer { flex: 1; min-width: 0; }
-    /* todo / plan panel */
-    .todopanel {
-        margin: 6px 0 12px 0; border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
-        border-radius: 8px; overflow: hidden;
+    /* plan / todo — pinned above the edited-files set */
+    #plan { display: none; border-top: 1px solid var(--vscode-panel-border, transparent); }
+    #plan.has { display: block; }
+    #plan .plhead {
+        display: flex; align-items: center; gap: 6px; padding: 4px 12px; cursor: pointer;
+        font-size: 0.78em; font-weight: 600; opacity: 0.85;
     }
-    .todopanel .thead {
-        display: flex; align-items: center; gap: 7px; padding: 6px 10px; cursor: pointer;
-        background: var(--vscode-editorWidget-background, rgba(128,128,128,0.1)); font-weight: 600; font-size: 0.85em;
-    }
-    .todopanel .thead svg { width: 14px; height: 14px; opacity: 0.8; }
-    .todopanel .tcount { opacity: 0.6; font-weight: 400; }
-    .todopanel .tlist { padding: 6px 10px; }
-    .todoitem { display: flex; align-items: flex-start; gap: 8px; padding: 2px 0; line-height: 1.5; }
-    .todoitem .tmark { flex-shrink: 0; width: 15px; height: 15px; margin-top: 2px; display: inline-flex; }
-    .todoitem.done .tcontent { opacity: 0.55; text-decoration: line-through; }
+    #plan .plhead .pltitle { flex: 1; }
+    #plan .plhead .plcount { opacity: 0.65; font-weight: 400; }
+    #plan .plhead svg { width: 12px; height: 12px; transition: transform 150ms ease; }
+    #plan.collapsed .plhead svg.plchev { transform: rotate(-90deg); }
+    #plan .pllist { max-height: 160px; overflow-y: auto; padding: 0 12px 6px 12px; }
+    #plan.collapsed .pllist { display: none; }
+    .todoitem { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; line-height: 1.5; font-size: 0.9em; }
+    .todoitem .tmark { flex-shrink: 0; width: 15px; height: 15px; margin-top: 1px; display: inline-flex; }
+    .todoitem .tmark svg { width: 15px; height: 15px; }
+    .todoitem.done .tcontent { opacity: 0.5; text-decoration: line-through; }
     .todoitem.active .tcontent { color: var(--vscode-foreground); font-weight: 600; }
     .todoitem.active .tmark { color: var(--vscode-progressBar-background, var(--vscode-focusBorder)); }
     .todoitem.done .tmark { color: var(--vscode-gitDecoration-addedResourceForeground, #4ec94e); }
@@ -517,6 +519,7 @@ export function renderHtml(): string {
         </div>
         <div id="log"></div>
         <div id="loadingState"><span class="spinner"></span><span id="loadingText">Loading session…</span></div>
+        <div id="plan"></div>
         <div id="changedFiles"></div>
         <div id="composer">
             <div id="slash"></div>
@@ -1070,31 +1073,33 @@ export function renderHtml(): string {
         if (rec) { rec.showResult(result); }
     }
 
-    // ---- plan / todo panel (single evolving checklist) ----
-    let todoPanel = null;
+    // ---- plan / todo (pinned above the edited-files set, per session) ----
+    const planEl = document.getElementById("plan");
+    const planBySession = {};   // sessionId -> todos[]
     function todoMark(status) {
         if (status === "completed") return svgIcon("check");
         if (status === "in_progress") return svgIcon("circleHalf");
-        const s = svgIcon("circleEmpty"); return s;
+        return svgIcon("circleEmpty");
     }
+    // A TodoWrite carries the full current list; just store it for this session.
     function renderTodos(todos) {
-        const stick = nearBottom();
+        planBySession[wsKey] = todos || [];
+        renderPlan();
+    }
+    function renderPlan() {
+        const todos = planBySession[wsKey] || [];
+        planEl.textContent = "";
+        if (!todos.length) { planEl.classList.remove("has"); return; }
+        planEl.classList.add("has");
         const done = todos.filter((t) => t.status === "completed").length;
-        if (!todoPanel) {
-            todoPanel = document.createElement("div"); todoPanel.className = "msg todopanel";
-            const head = document.createElement("div"); head.className = "thead";
-            head.appendChild(svgIcon("list"));
-            const ttl = document.createElement("span"); ttl.textContent = "Plan";
-            const cnt = document.createElement("span"); cnt.className = "tcount";
-            const listEl = document.createElement("div"); listEl.className = "tlist";
-            head.appendChild(ttl); head.appendChild(cnt);
-            head.addEventListener("click", () => listEl.style.display = listEl.style.display === "none" ? "" : "none");
-            todoPanel.appendChild(head); todoPanel.appendChild(listEl);
-            todoPanel._cnt = cnt; todoPanel._list = listEl;
-            log.appendChild(todoPanel);
-        }
-        todoPanel._cnt.textContent = "(" + done + "/" + todos.length + ")";
-        const listEl = todoPanel._list; listEl.textContent = "";
+        const head = document.createElement("div"); head.className = "plhead";
+        const chev = svgIcon("chevron"); chev.classList.add("plchev");
+        head.appendChild(svgIcon("list"));
+        const ttl = document.createElement("span"); ttl.className = "pltitle"; ttl.textContent = "Plan";
+        const cnt = document.createElement("span"); cnt.className = "plcount"; cnt.textContent = done + "/" + todos.length;
+        head.appendChild(ttl); head.appendChild(cnt); head.appendChild(chev);
+        head.addEventListener("click", () => planEl.classList.toggle("collapsed"));
+        const list = document.createElement("div"); list.className = "pllist";
         for (const t of todos) {
             const item = document.createElement("div");
             item.className = "todoitem" + (t.status === "completed" ? " done" : t.status === "in_progress" ? " active" : "");
@@ -1102,11 +1107,9 @@ export function renderHtml(): string {
             mk.appendChild(todoMark(t.status));
             const c = document.createElement("span"); c.className = "tcontent"; c.textContent = t.content;
             item.appendChild(mk); item.appendChild(c);
-            listEl.appendChild(item);
+            list.appendChild(item);
         }
-        // Keep the evolving plan at the bottom of the flow as it updates.
-        log.appendChild(todoPanel);
-        autoScroll(stick);
+        planEl.appendChild(head); planEl.appendChild(list);
     }
 
     // ---- changed-files working set (above the composer) ----
@@ -1122,15 +1125,22 @@ export function renderHtml(): string {
     function startWorkingSet(sessionId) {
         wsKey = sessionId || NEW_KEY;
         changedBySession[wsKey] = {};
+        delete planBySession[wsKey];
         renderChangedFiles();
+        renderPlan();
     }
     // A brand-new session's edits land under NEW_KEY; when its id arrives,
     // migrate the bucket so it stays bound to the real session id.
     function bindWorkingSet(sessionId) {
         if (!sessionId || wsKey === sessionId) { return; }
-        if (wsKey === NEW_KEY) { changedBySession[sessionId] = changedBySession[NEW_KEY] || {}; delete changedBySession[NEW_KEY]; }
+        if (wsKey === NEW_KEY) {
+            changedBySession[sessionId] = changedBySession[NEW_KEY] || {};
+            delete changedBySession[NEW_KEY];
+            if (planBySession[NEW_KEY]) { planBySession[sessionId] = planBySession[NEW_KEY]; delete planBySession[NEW_KEY]; }
+        }
         wsKey = sessionId;
         renderChangedFiles();
+        renderPlan();
     }
     function trackChangedFile(path, added, removed) {
         const changed = curChanged();
@@ -1200,10 +1210,11 @@ export function renderHtml(): string {
     }
     function resetWorkingState() {
         // clear arrives before meta (which carries the new session id), so just
-        // hide the panel here; meta calls startWorkingSet with the real id.
-        todoPanel = null;
+        // hide the panels here; meta calls startWorkingSet with the real id.
         changedFiles.textContent = "";
         changedFiles.classList.remove("has");
+        planEl.textContent = "";
+        planEl.classList.remove("has");
     }
 
     // Per-session actions, shown as hover icons on the right and in the
