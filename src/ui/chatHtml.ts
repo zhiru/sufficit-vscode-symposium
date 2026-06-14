@@ -338,12 +338,19 @@ export function renderHtml(): string {
     }
     .cfbtn svg { width: 13px; height: 13px; }
     .cfbtn.labeled {
-        gap: 4px; padding: 3px 8px; font-size: 0.9em; font-weight: 500;
-        align-items: center; opacity: 0.85;
-        border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+        gap: 4px; padding: 3px 8px; font-size: 0.9em; font-weight: 600;
+        align-items: center; opacity: 1;
     }
-    .cfbtn.labeled.ok:hover { background: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #4ec94e) 18%, transparent); color: var(--vscode-foreground); }
-    .cfbtn.labeled.no:hover { background: color-mix(in srgb, var(--vscode-gitDecoration-deletedResourceForeground, #d16969) 18%, transparent); color: var(--vscode-foreground); }
+    .cfbtn.labeled.ok {
+        color: var(--vscode-gitDecoration-addedResourceForeground, #4ec94e);
+        border: 1px solid color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #4ec94e) 45%, transparent);
+    }
+    .cfbtn.labeled.no {
+        color: var(--vscode-gitDecoration-deletedResourceForeground, #d16969);
+        border: 1px solid color-mix(in srgb, var(--vscode-gitDecoration-deletedResourceForeground, #d16969) 45%, transparent);
+    }
+    .cfbtn.labeled.ok:hover { background: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #4ec94e) 18%, transparent); }
+    .cfbtn.labeled.no:hover { background: color-mix(in srgb, var(--vscode-gitDecoration-deletedResourceForeground, #d16969) 18%, transparent); }
     .cfbtn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .cfbtn.ok:hover { color: var(--vscode-gitDecoration-addedResourceForeground, #4ec94e); }
     .cfbtn.no:hover { color: var(--vscode-gitDecoration-deletedResourceForeground, #d16969); }
