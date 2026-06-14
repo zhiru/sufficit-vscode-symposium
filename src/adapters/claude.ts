@@ -621,6 +621,9 @@ function parseTranscriptLine(line: string): HistoryMessage[] {
             }
         }
     }
+    // Stamp the transcript time so history shows real timestamps on hover.
+    const ts = entry.timestamp ? Date.parse(entry.timestamp) : NaN;
+    if (!Number.isNaN(ts)) { for (const m of messages) { m.ts = ts; } }
     return messages;
 }
 

@@ -50,6 +50,8 @@ export interface HistoryMessage {
     removed?: number;
     todos?: TodoItem[];
     path?: string;
+    /** Original transcript time (ms) for hover timestamps. */
+    ts?: number;
 }
 
 /** Stops a live transcript follow. */

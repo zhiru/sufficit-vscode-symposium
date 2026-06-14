@@ -188,8 +188,10 @@ export function renderHtml(): string {
     /* Clear separation between message blocks (not between tool rows): a hairline
        rule + breathing room above each user/assistant turn marks where one ends
        and the next begins. */
+    /* Inter-turn gap lives in margin (outside the box) so a hover highlight hugs
+       the content; a modest padding spaces content below the line + sideways. */
     .msg.user, .msg.assistant {
-        margin-top: 26px; padding-top: 26px;
+        margin-top: 18px; padding: 14px 8px 0 8px;
         border-top: 1px solid var(--vscode-panel-border, color-mix(in srgb, var(--vscode-foreground) 14%, transparent));
     }
     #log > .msg.user:first-child, #log > .msg.assistant:first-child { margin-top: 0; padding-top: 0; border-top: none; }
@@ -218,11 +220,10 @@ export function renderHtml(): string {
         max-width: 82%; text-align: left; line-height: 1.6;
     }
     .ubody .chips { margin-top: 6px; }
-    /* assistant turns: full width, no bubble. padding-left/right only — must not
-       reset the padding-top that spaces content below the turn separator. */
-    .msg.assistant { padding-left: 2px; padding-right: 2px; position: relative; }
+    /* assistant turns: full width, no bubble (padding from the combined rule). */
+    .msg.assistant { position: relative; }
     /* copy: a hover-only floating action in the corner, reserves no space */
-    .msgTools { position: absolute; top: 24px; right: 2px; margin: 0; z-index: 1; }
+    .msgTools { position: absolute; top: 12px; right: 6px; margin: 0; z-index: 1; }
     /* hovering copy highlights exactly the message it will copy */
     .msg.assistant:has(.msgCopy:hover) {
         background: var(--vscode-editor-inactiveSelectionBackground, rgba(128,128,128,0.12));
@@ -1742,9 +1743,9 @@ export function renderHtml(): string {
             }
             case "append": {
                 const m = data.message;
-                if (m.role === "user") message("user", m.text);
+                if (m.role === "user") message("user", m.text, m.ts);
                 else if (m.role === "tool") renderTool(m.toolName || m.text, m.detail || "", { input: m.input, result: m.result, added: m.added, removed: m.removed, todos: m.todos, path: m.path });
-                else message("assistant", m.text);
+                else message("assistant", m.text, m.ts);
                 break;
             }
             case "sessions": {
@@ -1758,9 +1759,9 @@ export function renderHtml(): string {
             }
             case "history": {
                 for (const m of data.messages) {
-                    if (m.role === "user") message("user", m.text);
+                    if (m.role === "user") message("user", m.text, m.ts);
                     else if (m.role === "tool") renderTool(m.toolName || m.text, m.detail || "", { input: m.input, result: m.result, added: m.added, removed: m.removed, todos: m.todos, path: m.path });
-                    else message("assistant", m.text);
+                    else message("assistant", m.text, m.ts);
                 }
                 append("meta", data.messages.length ? "— end of stored transcript —" : "(empty transcript)");
                 break;
