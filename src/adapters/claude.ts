@@ -127,10 +127,10 @@ class ClaudeSession extends EventEmitter implements AgentSession {
                         this.emit("event", { kind: "text", text: block.text });
                     } else if (block.type === "tool_use") {
                         const counts = diffCounts(block.name, block.input);
+                        const filePath = toolFilePath(block.input);
                         // Snapshot the file BEFORE the CLI applies the edit, so the
                         // change can be reverted later without relying on git.
-                        const editPath = counts ? (block.input as any)?.file_path : undefined;
-                        if (editPath && this.sessionId) { snapshots.capture(this.sessionId, editPath); }
+                        if (counts && filePath && this.sessionId) { snapshots.capture(this.sessionId, filePath); }
                         this.emit("event", {
                             kind: "tool-start",
                             toolName: block.name,
@@ -140,7 +140,7 @@ class ClaudeSession extends EventEmitter implements AgentSession {
                             added: counts?.added,
                             removed: counts?.removed,
                             todos: extractTodos(block.name, block.input),
-                            path: counts ? (block.input as any)?.file_path : undefined,
+                            path: filePath,
                         });
                     }
                 }
@@ -230,6 +230,13 @@ function summarizeToolInput(input: unknown): string {
         s = first ?? "";
     }
     return s.length > 160 ? s.slice(0, 157) + "..." : s;
+}
+
+/** Absolute file a tool acts on (Read/Edit/Write/NotebookEdit), if any. */
+function toolFilePath(input: unknown): string | undefined {
+    const o = (input ?? {}) as Record<string, unknown>;
+    const p = o.file_path ?? o.notebook_path;
+    return typeof p === "string" && p ? p : undefined;
 }
 
 /** Line count of a string block (0 for empty/missing). */
@@ -609,7 +616,7 @@ function parseTranscriptLine(line: string): HistoryMessage[] {
                     detail: summarizeToolInput(block.input), input: prettyJson(block.input),
                     added: counts?.added, removed: counts?.removed,
                     todos: extractTodos(block.name, block.input),
-                    path: counts ? (block.input as any)?.file_path : undefined,
+                    path: toolFilePath(block.input),
                 });
             }
         }

@@ -293,6 +293,8 @@ export function renderHtml(): string {
         flex: 1; font-family: var(--vscode-editor-font-family, monospace); font-size: 0.92em;
         opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
+    .toolrow .tTarget.tLink { cursor: pointer; color: var(--vscode-textLink-foreground); opacity: 0.85; }
+    .toolrow .tTarget.tLink:hover { text-decoration: underline; opacity: 1; }
     .toolrow .tChev { margin-left: auto; flex-shrink: 0; opacity: 0.55; display: inline-flex; transition: transform 150ms ease; }
     .toolrow .tChev svg { width: 12px; height: 12px; }
     .toolwrap { margin: 1px 0; }
@@ -1106,6 +1108,13 @@ export function renderHtml(): string {
         head.appendChild(ic); head.appendChild(verb);
         if (detail) {
             const tg = document.createElement("span"); tg.className = "tTarget"; tg.textContent = detail;
+            // A file-referencing tool: make the target a link (click = diff,
+            // right-click = open file / open diff menu).
+            if (opts.path) {
+                tg.classList.add("tLink"); tg.title = opts.path + " — click for diff, right-click for more";
+                tg.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "file-diff", path: opts.path }); });
+                tg.addEventListener("contextmenu", (e) => showFileMenu(e, opts.path));
+            }
             head.appendChild(tg);
         } else {
             const sp = document.createElement("span"); sp.className = "tSpacer"; head.appendChild(sp);
@@ -1433,6 +1442,25 @@ export function renderHtml(): string {
     }
     document.addEventListener("click", hideCtx);
     document.addEventListener("scroll", hideCtx, true);
+
+    // Right-click menu for a file referenced by a tool row.
+    function showFileMenu(ev, path) {
+        ev.preventDefault(); ev.stopPropagation();
+        ctxMenu.textContent = "";
+        const add = (icon, label, type) => {
+            const mi = document.createElement("div"); mi.className = "mi";
+            const ic = svgIcon(icon); ic.classList.add("miIcon");
+            mi.appendChild(ic); mi.appendChild(document.createTextNode(label));
+            mi.addEventListener("click", () => { hideCtx(); vscode.postMessage({ type, path }); });
+            ctxMenu.appendChild(mi);
+        };
+        add("diff", "Open diff", "file-diff");
+        add("file", "Open file", "open-file");
+        ctxMenu.style.display = "block";
+        const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
+        ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - w - 4) + "px";
+        ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
+    }
 
     function makeChip(label, fullPath, onRemove, active) {
         const chip = document.createElement("span");
