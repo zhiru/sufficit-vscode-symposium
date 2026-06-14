@@ -1111,7 +1111,30 @@ export function renderHtml(): string {
         diff: "M4 2h5l3 3v3h-1V6H8V3H4v9h3v1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Zm6 1.5V5h1.5L10 3.5ZM11 9h1v2h2v1h-2v2h-1v-2H9v-1h2V9Z",
         circleEmpty: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 1.3A4.7 4.7 0 1 1 8 12.7 4.7 4.7 0 0 1 8 3.3Z",
         circleHalf: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 1.3A4.7 4.7 0 1 1 8 12.7V3.3Z",
+        code: "M5.9 4.3 2.2 8l3.7 3.7.8-.8L4 8l2.7-2.9-.8-.8Zm4.2 0-.8.8L12 8l-2.7 2.9.8.8L13.8 8l-3.7-3.7Z",
+        braces: "M6 2c-1.3 0-1.8.7-1.8 1.9v1.4c0 .6-.3.9-1 .9v1.6c.7 0 1 .3 1 .9v1.4c0 1.2.5 1.9 1.8 1.9v-1.2c-.5 0-.7-.2-.7-.8V8.7c0-.6-.3-1-.8-1.2.5-.2.8-.6.8-1.2V4.9c0-.5.2-.8.7-.8V2Zm4 0v1.2c.5 0 .7.3.7.8v1.4c0 .6.3 1 .8 1.2-.5.2-.8.6-.8 1.2v1.5c0 .6-.2.8-.7.8v1.2c1.3 0 1.8-.7 1.8-1.9V9.6c0-.6.3-.9 1-.9V7.1c-.7 0-1-.3-1-.9V4.8C11.8 2.7 11.3 2 10 2Z",
+        mdfile: "M2.5 4h11v8h-11V4Zm1.2 6V6h1.1l1.2 1.5L7.2 6h1.1v4H7.2V7.9L6 9.3 4.8 7.9V10H3.7Zm6.4 0V6h1.1v2.6h1.4V10h-2.5Z",
+        image: "M2 3h12v10H2V3Zm1 1v5.6l3-3 2.2 2.2 2.8-2.8L13 8V4H3Zm2.2 1.2a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4Z",
     };
+    // Per-extension icon + a language-ish tint (webviews can't read VS Code's
+    // file-icon theme, so this approximates it by file type).
+    const FILE_ICONS = {
+        ts: { i: "code", c: "#3178c6" }, tsx: { i: "code", c: "#3178c6" },
+        js: { i: "code", c: "#e8c020" }, jsx: { i: "code", c: "#e8c020" }, mjs: { i: "code", c: "#e8c020" }, cjs: { i: "code", c: "#e8c020" },
+        json: { i: "braces", c: "#cbcb41" },
+        md: { i: "mdfile", c: "#519aba" }, markdown: { i: "mdfile", c: "#519aba" },
+        css: { i: "code", c: "#519aba" }, scss: { i: "code", c: "#c6538c" }, less: { i: "code", c: "#519aba" },
+        html: { i: "code", c: "#e37933" }, vue: { i: "code", c: "#41b883" }, svelte: { i: "code", c: "#ff3e00" },
+        py: { i: "code", c: "#3572A5" }, rs: { i: "code", c: "#dea584" }, go: { i: "code", c: "#00ADD8" },
+        java: { i: "code", c: "#b07219" }, c: { i: "code", c: "#555555" }, cpp: { i: "code", c: "#f34b7d" }, cs: { i: "code", c: "#178600" },
+        sh: { i: "code", c: "#89e051" }, yml: { i: "braces", c: "#cb171e" }, yaml: { i: "braces", c: "#cb171e" }, toml: { i: "braces", c: "#9c4221" },
+        png: { i: "image", c: "#a074c4" }, jpg: { i: "image", c: "#a074c4" }, jpeg: { i: "image", c: "#a074c4" },
+        gif: { i: "image", c: "#a074c4" }, svg: { i: "image", c: "#ffb13b" }, webp: { i: "image", c: "#a074c4" },
+    };
+    function fileIcon(name) {
+        const ext = String(name).split(".").pop().toLowerCase();
+        return FILE_ICONS[ext] || { i: "file", c: "" };
+    }
     function svgIcon(name) {
         const ns = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(ns, "svg");
@@ -1158,7 +1181,15 @@ export function renderHtml(): string {
         const meta = TOOL_META[name] || { icon: "tool", verb: name };
         const wrap = document.createElement("div"); wrap.className = "msg toolwrap";
         const head = document.createElement("div"); head.className = "toolrow";
-        const ic = document.createElement("span"); ic.className = "tIcon"; ic.appendChild(svgIcon(meta.icon));
+        const ic = document.createElement("span"); ic.className = "tIcon";
+        // File tools get the per-type icon + tint; others keep the action icon.
+        if (opts.path) {
+            const fi = fileIcon(String(opts.path).split("/").pop());
+            ic.appendChild(svgIcon(fi.i));
+            if (fi.c) { ic.style.color = fi.c; ic.style.opacity = "1"; }
+        } else {
+            ic.appendChild(svgIcon(meta.icon));
+        }
         const verb = document.createElement("span"); verb.className = "tVerb"; verb.textContent = meta.verb;
         head.appendChild(ic); head.appendChild(verb);
         if (detail) {
@@ -1344,7 +1375,9 @@ export function renderHtml(): string {
             const name = parts[parts.length - 1] || p;
             const dir = parts.slice(-3, -1).join("/");
             const it = document.createElement("div"); it.className = "cfitem"; it.title = p + " — click to diff";
-            const ic = document.createElement("span"); ic.className = "cficon"; ic.appendChild(svgIcon("file"));
+            const fi = fileIcon(name);
+            const ic = document.createElement("span"); ic.className = "cficon"; ic.appendChild(svgIcon(fi.i));
+            if (fi.c) { ic.style.color = fi.c; ic.style.opacity = "1"; }
             const nm = document.createElement("span"); nm.className = "cfname";
             nm.textContent = name;
             if (dir) { const dd = document.createElement("span"); dd.className = "cfdir"; dd.textContent = "  " + dir; nm.appendChild(dd); }
