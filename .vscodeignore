@@ -1,6 +1,8 @@
 src/**
+out/test/**
 node_modules/**
 .gitignore
 tsconfig.json
+ARCHITECTURE.md
 **/*.map
 .vscode/**
