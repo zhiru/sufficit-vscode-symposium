@@ -581,6 +581,8 @@ export function renderHtml(): string {
         font-family: var(--vscode-editor-font-family, monospace);
     }
     #sendGroup button:disabled { opacity: 0.4; cursor: default; }
+    #sendGroup.stopping button { background: var(--vscode-statusBarItem-errorBackground, var(--vscode-errorForeground, #c4314b)); }
+    #sendGroup.stopping #sendCaret { border-left-color: color-mix(in srgb, var(--vscode-button-foreground) 25%, transparent); }
 
     /* ---- footer status bar ---- */
     #statusbar {
@@ -729,6 +731,7 @@ export function renderHtml(): string {
     // modifier shortcuts force a specific mode regardless of the default.
     const sendCaret = document.getElementById("sendCaret");
     const sendIcon = document.getElementById("sendIcon");
+    const sendGroup = document.getElementById("sendGroup");
     const isMac = navigator.platform.indexOf("Mac") === 0;
     const MOD = isMac ? "⌘" : "Ctrl";
     const ALT = isMac ? "⌥" : "Alt";
@@ -747,20 +750,21 @@ export function renderHtml(): string {
         queue: "Always wait for the current turn (FIFO)",
         steer: "Interrupt the running turn and send now",
     };
+    const STOP_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg>';
     function updateSendTitle() {
-        // Queue/Steer only exist while a turn is running. When idle there's
-        // nothing to queue behind or interrupt — it's always a plain Send, so
-        // show the send icon and hide the mode caret.
-        if (!busy) {
-            sendIcon.innerHTML = MODE_ICONS.send;
-            sendBtn.title = "Send (Enter)";
-            sendCaret.style.display = "none";
+        // While a turn runs the main button STOPS it; idle it's a plain Send.
+        // The mode caret (queue/steer for a typed follow-up) shows only when busy.
+        if (busy) {
+            sendGroup.classList.add("stopping");
+            sendIcon.innerHTML = STOP_ICON;
+            sendBtn.title = "Stop the current turn (Esc)";
+            sendCaret.style.display = "";
             return;
         }
-        sendCaret.style.display = "";
-        const m = sendMode.value;
-        sendIcon.innerHTML = MODE_ICONS[m];
-        sendBtn.title = MODE_LABELS[m] + " (" + MODE_KBD[m] + ") — " + MODE_DESC[m];
+        sendGroup.classList.remove("stopping");
+        sendIcon.innerHTML = MODE_ICONS.send;
+        sendBtn.title = "Send (Enter)";
+        sendCaret.style.display = "none";
     }
     sendCaret.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -1906,7 +1910,8 @@ export function renderHtml(): string {
         input.focus();
     }
 
-    sendBtn.addEventListener("click", send);
+    // While a turn runs the button stops it; otherwise it sends.
+    sendBtn.addEventListener("click", () => { if (busy) { vscode.postMessage({ type: "cancel" }); } else { send(); } });
     addContext.addEventListener("click", () => vscode.postMessage({ type: "pick-attachments" }));
     input.addEventListener("keydown", (e) => {
         if (slashActive()) {
