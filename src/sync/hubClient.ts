@@ -49,6 +49,10 @@ export class HubClient {
         return vscode.workspace.getConfiguration("symposium.hub").get<string>("contextId", "");
     }
 
+    private source(): string {
+        return vscode.workspace.getConfiguration("symposium.hub").get<string>("source", "symposium");
+    }
+
     /** True when a hub URL is configured. */
     configured(): boolean {
         return this.base().length > 0;
@@ -67,7 +71,7 @@ export class HubClient {
         if (ctx) {
             h["X-MEMORY-CONTEXT-ID"] = ctx;
         }
-        h["X-MEMORY-SOURCE-ID"] = "symposium";
+        h["X-MEMORY-SOURCE-ID"] = this.source() || "symposium";
         return h;
     }
 

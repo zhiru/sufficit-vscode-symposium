@@ -201,6 +201,11 @@
           "default": "",
           "description": "Optional memory context (tenant boundary) sent as X-MEMORY-CONTEXT-ID."
         },
+        "symposium.hub.source": {
+          "type": "string",
+          "default": "symposium",
+          "description": "Source system id sent as X-MEMORY-SOURCE-ID (identifies this machine/system in shared memory)."
+        },
         "symposium.bridge.enabled": {
           "type": "boolean",
           "default": false,
