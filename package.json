@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "0.63.1",
+  "version": "0.64.0",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -117,6 +117,11 @@
         "command": "symposium.editAdapters",
         "title": "Symposium: Edit Adapters (JSON)",
         "icon": "$(json)"
+      },
+      {
+        "command": "symposium.openConfig",
+        "title": "Symposium: Configuration",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
@@ -142,9 +147,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "symposium.openSettings",
+          "command": "symposium.openConfig",
           "when": "view == symposium.chat",
           "group": "navigation@5"
+        },
+        {
+          "command": "symposium.openSettings",
+          "when": "view == symposium.chat",
+          "group": "navigation@6"
         },
         {
           "command": "symposium.editAdapters",
@@ -161,6 +171,11 @@
     "configuration": {
       "title": "Symposium",
       "properties": {
+        "symposium.root": {
+          "type": "string",
+          "default": "",
+          "description": "Local root for vendor-neutral agent knowledge (agents/skills/tools/instructions, sync state). Empty uses ~/.symposium."
+        },
         "symposium.claude.executable": {
           "type": "string",
           "default": "claude",

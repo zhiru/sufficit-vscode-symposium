@@ -29,6 +29,7 @@ import { LiveSessions } from "./sessions/runtime";
 import { ChatPanel } from "./ui/chatPanel";
 import { ChatSurfaceDeps } from "./ui/chatSurface";
 import { ChatViewProvider } from "./ui/chatView";
+import { ConfigPanel } from "./ui/configPanel";
 import { snapshots } from "./snapshots";
 
 function claudeConfig(): ClaudeAdapterConfig {
@@ -269,6 +270,10 @@ export function activate(context: vscode.ExtensionContext): void {
         // Jump straight to the adapters array in settings.json for direct editing.
         vscode.commands.registerCommand("symposium.editAdapters", () =>
             vscode.commands.executeCommand("workbench.action.openSettingsJson", { revealSetting: { key: "symposium.adapters", edit: true } })),
+
+        // Dynamic configuration surface: agents/skills/tools/backends/sync.
+        vscode.commands.registerCommand("symposium.openConfig", () =>
+            ConfigPanel.show(context, { adapters })),
 
         vscode.commands.registerCommand("symposium.newSession", async () => {
             const picks = await Promise.all(adapters.map(async (adapter) => {

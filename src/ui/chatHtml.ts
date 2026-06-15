@@ -521,6 +521,10 @@ export function renderHtml(): string {
     .ctl:hover:not(:disabled) { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); }
     .ctl:disabled { cursor: default; opacity: 0.7; }
     .menubtn { display: inline-flex; align-items: center; gap: 3px; }
+    #presencePicker .picon { display: inline-flex; }
+    #presencePicker .picon svg { width: 12px; height: 12px; }
+    #presencePicker.away { color: var(--vscode-charts-orange, #d18616); }
+    #presencePicker.away .lbl { font-weight: 600; }
     .menubtn .lbl { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .menubtn svg { width: 11px; height: 11px; opacity: 0.7; flex-shrink: 0; }
     #status { opacity: 0.55; font-size: 0.82em; padding: 0 6px; white-space: nowrap; }
@@ -608,6 +612,7 @@ export function renderHtml(): string {
                 </button>
                 <button id="modelPicker" class="ctl menubtn" title="Model (locked after first message)"><span class="lbl"></span><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4H4Z"/></svg></button>
                 <button id="reasoningPicker" class="ctl menubtn" title="Reasoning effort (locked after first message)"><span class="lbl"></span><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4H4Z"/></svg></button>
+                <button id="presencePicker" class="ctl menubtn" title="Presence — can be changed any time"><span class="picon"></span><span class="lbl"></span><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4H4Z"/></svg></button>
                 <span id="status"></span>
                 <span class="grow"></span>
                 <select id="sendMode" style="display:none">
@@ -795,15 +800,33 @@ export function renderHtml(): string {
         openChoiceMenu(reasoningPicker, reasoningList.map((r) => ({ value: r, label: r === "default" ? defLabel(reasoningDefault) : r })), reasoningValue, (v) => { reasoningValue = v; setReasoningLabel(); });
     });
 
+    // Presence / autonomy — quick toggle in the composer, changeable any time
+    // (NOT locked while busy); the value is read on every send.
+    let autonomyValue = (saved && saved.autonomy) || "present";
+    const PRESENCE = [
+        { value: "present", label: "Present", detail: "agent may ask", title: "Normal: the agent can pause to ask you questions." },
+        { value: "away", label: "Away", detail: "full autonomy", title: "The agent proceeds without asking; it won't wait for you." },
+    ];
+    const presencePicker = document.getElementById("presencePicker");
+    const presenceLbl = presencePicker.querySelector(".lbl");
+    const presenceIcon = presencePicker.querySelector(".picon");
+    function setPresenceLabel() {
+        const away = autonomyValue === "away";
+        presenceLbl.textContent = away ? "Away" : "Present";
+        presenceIcon.innerHTML = "";
+        presenceIcon.appendChild(svgIcon(away ? "robot" : "eye"));
+        presencePicker.classList.toggle("away", away);
+        presencePicker.title = (away ? "Away — full autonomy" : "Present — agent may ask") + " (change any time)";
+    }
+    presencePicker.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        openChoiceMenu(presencePicker, PRESENCE, autonomyValue, (v) => { autonomyValue = v; saveState({ autonomy: v }); setPresenceLabel(); });
+    });
+    setPresenceLabel();
+
     // ---- tools & configuration menu (sliders) ----
     const configBtn = document.getElementById("configBtn");
     let permissionModes = [], permissionValue = "default", permissionDefault = "default";
-    // Presence: "present" = the agent may ask; "away" = full autonomy, no prompts.
-    let autonomyValue = (saved && saved.autonomy) || "present";
-    const PRESENCE = [
-        { id: "present", label: "Present — agent may ask", desc: "Normal: the agent can pause to ask you questions." },
-        { id: "away", label: "Away — full autonomy", desc: "The agent proceeds without asking; it won't wait for you (auto-answers prompts)." },
-    ];
     const PERM_DESC = {
         "default": "Ask for permission as needed",
         "acceptEdits": "Auto-accept file edits",
@@ -826,17 +849,6 @@ export function renderHtml(): string {
             }
             const sep = document.createElement("div"); sep.className = "sep"; list.appendChild(sep);
         }
-        // Presence / autonomy.
-        const ph = document.createElement("div"); ph.className = "menuGroup"; ph.textContent = "Presence"; list.appendChild(ph);
-        for (const p of PRESENCE) {
-            const mi = document.createElement("div"); mi.className = "mi";
-            const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = p.id === autonomyValue ? "✓" : "";
-            const lbl = document.createElement("span"); lbl.className = "milbl"; lbl.textContent = p.label;
-            mi.appendChild(tick); mi.appendChild(lbl); mi.title = p.desc;
-            mi.addEventListener("click", () => { autonomyValue = p.id; saveState({ autonomy: p.id }); hideCtx(); });
-            list.appendChild(mi);
-        }
-        const sep2 = document.createElement("div"); sep2.className = "sep"; list.appendChild(sep2);
         const open = document.createElement("div"); open.className = "mi";
         const t = document.createElement("span"); t.className = "tick"; const l = document.createElement("span"); l.className = "milbl"; l.textContent = "Open Settings…";
         open.appendChild(t); open.appendChild(l);
