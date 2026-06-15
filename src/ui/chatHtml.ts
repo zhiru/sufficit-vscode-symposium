@@ -581,6 +581,25 @@ export function renderHtml(): string {
     #statusbar .seg { display: inline-flex; align-items: center; gap: 4px; }
     #statusbar svg { width: 12px; height: 12px; }
     #statusbar:empty { display: none; }
+    #statusbar .grow { flex: 1; }
+    .tokenMeter {
+        display: inline-flex; align-items: center; gap: 5px; background: none; border: none; cursor: pointer;
+        color: inherit; font: inherit; padding: 2px 4px; border-radius: 4px; opacity: 0.85;
+    }
+    .tokenMeter:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
+    .tokenMeter .tmRing { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; -webkit-mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); }
+    .usagePop { min-width: 230px; padding: 10px 12px; }
+    .usagePop .uHead { font-weight: 600; margin-bottom: 6px; }
+    .usagePop .uGroup { font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.55; font-weight: 600; margin: 10px 0 3px; }
+    .usagePop .uRow { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9em; padding: 2px 0; }
+    .usagePop .uRow.uMain { opacity: 0.85; }
+    .usagePop .uBar { height: 5px; border-radius: 3px; background: var(--vscode-input-background, rgba(128,128,128,0.3)); overflow: hidden; margin: 4px 0 2px; }
+    .usagePop .uFill { height: 100%; background: var(--vscode-progressBar-background, #3794ff); }
+    .usagePop .uCompact {
+        display: block; width: 100%; margin-top: 12px; padding: 6px; cursor: pointer; border-radius: 5px;
+        background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2)); color: var(--vscode-button-secondaryForeground, inherit); border: none;
+    }
+    .usagePop .uCompact:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.3)); }
 
     /* ---- sessions pane resizer ---- */
     #resizer {
@@ -1729,7 +1748,11 @@ export function renderHtml(): string {
 
     // Footer status bar: cwd · backend · permission/mode (like the native bar).
     const statusbar = document.getElementById("statusbar");
+    let lastUsage = null, lastStatusData = {};
+    function fmtTokens(n) { return n >= 1000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + "K" : String(n); }
     function renderStatusbar(data) {
+        lastStatusData = data || lastStatusData;
+        data = lastStatusData;
         statusbar.textContent = "";
         const seg = (iconName, text, title) => {
             const s = document.createElement("span"); s.className = "seg"; if (title) s.title = title;
@@ -1743,6 +1766,39 @@ export function renderHtml(): string {
         }
         statusbar.appendChild(seg(null, data.backend + (data.permission && data.permission !== "default" ? " · " + data.permission : "")));
         if (data.reasoning && data.reasoning !== "default") statusbar.appendChild(seg(null, "effort: " + data.reasoning));
+        if (lastUsage && lastUsage.contextWindow) {
+            const pct = Math.min(100, Math.round((lastUsage.inputTokens || 0) / lastUsage.contextWindow * 100));
+            const m = document.createElement("button"); m.className = "tokenMeter"; m.title = "Context window — click for details";
+            const ring = document.createElement("span"); ring.className = "tmRing"; ring.style.background =
+                "conic-gradient(var(--vscode-progressBar-background, #3794ff) " + pct + "%, var(--vscode-input-background, rgba(128,128,128,0.3)) 0)";
+            m.appendChild(ring);
+            m.appendChild(document.createTextNode(pct + "%"));
+            m.addEventListener("click", (e) => { e.stopPropagation(); openUsagePopover(m); });
+            const sp = document.createElement("span"); sp.className = "grow"; statusbar.appendChild(sp);
+            statusbar.appendChild(m);
+        }
+    }
+    function openUsagePopover(anchor) {
+        const u = lastUsage; if (!u) { return; }
+        const win = u.contextWindow || 0, used = u.inputTokens || 0;
+        const pct = win ? Math.round(used / win * 100) : 0;
+        ctxMenu.textContent = "";
+        const box = document.createElement("div"); box.className = "usagePop";
+        const row = (a, b, cls) => { const r = document.createElement("div"); r.className = "uRow " + (cls || ""); const x = document.createElement("span"); x.textContent = a; const y = document.createElement("span"); y.textContent = b; r.appendChild(x); r.appendChild(y); return r; };
+        const h = document.createElement("div"); h.className = "uHead"; h.textContent = "Context Window"; box.appendChild(h);
+        box.appendChild(row(fmtTokens(used) + " / " + fmtTokens(win) + " tokens", pct + "%", "uMain"));
+        const bar = document.createElement("div"); bar.className = "uBar"; const fill = document.createElement("div"); fill.className = "uFill"; fill.style.width = pct + "%"; bar.appendChild(fill); box.appendChild(bar);
+        const sub = document.createElement("div"); sub.className = "uGroup"; sub.textContent = "This turn"; box.appendChild(sub);
+        box.appendChild(row("Output", fmtTokens(u.outputTokens || 0)));
+        if (u.cacheRead) { box.appendChild(row("Cache read", fmtTokens(u.cacheRead))); }
+        const btn = document.createElement("button"); btn.className = "uCompact"; btn.textContent = "Compact Conversation";
+        btn.addEventListener("click", () => { hideCtx(); input.value = "/compact"; send(); });
+        box.appendChild(btn);
+        ctxMenu.appendChild(box);
+        ctxMenu.style.display = "block";
+        const r = anchor.getBoundingClientRect(); const w = ctxMenu.offsetWidth, ht = ctxMenu.offsetHeight;
+        ctxMenu.style.left = Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4)) + "px";
+        ctxMenu.style.top = Math.max(4, r.top - ht - 6) + "px";
     }
 
     function send(modeOverride) {
@@ -1998,6 +2054,7 @@ export function renderHtml(): string {
                 if (ev.kind === "text") streamDelta(ev.text);
                 else if (ev.kind === "tool-start") { endStream(); renderTool(ev.toolName, ev.detail || "", { toolId: ev.toolId, input: ev.input, added: ev.added, removed: ev.removed, todos: ev.todos, path: ev.path }); }
                 else if (ev.kind === "tool-end") fillToolResult(ev.toolId, ev.result);
+                else if (ev.kind === "usage") { lastUsage = ev; renderStatusbar(); }
                 else if (ev.kind === "error") append("error", "✖ " + ev.message);
                 else if (ev.kind === "session") {
                     if (ev.model) { activeModel = ev.model; }

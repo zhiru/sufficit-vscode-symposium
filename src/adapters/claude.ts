@@ -171,11 +171,22 @@ class ClaudeSession extends EventEmitter implements AgentSession {
                 }
                 break;
             }
-            case "result":
+            case "result": {
                 this.sessionId = event.session_id ?? this.sessionId;
                 this.streamedText = false;   // next turn streams afresh
                 if (event.is_error) {
                     this.emit("event", { kind: "error", message: event.result ?? event.subtype ?? "unknown error" });
+                }
+                const u = event.usage ?? event.message?.usage;
+                if (u) {
+                    const cacheRead = (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+                    this.emit("event", {
+                        kind: "usage",
+                        inputTokens: (u.input_tokens ?? 0) + cacheRead,
+                        outputTokens: u.output_tokens ?? 0,
+                        cacheRead,
+                        contextWindow: contextWindowFor(this.options.model || this.config.model),
+                    });
                 }
                 this.emit("event", {
                     kind: "turn-end",
@@ -183,6 +194,7 @@ class ClaudeSession extends EventEmitter implements AgentSession {
                     durationMs: event.duration_ms,
                 });
                 break;
+            }
         }
     }
 
@@ -243,6 +255,13 @@ function summarizeToolInput(input: unknown): string {
         s = first ?? "";
     }
     return s.length > 160 ? s.slice(0, 157) + "..." : s;
+}
+
+/** Context window (tokens) for a Claude model; default 200k. */
+function contextWindowFor(model: string): number {
+    const m = (model || "").toLowerCase();
+    if (m.includes("[1m]") || m.includes("-1m")) { return 1000000; }
+    return 200000;
 }
 
 /** Absolute file a tool acts on (Read/Edit/Write/NotebookEdit), if any. */

@@ -18,6 +18,7 @@ export type AgentEvent =
     | { kind: "tool-start"; toolName: string; detail?: string; toolId?: string; input?: string; added?: number; removed?: number; todos?: TodoItem[]; path?: string }
     | { kind: "tool-end"; toolName: string; detail?: string; toolId?: string; result?: string }
     | { kind: "turn-end"; costUsd?: number; durationMs?: number }
+    | { kind: "usage"; inputTokens?: number; outputTokens?: number; cacheRead?: number; contextWindow?: number }
     | { kind: "error"; message: string };
 
 /** A session known to a backend, listed in the sessions tree. */
