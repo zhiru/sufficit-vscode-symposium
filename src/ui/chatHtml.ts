@@ -256,6 +256,32 @@ export function renderHtml(): string {
     .msgCopy:hover { opacity: 1 !important; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .msgCopy.done { opacity: 1 !important; color: var(--vscode-charts-green, #89d185); }
     .msgCopy svg { width: 13px; height: 13px; }
+
+    .branchBanner {
+        display: flex; align-items: flex-start; gap: 10px;
+        margin: 10px 0 14px 0; padding: 10px 12px;
+        border: 1px solid color-mix(in srgb, var(--vscode-focusBorder, #3794ff) 45%, transparent);
+        background: color-mix(in srgb, var(--vscode-textBlockQuote-background, rgba(128,128,128,0.08)) 72%, transparent);
+        border-radius: 10px;
+    }
+    .branchBanner .branchIcon {
+        width: 22px; height: 22px; flex: 0 0 22px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 999px;
+        color: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+        background: color-mix(in srgb, var(--vscode-textLink-foreground, #3794ff) 14%, transparent);
+    }
+    .branchBanner .branchIcon svg { width: 14px; height: 14px; }
+    .branchBanner .branchBody { min-width: 0; }
+    .branchBanner .branchTitle {
+        font-weight: 600; line-height: 1.35;
+        color: var(--vscode-foreground);
+    }
+    .branchBanner .branchDetail {
+        margin-top: 2px;
+        color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+        font-size: 0.92em; line-height: 1.45;
+    }
     /* markdown content */
     .md { line-height: 1.65; }
     .md > :first-child { margin-top: 0; }
@@ -1025,6 +1051,25 @@ export function renderHtml(): string {
         autoScroll(stick);
         return el;
     }
+    function branchBanner(title, detail) {
+        const stick = nearBottom();
+        endToolGroup(); endStream();
+        const el = document.createElement("div");
+        el.className = "branchBanner";
+        const icon = document.createElement("span"); icon.className = "branchIcon"; icon.appendChild(svgIcon("history"));
+        const body = document.createElement("div"); body.className = "branchBody";
+        const ttl = document.createElement("div"); ttl.className = "branchTitle"; ttl.textContent = title || "Branched conversation";
+        body.appendChild(ttl);
+        if (detail) {
+            const sub = document.createElement("div"); sub.className = "branchDetail"; sub.textContent = detail;
+            body.appendChild(sub);
+        }
+        el.appendChild(icon); el.appendChild(body);
+        log.appendChild(el);
+        refreshEmpty();
+        autoScroll(stick);
+        return el;
+    }
 
     // Consecutive tool calls are gathered into one timeline group (a vertical
     // rail) with a summary header, so a turn's work reads as a single activity
@@ -1668,13 +1713,19 @@ export function renderHtml(): string {
 
     // Per-session actions, shown as hover icons on the right and in the
     // right-click menu. Each posts a session-action the extension handles.
+    // Terminal + watch-live are CLI-only features; API backends have no executable.
+    const CLI_BACKENDS = { claude: 1, codex: 1, copilot: 1 };
     function actionsFor(s) {
-        const list = [
-            { id: "open", icon: "terminal", label: "Resume in terminal" },
-            { id: "rename", icon: "rename", label: "Rename" },
-            { id: "watch", icon: "eye", label: "Watch live (read-only)" },
-            { id: "switchAgent", icon: "arrow-swap", label: "Continue with another agent →" },
-        ];
+        const cli = !!CLI_BACKENDS[s.backend];
+        const list = [];
+        if (cli) {
+            list.push({ id: "open", icon: "terminal", label: "Resume in terminal" });
+        }
+        list.push({ id: "rename", icon: "rename", label: "Rename" });
+        if (cli) {
+            list.push({ id: "watch", icon: "eye", label: "Watch live (read-only)" });
+        }
+        list.push({ id: "switchAgent", icon: "arrow-swap", label: "Continue with another agent →" });
         if (s.pinned) {
             list.push({ id: "pinUp", icon: "up", label: "Move pin up" });
             list.push({ id: "pinDown", icon: "down", label: "Move pin down" });
@@ -2202,6 +2253,9 @@ export function renderHtml(): string {
                 break;
             }
             case "history": {
+                if (data.carried && data.branchLabel) {
+                    branchBanner(data.branchLabel.title, data.branchLabel.detail);
+                }
                 for (const m of data.messages) {
                     if (m.role === "user") message("user", m.text, m.ts);
                     else if (m.role === "tool") renderTool(m.toolName || m.text, m.detail || "", { input: m.input, result: m.result, added: m.added, removed: m.removed, todos: m.todos, path: m.path, diff: m.diff });

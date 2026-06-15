@@ -361,9 +361,15 @@ export class ChatSurface {
             : undefined;
 
         this.openDialogue(backend, { cwd, seedHistory }, title);
-        this.post({ type: "history", messages, carried: true });
-        this.post({ type: "event", event: { kind: "text", text: `_↪ Conversation restarted from an earlier message — only the exchange above was carried into this new branch._` } });
-        this.post({ type: "event", event: { kind: "turn-end" } });
+        this.post({
+            type: "history",
+            messages,
+            carried: true,
+            branchLabel: {
+                title: "Branched from earlier message",
+                detail: `${messages.length} message${messages.length === 1 ? "" : "s"} carried into this new conversation`,
+            },
+        });
     }
 
     /** Opens a stored session (resume) in this surface. */
