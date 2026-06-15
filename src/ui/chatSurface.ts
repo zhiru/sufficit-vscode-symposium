@@ -446,6 +446,8 @@ export class ChatSurface {
                 title: s.title,
                 updatedAt: s.updatedAt?.toISOString(),
                 archived: s.archived,
+                pinned: s.pinned,
+                pinIndex: s.pinIndex,
                 status: s.status,
             })),
         });
