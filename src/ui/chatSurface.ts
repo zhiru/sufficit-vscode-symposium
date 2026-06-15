@@ -460,18 +460,11 @@ export class ChatSurface {
 
     async refreshSessions(): Promise<void> {
         const sessions = await this.deps.listSessions();
+        // Forward the whole SessionInfo (only normalize the Date) — no field
+        // whitelist, which previously dropped new fields (pinned, etc.).
         this.post({
             type: "sessions",
-            items: sessions.map((s) => ({
-                backend: s.backend,
-                sessionId: s.sessionId,
-                title: s.title,
-                updatedAt: s.updatedAt?.toISOString(),
-                archived: s.archived,
-                pinned: s.pinned,
-                pinIndex: s.pinIndex,
-                status: s.status,
-            })),
+            items: sessions.map((s) => ({ ...s, updatedAt: s.updatedAt?.toISOString() })),
         });
     }
 
