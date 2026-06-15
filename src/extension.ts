@@ -36,6 +36,7 @@ import { seedExamples } from "./config/seed";
 import { scanKind, readAgentBody, readAgentModel, readAgentTools } from "./config/root";
 import { aiToolsForAgent } from "./adapters/aiTools";
 import { SufficitAuth } from "./auth/identity";
+import { SufficitAuthProvider } from "./auth/provider";
 
 /** Normalizes a model label for pin matching: lowercase, drop "(...)", collapse spaces. */
 function normModel(s: string): string {
@@ -197,6 +198,8 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     // Sufficit Identity login (tokens in SecretStorage; basis for memory/MCP).
     const auth = new SufficitAuth(context, symposiumLog);
     context.subscriptions.push(auth.onDidChange(() => ConfigPanel.refresh()));
+    // Native Accounts-menu integration (avatar/login at the bottom of the activity bar).
+    SufficitAuthProvider.register(context, auth);
 
     const rawSessions = async (): Promise<SessionInfo[]> => {
         const all = await Promise.all(adapters.map((adapter) =>
@@ -324,11 +327,13 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         vscode.commands.registerCommand("symposium.openConfig", () =>
             ConfigPanel.show(context, { api, auth })),
 
-        // Sufficit Identity login / logout.
+        // Sufficit Identity login / logout via the native auth provider (also
+        // shows in the VS Code Accounts menu).
         vscode.commands.registerCommand("symposium.login", async () => {
             try {
-                const p = await auth.login();
-                if (p) { void vscode.window.showInformationMessage(`Sufficit: logado como ${p.name ?? p.email ?? "usuário"}.`); }
+                const session = await vscode.authentication.getSession(
+                    SufficitAuthProvider.id, ["openid", "profile", "email", "offline_access"], { createIfNone: true });
+                if (session) { void vscode.window.showInformationMessage(`Sufficit: logado como ${session.account.label}.`); }
             } catch (err) {
                 void vscode.window.showErrorMessage(`Login Sufficit falhou: ${err instanceof Error ? err.message : err}`);
             }
