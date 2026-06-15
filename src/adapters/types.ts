@@ -84,6 +84,14 @@ export interface SessionStartOptions {
     /** Permission/approval mode (backend-specific); adapters map it to a flag. */
     permission?: string;
     /**
+     * Prior conversation transcript to seed a brand-new session with, used when
+     * handing a dialogue off from one backend to another so the new agent can
+     * continue "as if nothing happened". Injected once, prepended to the first
+     * user message. Unlike `resumeSessionId` (same backend, native resume), this
+     * is plain context text that any backend can consume.
+     */
+    seedHistory?: string;
+    /**
      * Extra environment for the spawned CLI process (e.g. tool secrets resolved
      * from the vault at spawn time). Merged after the adapter's static config env.
      */

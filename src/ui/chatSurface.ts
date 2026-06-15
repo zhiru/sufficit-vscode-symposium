@@ -151,6 +151,24 @@ export class ChatSurface {
                     await vscode.commands.executeCommand("symposium.newSession");
                     return;
                 }
+                case "list-backends": {
+                    // Offer the agents the current dialogue can be handed off to
+                    // (every configured backend except the one in use now).
+                    const current = this.controller?.backend;
+                    const items = [...this.deps.adapterByBackend.values()].map((adapter) => ({
+                        backend: adapter.backend,
+                        name: (adapter as any).displayName ?? adapter.backend,
+                        current: adapter.backend === current,
+                    }));
+                    this.post({ type: "backends", items });
+                    return;
+                }
+                case "switch-backend": {
+                    if (typeof message.backend === "string") {
+                        this.switchBackend(message.backend);
+                    }
+                    return;
+                }
                 case "open-settings": {
                     await vscode.commands.executeCommand("symposium.openSettings");
                     return;
@@ -286,6 +304,46 @@ export class ChatSurface {
             info.title,
             info,
         );
+    }
+
+    /**
+     * Hands the current dialogue off to another backend WITHOUT leaving the
+     * screen: starts a fresh session on the target agent in this same surface,
+     * seeded with the prior conversation, and replays the visible exchange so
+     * it reads as one continuous dialogue. The original session keeps running
+     * in the background (it is only detached), so it can be reopened later.
+     */
+    switchBackend(backend: string): void {
+        const from = this.controller;
+        if (!from || from.backend === backend) {
+            return;
+        }
+        const target = this.deps.adapterByBackend.get(backend);
+        if (!target) {
+            return;
+        }
+        const fromName = (this.deps.adapterByBackend.get(from.backend) as any)?.displayName ?? from.backend;
+        const transcript = from.transcript();
+        const title = from.title;
+        const cwd = from.cwd;
+
+        const seedHistory = transcript
+            ? `[Conversation handed off from ${fromName}] You are taking over an ongoing dialogue. ` +
+              `Below is the conversation so far between the user and the previous agent. ` +
+              `Continue seamlessly, as if you had been part of it from the start — do not restart or re-introduce yourself.\n\n` +
+              `=== Prior conversation ===\n${transcript}\n=== End of prior conversation ===`
+            : undefined;
+
+        // Open the new dialogue in this surface (detaches the old controller,
+        // which keeps running in the background), then replay the visible
+        // history so the user sees an uninterrupted conversation.
+        this.openDialogue(backend, { cwd, seedHistory }, title);
+        if (transcript) {
+            this.post({ type: "history", messages: from.transcriptMessages(), carried: true });
+            const targetName = (target as any).displayName ?? backend;
+            this.post({ type: "event", event: { kind: "text", text: `_↪ Conversation continued with **${targetName}** — the prior exchange above was carried over as context._` } });
+            this.post({ type: "event", event: { kind: "turn-end" } });
+        }
     }
 
     /**

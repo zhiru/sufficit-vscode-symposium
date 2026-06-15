@@ -57,6 +57,20 @@ and the model selection. Agents converse; the host conducts.
 | `symposium.claude.permissionMode` | `default` / `acceptEdits` / `bypassPermissions` / `plan` |
 | `symposium.claude.env` | Extra env (e.g. `ANTHROPIC_BASE_URL` for a gateway) |
 
+## Continue with another agent (hand-off)
+
+A live dialogue can be handed off to a different backend **without leaving the
+screen**: click the hand-off button (↹) in the chat header and pick another
+agent. Symposium starts a fresh session on the target backend in the same
+surface, seeds it with the prior conversation as context, and replays the
+visible exchange — so it reads as one continuous dialogue and the new agent
+continues "as if nothing happened".
+
+The original session is only *detached* (it keeps running in the background and
+can be reopened from the sessions list); the hand-off never stops it. Because
+each backend issues its own session ids and transcripts, continuity is carried
+as a seeded context prefix rather than a native cross-backend resume.
+
 ## Install
 
 Grab the `.vsix` from the [latest release](https://github.com/sufficit/sufficit-vscode-symposium/releases/latest) and either:

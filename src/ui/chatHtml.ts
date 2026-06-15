@@ -646,6 +646,9 @@ export function renderHtml(): string {
         <div id="chatHeader">
             <button id="listToggle" class="iconBtn" title="Sessions">☰</button>
             <span id="chatTitle"></span>
+            <button id="switchAgentBtn" class="iconBtn" title="Continue with another agent" style="display:none">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.5 1 6l3.5 3.5V7H10V5H4.5V2.5Zm7 4L15 10l-3.5 3.5V11H6V9h5.5V6.5Z"/></svg>
+            </button>
         </div>
         <div id="log"></div>
         <div id="emptyState">
@@ -860,6 +863,17 @@ export function renderHtml(): string {
         ev.stopPropagation();
         if (reasoningPicker.disabled || !reasoningList.length) return;
         openChoiceMenu(reasoningPicker, reasoningList.map((r) => ({ value: r, label: r === "default" ? defLabel(reasoningDefault) : r })), reasoningValue, (v) => { reasoningValue = v; setReasoningLabel(); });
+    });
+
+    // Switch agent — hand this dialogue off to another backend in place. The
+    // list of candidates is requested live (it depends on the current backend),
+    // then shown as a menu anchored to the header button.
+    const switchAgentBtn = document.getElementById("switchAgentBtn");
+    let pendingSwitchAnchor = null;
+    switchAgentBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        pendingSwitchAnchor = switchAgentBtn;
+        vscode.postMessage({ type: "list-backends" });
     });
 
     // Presence / autonomy — quick toggle in the composer, changeable any time
@@ -2035,6 +2049,8 @@ export function renderHtml(): string {
                 permissionValue = data.permission || "default";
                 permissionDefault = data.permission || "default";
                 configBtn.style.display = (permissionModes.length || true) ? "" : "none";
+                // Hand-off only makes sense for a live, writable dialogue.
+                switchAgentBtn.style.display = (data.readOnly || data.terminal) ? "none" : "";
                 document.getElementById("composer").style.display = data.readOnly ? "none" : "flex";
                 if (data.readOnly) {
                     append("meta", "👁 watching live — read only (this session runs elsewhere)");
@@ -2111,7 +2127,23 @@ export function renderHtml(): string {
                     else if (m.role === "tool") renderTool(m.toolName || m.text, m.detail || "", { input: m.input, result: m.result, added: m.added, removed: m.removed, todos: m.todos, path: m.path, diff: m.diff });
                     else message("assistant", m.text, m.ts);
                 }
-                append("meta", data.messages.length ? "— end of stored transcript —" : "(empty transcript)");
+                // carried history is a handoff replay shown inline as a
+                // continuous conversation — no "stored transcript" framing.
+                if (!data.carried) {
+                    append("meta", data.messages.length ? "— end of stored transcript —" : "(empty transcript)");
+                }
+                break;
+            }
+            case "backends": {
+                const items = (data.items || []).filter((b) => !b.current);
+                if (!items.length) { break; }
+                const anchor = pendingSwitchAnchor || switchAgentBtn;
+                openChoiceMenu(
+                    anchor,
+                    items.map((b) => ({ value: b.backend, label: b.name, detail: "continue here" })),
+                    "",
+                    (v) => { vscode.postMessage({ type: "switch-backend", backend: v }); },
+                );
                 break;
             }
             case "user": {

@@ -37,6 +37,14 @@ snapshots.ts         per-session pre-edit baselines for revert without git
 - **Session lifetime**: `runtime.create(adapter, options)` → `ChatController`
   owns the `AgentSession`; the controller keeps running when the view switches
   (detach/attach + replay log). Only explicit delete/dispose stops it.
+- **Agent hand-off**: `ChatSurface.switchBackend(target)` reconstructs the
+  current dialogue from the controller's render log (`transcript()` /
+  `transcriptMessages()`), opens a fresh session on `target` in the same
+  surface seeded with that text (`SessionStartOptions.seedHistory`, injected
+  once before the first user message), and replays the visible exchange as
+  `carried` history so it reads as one continuous conversation. The source
+  controller is only detached (keeps running). Continuity is a seeded context
+  prefix, not a native cross-backend resume (each backend owns its own ids).
 - **Streaming**: adapters emit normalized `AgentEvent`s; the webview coalesces
   consecutive `text` deltas into one assistant message (Claude uses
   `--include-partial-messages`; OpenAI streams SSE deltas).

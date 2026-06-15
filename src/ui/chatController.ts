@@ -37,6 +37,7 @@ export class ChatController {
     private firstTitle = "";
     private todoInjected = false;
     private autonomyInjected = false;
+    private seedInjected = false;
     private queueSeq = 0;
     // Files this session edited and their net +/- — owned here so it survives
     // view switches (the runtime keeps the controller alive) and approval state
@@ -72,6 +73,64 @@ export class ChatController {
     get cwd(): string { return this.options.cwd; }
     /** First user message, used as a title for a not-yet-persisted live session. */
     get title(): string { return this.firstTitle || "New session"; }
+
+    /**
+     * Reconstructs the visible conversation (user prompts + assistant replies)
+     * from the render log as plain text, for handing the dialogue off to another
+     * backend. Tool calls and internal scaffolding are intentionally omitted —
+     * only the human-readable exchange is carried over.
+     */
+    transcript(): string {
+        const lines: string[] = [];
+        let assistantBuf = "";
+        const flushAssistant = () => {
+            const text = assistantBuf.trim();
+            if (text) { lines.push(`Assistant: ${text}`); }
+            assistantBuf = "";
+        };
+        for (const message of this.log as any[]) {
+            if (message?.type === "user" && typeof message.text === "string") {
+                flushAssistant();
+                const text = message.text.trim();
+                if (text) { lines.push(`User: ${text}`); }
+            } else if (message?.type === "event" && message.event?.kind === "text") {
+                assistantBuf += message.event.text;
+            } else if (message?.type === "event" && message.event?.kind === "turn-end") {
+                flushAssistant();
+            }
+        }
+        flushAssistant();
+        return lines.join("\n\n");
+    }
+
+    /**
+     * The visible conversation as renderable history rows (user prompts +
+     * assistant replies), used to repaint the prior exchange in the same
+     * surface after a backend handoff. Tool rows are omitted — only the
+     * human-readable dialogue is carried over.
+     */
+    transcriptMessages(): { role: "user" | "assistant"; text: string }[] {
+        const rows: { role: "user" | "assistant"; text: string }[] = [];
+        let assistantBuf = "";
+        const flushAssistant = () => {
+            const text = assistantBuf.trim();
+            if (text) { rows.push({ role: "assistant", text }); }
+            assistantBuf = "";
+        };
+        for (const message of this.log as any[]) {
+            if (message?.type === "user" && typeof message.text === "string") {
+                flushAssistant();
+                const text = message.text.trim();
+                if (text) { rows.push({ role: "user", text }); }
+            } else if (message?.type === "event" && message.event?.kind === "text") {
+                assistantBuf += message.event.text;
+            } else if (message?.type === "event" && message.event?.kind === "turn-end") {
+                flushAssistant();
+            }
+        }
+        flushAssistant();
+        return rows;
+    }
 
     get attached(): boolean {
         return this.sink !== null;
@@ -264,6 +323,13 @@ export class ChatController {
             const inj = this.adapter.todoInjection?.();
             if (inj) { fullText = inj + "\n\n---\n\n" + fullText; }
             this.todoInjected = true;
+        }
+        // Handoff: seed a brand-new session with the prior conversation once, so
+        // a different backend can continue the dialogue as if it were already in
+        // the room. Prepended to the very first user message of this session.
+        if (!this.seedInjected && this.options.seedHistory) {
+            fullText = this.options.seedHistory + "\n\n---\n\n" + fullText;
+            this.seedInjected = true;
         }
         // Autonomy: prepend the preamble once per "away" streak; reset on return.
         if (msg.autonomy === "away") {
