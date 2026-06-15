@@ -670,7 +670,9 @@ export function renderHtml(): string {
 
     let attachments = [];   // [{path, name}]
     let activeFile = null;  // active editor path, offered as removable context
+    let activeFileRange = null;  // { start, end } when lines are selected
     let activeFileDismissed = false;
+    function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
     let currentBackend = "", currentBackendName = "";
     let activeModel = "";
     let activeSessionId = "";
@@ -1687,8 +1689,8 @@ export function renderHtml(): string {
         chips.querySelectorAll(".chip").forEach((el) => el.remove());
         // Active editor file as a removable context chip (like the native chat).
         if (activeFile && !activeFileDismissed) {
-            const base = activeFile.split("/").filter(Boolean).pop() || activeFile;
-            chips.appendChild(makeChip(base, activeFile, () => { activeFileDismissed = true; renderChips(); }, true));
+            const base = (activeFile.split("/").filter(Boolean).pop() || activeFile) + activeFileSuffix();
+            chips.appendChild(makeChip(base, activeFile + activeFileSuffix(), () => { activeFileDismissed = true; renderChips(); }, true));
         }
         for (const file of attachments) {
             chips.appendChild(makeChip(file.name, file.path, () => {
@@ -1725,7 +1727,7 @@ export function renderHtml(): string {
         modelPicker.disabled = true;
         reasoningPicker.disabled = true;
         const atts = attachments.map((a) => a.path);
-        if (activeFile && !activeFileDismissed) atts.unshift(activeFile);
+        if (activeFile && !activeFileDismissed) atts.unshift(activeFile + (activeFileRange ? " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")" : ""));
         vscode.postMessage({
             type: "send",
             text,
@@ -1871,13 +1873,19 @@ export function renderHtml(): string {
                 }
                 renderSessions();
                 renderStatusbar(data);
-                activeFile = data.activeFile || null; activeFileDismissed = false; renderChips();
+                activeFile = data.activeFile || null;
+                activeFileRange = (data.activeFileStart && data.activeFileEnd) ? { start: data.activeFileStart, end: data.activeFileEnd } : null;
+                activeFileDismissed = false; renderChips();
                 setLoading(false);   // session resolved — reveal the conversation
                 break;
             }
             case "active-file": {
-                // Editor switched — offer the new file as context again.
-                activeFile = data.path || null; activeFileDismissed = false; renderChips();
+                // Editor switched or selection changed — refresh the context chip.
+                // Keep it dismissed only while the same file stays active.
+                if (data.path !== activeFile) { activeFileDismissed = false; }
+                activeFile = data.path || null;
+                activeFileRange = (data.start && data.end) ? { start: data.start, end: data.end } : null;
+                renderChips();
                 break;
             }
             case "clear": {

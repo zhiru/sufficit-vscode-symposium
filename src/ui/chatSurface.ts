@@ -22,6 +22,18 @@ function activeEditorFile(): string | undefined {
     return doc && doc.uri.scheme === "file" ? doc.uri.fsPath : undefined;
 }
 
+/** Active-file context including a non-empty line selection (1-based, inclusive). */
+function activeEditorContext(): { path?: string; start?: number; end?: number } {
+    const ed = vscode.window.activeTextEditor;
+    const path = ed && ed.document.uri.scheme === "file" ? ed.document.uri.fsPath : undefined;
+    if (!path || !ed) { return { path }; }
+    const sel = ed.selection;
+    if (sel.isEmpty) { return { path }; }
+    // A selection that ends at column 0 of a line doesn't include that line.
+    const endLine = sel.end.character === 0 && sel.end.line > sel.start.line ? sel.end.line : sel.end.line + 1;
+    return { path, start: sel.start.line + 1, end: endLine };
+}
+
 const IMAGE_EXT: Record<string, string> = {
     "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif",
     "image/webp": "webp", "image/bmp": "bmp", "image/svg+xml": "svg",
@@ -82,9 +94,11 @@ export class ChatSurface {
         webview.options = { enableScripts: true };
         webview.html = renderHtml();
         webview.onDidReceiveMessage((message) => void this.onMessage(message));
-        // Offer the active editor file as removable context; update on switch.
-        this.disposables.push(vscode.window.onDidChangeActiveTextEditor(() =>
-            this.post({ type: "active-file", path: activeEditorFile() })));
+        // Offer the active editor file (+ any line selection) as removable
+        // context; update on editor switch and on selection change.
+        const pushActiveFile = () => this.post({ type: "active-file", ...activeEditorContext() });
+        this.disposables.push(vscode.window.onDidChangeActiveTextEditor(pushActiveFile));
+        this.disposables.push(vscode.window.onDidChangeTextEditorSelection(pushActiveFile));
     }
 
     private post(message: unknown): void {
@@ -341,7 +355,9 @@ export class ChatSurface {
             sessionsSide,
             chatOnly: this.chatOnly,
             cwd: options.cwd,
-            activeFile: activeEditorFile(),
+            activeFile: activeEditorContext().path,
+            activeFileStart: activeEditorContext().start,
+            activeFileEnd: activeEditorContext().end,
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
         });
         this.terminalSession = new TerminalSession(
@@ -396,7 +412,9 @@ export class ChatSurface {
             sessionsSide,
             chatOnly: this.chatOnly,
             cwd: options.cwd,
-            activeFile: activeEditorFile(),
+            activeFile: activeEditorContext().path,
+            activeFileStart: activeEditorContext().start,
+            activeFileEnd: activeEditorContext().end,
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
         });
         controller.attach((message) => {
