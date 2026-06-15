@@ -81,7 +81,7 @@ class ClaudeSession extends EventEmitter implements AgentSession {
         this.config.log?.(`[claude] spawn ${executable} ${args.join(" ")} (cwd=${this.options.cwd})`);
         const child = spawn(executable, args, {
             cwd: this.options.cwd,
-            env: { ...process.env, ...this.config.env },
+            env: { ...process.env, ...this.config.env, ...this.options.env },
             stdio: ["pipe", "pipe", "pipe"],
         });
         this.child = child;

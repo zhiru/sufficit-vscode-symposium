@@ -55,7 +55,7 @@ class CopilotSession extends EventEmitter implements AgentSession {
         }
         const child = spawn(resolveExecutable(this.config.executable), args, {
             cwd: this.options.cwd,
-            env: process.env,
+            env: { ...process.env, ...this.options.env },
             stdio: ["ignore", "pipe", "pipe"],
         });
         this.current = child;

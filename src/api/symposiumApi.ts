@@ -2,8 +2,8 @@ import * as vscode from "vscode";
 import { AgentAdapter, SessionStartOptions } from "../adapters/types";
 import { LiveSessions } from "../sessions/runtime";
 import {
-    createResource, deleteResource, readState, ResourceEntry, ResourceKind,
-    rootDir, scanAll, SyncState,
+    createResource, deleteResource, readState, readToolCredential, ResourceEntry,
+    ResourceKind, rootDir, scanAll, SyncState,
 } from "../config/root";
 import { seedExamples } from "../config/seed";
 import { HubClient } from "../sync/hubClient";
@@ -68,9 +68,10 @@ export interface SymposiumApi {
         /**
          * Starts a new headless session on a backend. Returns an address (the
          * registry key) usable with send/follow/interrupt immediately, before
-         * the backend reports its own session id.
+         * the backend reports its own session id. When `tools` are given, their
+         * vault secrets are resolved and injected into the process env at spawn.
          */
-        create(backend: string, options: { cwd: string; model?: string }): string | undefined;
+        create(backend: string, options: { cwd: string; model?: string; tools?: string[] }): Promise<string | undefined>;
         /** Sends a message to a session. `steer` interrupts the running turn. */
         send(id: string, text: string, mode?: SendMode): boolean;
         /** Interrupts the running turn, if any. */
@@ -111,6 +112,12 @@ export interface SymposiumApi {
     vault: {
         /** Resolves a secret value for runtime injection; null if unknown/expired/offline. */
         resolve(reference: string): Promise<string | null>;
+        /**
+         * Resolves the env vars for a set of tools (reads each tool's credentialRef
+         * + credentialEnv, fetches the secret). Returns the env map plus the refs
+         * that could not be resolved (unknown/expired/offline).
+         */
+        resolveToolEnv(toolNames: string[]): Promise<{ env: Record<string, string>; missing: string[] }>;
     };
 
     /** Fires when any session starts/stops working or is added/removed. */
@@ -165,18 +172,43 @@ export function createSymposiumApi(deps: SymposiumApiDeps): SymposiumApi {
     const hub = new HubClient();
     const syncEngine = new SyncEngine(hub);
 
+    // Derives a conventional env var name from a vault reference when the tool
+    // does not declare credentialEnv (e.g. "anthropic/api_key" → ANTHROPIC_API_KEY).
+    const deriveEnv = (ref: string) => ref.replace(/[^a-zA-Z0-9]+/g, "_").toUpperCase().replace(/^_+|_+$/g, "");
+
+    const resolveToolEnv = async (toolNames: string[]): Promise<{ env: Record<string, string>; missing: string[] }> => {
+        const env: Record<string, string> = {};
+        const missing: string[] = [];
+        for (const name of toolNames) {
+            const { ref, env: envName } = readToolCredential(name);
+            if (!ref) {
+                continue; // tool needs no secret
+            }
+            const value = await hub.resolveSecret(ref);
+            if (value == null) {
+                missing.push(ref);
+                continue;
+            }
+            env[envName || deriveEnv(ref)] = value;
+        }
+        return { env, missing };
+    };
+
     return {
         version: API_VERSION,
 
         sessions: {
             list: () => deps.live.liveInfos(),
             status: (id) => deps.live.statusFor(id),
-            create: (backend, options) => {
+            create: async (backend, options) => {
                 const adapter = adapterByBackend.get(backend);
                 if (!adapter) {
                     return undefined;
                 }
                 const opts: SessionStartOptions = { cwd: options.cwd, model: options.model };
+                if (options.tools && options.tools.length > 0) {
+                    opts.env = (await resolveToolEnv(options.tools)).env;
+                }
                 return deps.live.createWithKey(adapter, opts).key;
             },
             send: (id, text, mode = "send") => {
@@ -243,6 +275,7 @@ export function createSymposiumApi(deps: SymposiumApiDeps): SymposiumApi {
 
         vault: {
             resolve: (reference) => hub.resolveSecret(reference),
+            resolveToolEnv,
         },
 
         onSessionsChanged: deps.onSessionsChanged,

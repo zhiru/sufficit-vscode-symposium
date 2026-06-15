@@ -246,6 +246,40 @@ export function deleteResource(kind: ResourceKind, name: string): void {
     fs.rmSync(resourcePath(kind, name), { force: true });
 }
 
+/**
+ * Reads a tool's vault binding from its frontmatter: `credentialRef` (the vault
+ * reference) and optional `credentialEnv` (the env var the secret is injected
+ * into). Returns nulls when the tool or fields are absent.
+ */
+export function readToolCredential(name: string): { ref: string | null; env: string | null } {
+    try {
+        const text = fs.readFileSync(resourcePath("tool", name), "utf8");
+        const fm = parseFrontmatterRaw(text);
+        return { ref: fm["credentialRef"] || null, env: fm["credentialEnv"] || null };
+    } catch {
+        return { ref: null, env: null };
+    }
+}
+
+/** Parses all simple `key: value` pairs from a leading frontmatter block. */
+function parseFrontmatterRaw(text: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!text.startsWith("---")) {
+        return out;
+    }
+    const end = text.indexOf("\n---", 3);
+    if (end === -1) {
+        return out;
+    }
+    for (const line of text.slice(3, end).split("\n")) {
+        const m = /^([a-zA-Z0-9_]+)\s*:\s*(.*)$/.exec(line);
+        if (m) {
+            out[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+        }
+    }
+    return out;
+}
+
 export function readState(): SyncState {
     try {
         const raw = fs.readFileSync(path.join(rootDir(), "state.json"), "utf8");

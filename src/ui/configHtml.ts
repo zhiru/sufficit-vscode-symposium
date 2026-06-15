@@ -212,7 +212,16 @@ export function renderConfigHtml(): string {
             });
             return;
         }
-        if (active === "sync") { main.innerHTML = syncView(); return; }
+        if (active === "sync") {
+            main.innerHTML = syncView();
+            const pull = document.getElementById("sync-pull");
+            const push = document.getElementById("sync-push");
+            const conf = document.getElementById("sync-config");
+            if (pull) { pull.onclick = () => { pull.textContent = "puxando…"; vscode.postMessage({ type: "sync-pull" }); }; }
+            if (push) { push.onclick = () => { push.textContent = "enviando…"; vscode.postMessage({ type: "sync-push" }); }; }
+            if (conf) { conf.onclick = () => vscode.postMessage({ type: "config-hub" }); }
+            return;
+        }
         main.innerHTML = resourceList(active);
         main.querySelectorAll(".row[data-path]").forEach(el => {
             el.onclick = (ev) => {

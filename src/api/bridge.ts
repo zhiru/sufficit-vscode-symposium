@@ -73,10 +73,10 @@ export class RemoteBridge {
             if (method === "GET" && parts[0] === "sessions" && parts.length === 1) {
                 return json(res, 200, this.api.sessions.list());
             }
-            // POST /sessions  {backend, cwd, model?}
+            // POST /sessions  {backend, cwd, model?, tools?}
             if (method === "POST" && parts[0] === "sessions" && parts.length === 1) {
                 const body = await readBody(req);
-                const id = this.api.sessions.create(body.backend, { cwd: body.cwd, model: body.model });
+                const id = await this.api.sessions.create(body.backend, { cwd: body.cwd, model: body.model, tools: body.tools });
                 return id ? json(res, 200, { id }) : json(res, 400, { error: "unknown backend" });
             }
             // POST /sessions/:id/send  {text, mode?}
@@ -134,8 +134,26 @@ export class RemoteBridge {
                 return json(res, ok ? 200 : 400, { ok });
             }
             // GET /sync
-            if (method === "GET" && parts[0] === "sync") {
+            if (method === "GET" && parts[0] === "sync" && parts.length === 1) {
                 return json(res, 200, this.api.sync.status());
+            }
+            // GET /sync/health
+            if (method === "GET" && parts[0] === "sync" && parts[1] === "health") {
+                return json(res, 200, { healthy: await this.api.sync.health() });
+            }
+            // POST /sync/pull | /sync/push
+            if (method === "POST" && parts[0] === "sync" && parts[1] === "pull") {
+                return json(res, 200, await this.api.sync.pull());
+            }
+            if (method === "POST" && parts[0] === "sync" && parts[1] === "push") {
+                return json(res, 200, await this.api.sync.push());
+            }
+            // GET /vault/resolve?reference=
+            if (method === "GET" && parts[0] === "vault" && parts[1] === "resolve") {
+                const value = await this.api.vault.resolve(url.searchParams.get("reference") ?? "");
+                return value == null
+                    ? json(res, 404, { error: "unknown/expired/offline" })
+                    : json(res, 200, { value });
             }
             return json(res, 404, { error: "not found" });
         } catch (err) {

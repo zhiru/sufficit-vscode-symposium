@@ -141,7 +141,31 @@ export class ConfigPanel {
                     await this.pushState();
                 }
                 return;
+            case "config-hub":
+                await vscode.commands.executeCommand("workbench.action.openSettings", "symposium.hub");
+                return;
+            case "sync-pull": {
+                const r = await api.sync.pull();
+                this.report("Pull", r);
+                await this.pushState();
+                return;
+            }
+            case "sync-push": {
+                const r = await api.sync.push();
+                this.report("Push", r);
+                await this.pushState();
+                return;
+            }
         }
+    }
+
+    private report(label: string, r: { pushed: number; pulled: number; skipped: number; errors: string[] }): void {
+        if (r.errors.length) {
+            void vscode.window.showWarningMessage(`${label}: ${r.errors.join(" · ")}`);
+            return;
+        }
+        void vscode.window.showInformationMessage(
+            `${label}: ${r.pulled} baixados, ${r.pushed} enviados, ${r.skipped} inalterados.`);
     }
 
     private async pushState(): Promise<void> {
@@ -151,6 +175,7 @@ export class ConfigPanel {
             resources: api.resources.scan(),
             backends: await api.backends.list(),
             sync: api.sync.status(),
+            hubConfigured: api.sync.configured(),
         };
         await this.panel.webview.postMessage({ type: "state", state });
     }

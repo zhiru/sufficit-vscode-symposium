@@ -83,6 +83,11 @@ export interface SessionStartOptions {
     reasoning?: string;
     /** Permission/approval mode (backend-specific); adapters map it to a flag. */
     permission?: string;
+    /**
+     * Extra environment for the spawned CLI process (e.g. tool secrets resolved
+     * from the vault at spawn time). Merged after the adapter's static config env.
+     */
+    env?: Record<string, string>;
 }
 
 /**

@@ -519,11 +519,12 @@ export function renderHtml(): string {
         border-radius: 4px;
         background: var(--vscode-badge-background, rgba(128,128,128,0.15));
         color: var(--vscode-badge-foreground, inherit);
-        max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        max-width: 240px;
     }
     .chip .chipIcon { width: 11px; height: 11px; opacity: 0.7; flex-shrink: 0; }
+    .chip .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .chip.activeChip { border-color: var(--vscode-focusBorder); }
-    .chip .x { cursor: pointer; opacity: 0.7; }
+    .chip .x { cursor: pointer; opacity: 0.7; flex-shrink: 0; }
     .chip .x:hover { opacity: 1; }
     #addContext svg { width: 15px; height: 15px; }
     #input {
@@ -1307,8 +1308,8 @@ export function renderHtml(): string {
         };
         hunks.forEach((h, idx) => {
             if (idx > 0) { addLine("dctx", "", "⋯"); }
-            let oldL = (h.old || "").split("\n");
-            let newL = (h.new || "").split("\n");
+            let oldL = (h.old || "").split("\\n");
+            let newL = (h.new || "").split("\\n");
             // Trim shared prefix/suffix so only the actual change shows.
             let p = 0; while (p < oldL.length && p < newL.length && oldL[p] === newL[p]) { p++; }
             let s = 0; while (s < oldL.length - p && s < newL.length - p && oldL[oldL.length - 1 - s] === newL[newL.length - 1 - s]) { s++; }
@@ -1763,7 +1764,7 @@ export function renderHtml(): string {
         chip.className = "chip" + (active ? " activeChip" : "");
         chip.title = fullPath;
         const ic = svgIcon("file"); ic.classList.add("chipIcon"); chip.appendChild(ic);
-        chip.appendChild(document.createTextNode(label));
+        const lb = document.createElement("span"); lb.className = "lbl"; lb.textContent = label; chip.appendChild(lb);
         const x = document.createElement("span"); x.className = "x"; x.textContent = "✕";
         x.addEventListener("click", onRemove);
         chip.appendChild(x);
