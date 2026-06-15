@@ -103,6 +103,16 @@ export class SessionStore {
         await this.memento.update(PINNED_KEY, this.pinned);
     }
 
+    /** Reorders the pinned group to match the given id order (drag-and-drop). */
+    async setPinnedOrder(ids: string[]): Promise<void> {
+        const set = new Set(this.pinned);
+        const next = ids.map(toGuid).filter((id) => set.has(id));
+        // Keep any pinned ids not present in the incoming list (safety).
+        for (const id of this.pinned) { if (!next.includes(id)) { next.push(id); } }
+        this.pinned = next;
+        await this.memento.update(PINNED_KEY, this.pinned);
+    }
+
     /** Drops all stored metadata for a session (used after permanent delete). */
     async forget(info: SessionInfo): Promise<void> {
         delete this.titles[this.key(info)];

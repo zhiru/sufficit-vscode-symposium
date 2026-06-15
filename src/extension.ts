@@ -452,6 +452,10 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
             await store.movePinned(infoOf(item), 1);
             refreshAll();
         }),
+        vscode.commands.registerCommand("symposium.reorderPinned", async (ids: string[]) => {
+            await store.setPinnedOrder(Array.isArray(ids) ? ids : []);
+            refreshAll();
+        }),
 
         vscode.commands.registerCommand("symposium.deleteSession", async (item: { info?: SessionInfo } | SessionInfo) => {
             const info = infoOf(item);

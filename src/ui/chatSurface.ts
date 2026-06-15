@@ -162,6 +162,10 @@ export class ChatSurface {
                     }
                     return;
                 }
+                case "reorder-pinned": {
+                    await vscode.commands.executeCommand("symposium.reorderPinned", message.ids ?? []);
+                    return;
+                }
                 case "file-diff": {
                     await this.openFileDiff(message.path);
                     return;

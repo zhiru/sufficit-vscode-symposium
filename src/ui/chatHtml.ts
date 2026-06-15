@@ -123,6 +123,9 @@ export function renderHtml(): string {
         padding: 7px 10px; cursor: pointer; border-left: 2px solid transparent;
         display: flex; align-items: center; gap: 8px;
     }
+    .sessionItem.pinned { cursor: grab; }
+    .sessionItem.dragging { opacity: 0.5; }
+    .sessionItem.dropTarget { box-shadow: inset 0 2px 0 var(--vscode-focusBorder); }
     .sessionItem .statusDot .stored { width: 13px; height: 13px; opacity: 0.4; }
     .sessionItem.active .statusDot .stored { opacity: 0.7; }
     .sessionItem .ttl { line-height: 1.35; }
@@ -1575,9 +1578,33 @@ export function renderHtml(): string {
             sessionsList.appendChild(renderSessionItem(s));
         }
     }
+    let dragPinId = null;
+    // Drop the dragged pinned session before the target, persist the new order.
+    function dropPinnedOn(targetId) {
+        if (!dragPinId || dragPinId === targetId) { return; }
+        const order = sessions.filter((s) => s.pinned).sort((a, b) => (a.pinIndex || 0) - (b.pinIndex || 0)).map((s) => s.sessionId);
+        const from = order.indexOf(dragPinId), to = order.indexOf(targetId);
+        if (from < 0 || to < 0) { return; }
+        order.splice(from, 1);
+        order.splice(order.indexOf(targetId), 0, dragPinId);
+        // Optimistic reorder so it feels instant, then persist.
+        const idx = {}; order.forEach((id, i) => idx[id] = i);
+        for (const s of sessions) { if (s.pinned) { s.pinIndex = idx[s.sessionId]; } }
+        renderSessions();
+        vscode.postMessage({ type: "reorder-pinned", ids: order });
+    }
     function renderSessionItem(s) {
             const el = document.createElement("div");
             el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "");
+            // Pinned items reorder by drag-and-drop (the up/down menu still works).
+            if (s.pinned) {
+                el.draggable = true;
+                el.addEventListener("dragstart", (e) => { dragPinId = s.sessionId; el.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; });
+                el.addEventListener("dragend", () => { dragPinId = null; el.classList.remove("dragging"); document.querySelectorAll(".sessionItem.dropTarget").forEach((x) => x.classList.remove("dropTarget")); });
+                el.addEventListener("dragover", (e) => { if (dragPinId && dragPinId !== s.sessionId) { e.preventDefault(); el.classList.add("dropTarget"); } });
+                el.addEventListener("dragleave", () => el.classList.remove("dropTarget"));
+                el.addEventListener("drop", (e) => { e.preventDefault(); el.classList.remove("dropTarget"); dropPinnedOn(s.sessionId); });
+            }
 
             // Live status indicator: spinner = working, green dot = idle/live.
             const statusDot = document.createElement("div");
