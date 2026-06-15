@@ -175,9 +175,19 @@ export class ChatController {
                 return true;
             }
             case "queue-promote": {
-                // Move a queued message to the front so it's dispatched next.
+                // "Send next": jump this message to the front and deliver it now —
+                // interrupt the running turn (it dispatches on turn-end), or send
+                // immediately if idle. Other queued messages keep their order.
                 const i = this.queue.findIndex((m) => m.id === message.id);
-                if (i > 0) { const [m] = this.queue.splice(i, 1); this.queue.unshift(m); this.emitQueue(); }
+                if (i < 0) { return true; }
+                const [m] = this.queue.splice(i, 1);
+                this.queue.unshift(m);
+                this.emitQueue();
+                if (this.busy) {
+                    this.session?.cancel();
+                } else {
+                    this.dispatch(this.queue.shift());
+                }
                 return true;
             }
             case "pick-attachments": {
