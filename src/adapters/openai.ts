@@ -119,7 +119,11 @@ class OpenAISession extends EventEmitter implements AgentSession {
     }
 
     private model(): string {
-        return this.options.model || this.cfg.model || this.cfg.models[0] || "gpt-4o-mini";
+        // Never invent a foreign default (e.g. gpt-4o-mini): fall back to the
+        // discovered models for this gateway, then empty (the user's picked model
+        // is applied per-message before send).
+        return this.options.model || this.cfg.model || this.cfg.models[0]
+            || discoveredModels.get(this.cfg.baseUrl)?.[0] || "";
     }
 
     private headers(): Record<string, string> {
