@@ -249,13 +249,14 @@ export function renderHtml(): string {
     /* user turns: right-aligned bubble */
     .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
     .msg.user .role { opacity: 0.75; }
-    /* user bubble: a subtle blue tint derived from the theme accent
-       (focusBorder), mirroring the native chat — many themes leave
-       chat.requestBackground as a near-invisible translucent editor bg, so we
-       mix the accent ourselves to guarantee the blue tone in every theme. */
+    /* user bubble: a blue tint matching the app's own accent — derived from the
+       send button's blue (button.background) so it reads unmistakably blue (not
+       grey) and mirrors the native chat. button.background is the most saturated
+       blue in the UI; focusBorder is the fallback. We mix it ourselves because
+       many themes leave chat.requestBackground a near-invisible editor bg. */
     .ubody {
-        background: color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 16%, transparent);
-        border: 1px solid color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 32%, transparent);
+        background: color-mix(in srgb, var(--vscode-button-background, var(--vscode-focusBorder, #0078d4)) 24%, transparent);
+        border: 1px solid color-mix(in srgb, var(--vscode-button-background, var(--vscode-focusBorder, #0078d4)) 45%, transparent);
         border-radius: 12px 12px 3px 12px; padding: 10px 14px; white-space: pre-wrap;
         max-width: 82%; text-align: left; line-height: 1.6;
     }
