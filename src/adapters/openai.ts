@@ -12,7 +12,7 @@ import {
 } from "./types";
 import { TODO_INJECTION } from "./todos";
 import { HubClient } from "../sync/hubClient";
-import { AI_TOOLS, AI_TOOLS_RESPONSES, filterTools, runAiTool } from "./aiTools";
+import { AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES, filterTools, runAiTool } from "./aiTools";
 
 /** OpenAI tool call as streamed/accumulated from chat completions deltas. */
 interface ToolCall {
@@ -150,9 +150,13 @@ class OpenAISession extends EventEmitter implements AgentSession {
         const base = this.cfg.baseUrl.replace(/\/+$/, "");
         const url = base + (responses ? "/responses" : "/chat/completions");
         const effort = this.options.reasoning;
-        // Memory/web tools on both chat and responses APIs, when the hub is
-        // configured. The model calls them; we execute against the sufficit hub.
-        const useTools = this.hub.configured();
+        // Tools exposed to the model: local shell/filesystem tools (always — the
+        // parity with the CLI backends) plus memory/web tools when the hub is
+        // configured. The model calls them; we execute and feed results back.
+        const memoryTools = this.hub.configured()
+            ? (responses ? AI_TOOLS_RESPONSES : AI_TOOLS)
+            : [];
+        const localTools = responses ? LOCAL_TOOLS_RESPONSES : LOCAL_TOOLS;
 
         try {
             // Tool-call loop: keep round-tripping while the model requests tools.
@@ -165,8 +169,8 @@ class OpenAISession extends EventEmitter implements AgentSession {
                 // unset, expose all; when set to [], expose none (tools off).
                 const allow = this.options.aiTools;
                 const toolList = filterTools<{ function?: { name: string }; name?: string }>(
-                    (responses ? AI_TOOLS_RESPONSES : AI_TOOLS) as { function?: { name: string }; name?: string }[], allow);
-                if (useTools && toolList.length > 0) {
+                    [...memoryTools, ...localTools] as { function?: { name: string }; name?: string }[], allow);
+                if (toolList.length > 0) {
                     body.tools = toolList;
                     body.tool_choice = "auto";
                 }
@@ -174,7 +178,7 @@ class OpenAISession extends EventEmitter implements AgentSession {
                     if (responses) { body.reasoning = { effort }; }
                     else { body.reasoning_effort = effort; }
                 }
-                this.cfg.log?.(`[${this.backend}] POST ${url} api=${this.cfg.api} model=${this.model()} tools=${useTools} hop=${hop}`);
+                this.cfg.log?.(`[${this.backend}] POST ${url} api=${this.cfg.api} model=${this.model()} tools=${toolList.length} hop=${hop}`);
                 const res = await fetch(url, {
                     method: "POST", headers: this.headers(), body: JSON.stringify(body), signal: this.abort.signal,
                 });
@@ -196,7 +200,7 @@ class OpenAISession extends EventEmitter implements AgentSession {
                     let args: Record<string, unknown> = {};
                     try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* leave empty */ }
                     this.emit("event", { kind: "tool-start", toolName: tc.function.name, detail: tc.function.arguments?.slice(0, 200), toolId: tc.id, input: tc.function.arguments });
-                    const result = await runAiTool(tc.function.name, args, this.hub);
+                    const result = await runAiTool(tc.function.name, args, { hub: this.hub, cwd: this.options.cwd, permission: this.options.permission });
                     this.emit("event", { kind: "tool-end", toolName: tc.function.name, toolId: tc.id, result });
                     this.messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: result });
                 }

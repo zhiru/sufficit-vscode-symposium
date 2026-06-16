@@ -1,4 +1,7 @@
 import { HubClient } from "../sync/hubClient";
+import { execFile } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * Sufficit memory + web tools exposed to OpenAI-compatible models as function
@@ -79,18 +82,92 @@ export const AI_TOOLS: OpenAITool[] = [
 ];
 
 /**
+ * Local workspace tools (shell + filesystem) — the parity with what the Claude
+ * Code / Copilot CLIs give their models. These run on the host in the session's
+ * working directory, so an OpenAI-compatible backend ("Sufficit AI") can
+ * actually DO work instead of only printing commands for the user to run.
+ */
+export const LOCAL_TOOLS: OpenAITool[] = [
+    {
+        type: "function",
+        function: {
+            name: "shell",
+            description: "Run a shell command on the host, in the session's working directory, and return its combined stdout+stderr and exit code. Use for builds, tests, git, file inspection, system diagnostics — anything you would otherwise ask the user to paste into a terminal. Non-interactive only.",
+            parameters: {
+                type: "object",
+                properties: {
+                    command: { type: "string", description: "The command line to execute (run via bash -lc)." },
+                    cwd: { type: "string", description: "Optional working directory (absolute, or relative to the session cwd). Defaults to the session cwd." },
+                    timeout_ms: { type: "integer", description: "Optional timeout in milliseconds (default 120000, max 600000)." },
+                },
+                required: ["command"],
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "read_file",
+            description: "Read a UTF-8 text file from the host and return its contents.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string", description: "File path (absolute, or relative to the session cwd)." },
+                    max_bytes: { type: "integer", description: "Optional cap on bytes returned (default 100000)." },
+                },
+                required: ["path"],
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "write_file",
+            description: "Write (create or overwrite) a UTF-8 text file on the host. Creates parent directories as needed.",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string", description: "File path (absolute, or relative to the session cwd)." },
+                    content: { type: "string", description: "Full file content to write." },
+                },
+                required: ["path", "content"],
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "list_dir",
+            description: "List entries of a directory on the host (names + whether each is a directory).",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string", description: "Directory path (absolute, or relative to the session cwd). Defaults to the session cwd." },
+                },
+                required: [],
+            },
+        },
+    },
+];
+
+/** Names of the local workspace tools (shell/fs). */
+export const LOCAL_TOOL_NAMES = LOCAL_TOOLS.map((t) => t.function.name);
+
+/**
  * Same tools in the Responses API shape (flat: type/name/description/parameters,
  * no nested "function" wrapper).
  */
-export const AI_TOOLS_RESPONSES = AI_TOOLS.map((t) => ({
+const toResponsesShape = (t: OpenAITool) => ({
     type: "function" as const,
     name: t.function.name,
     description: t.function.description,
     parameters: t.function.parameters,
-}));
+});
+export const AI_TOOLS_RESPONSES = AI_TOOLS.map(toResponsesShape);
+export const LOCAL_TOOLS_RESPONSES = LOCAL_TOOLS.map(toResponsesShape);
 
 /** All AI tool names this bridge can expose. */
-export const ALL_AI_TOOL_NAMES = AI_TOOLS.map((t) => t.function.name);
+export const ALL_AI_TOOL_NAMES = [...AI_TOOLS, ...LOCAL_TOOLS].map((t) => t.function.name);
 
 /**
  * Maps an agent-def's declared capability tokens to the concrete AI tool names
@@ -107,6 +184,10 @@ export function aiToolsForAgent(declared: string[]): string[] {
     if (has(/^web\b|^search\b|^web_search\b/i)) {
         names.push("web_search");
     }
+    // Shell/filesystem parity tools, enabled by a shell/exec/bash/fs capability.
+    if (has(/^shell\b|^exec\b|^bash\b|^terminal\b|^fs\b|^filesystem\b/i)) {
+        names.push(...LOCAL_TOOL_NAMES);
+    }
     return names;
 }
 
@@ -119,9 +200,69 @@ export function filterTools<T extends { function?: { name: string }; name?: stri
     return tools.filter((t) => set.has((t.function?.name ?? t.name) as string));
 }
 
-/** Executes one tool call against the hub. Returns a JSON string for the model. */
-export async function runAiTool(name: string, args: Record<string, unknown>, hub: HubClient): Promise<string> {
+export interface ToolContext {
+    hub: HubClient;
+    /** Session working directory — base for shell/fs tools and relative paths. */
+    cwd: string;
+    /** Permission mode; "plan" forbids mutating/executing tools (read-only). */
+    permission?: string;
+}
+
+/** Resolves a tool path against the session cwd (absolute paths pass through). */
+function resolvePath(cwd: string, p: string): string {
+    return path.isAbsolute(p) ? p : path.resolve(cwd, p);
+}
+
+/** Runs a shell command, capturing combined output. Never throws. */
+function runShell(command: string, cwd: string, timeoutMs: number): Promise<{ stdout: string; code: number }> {
+    return new Promise((resolve) => {
+        const child = execFile("bash", ["-lc", command], {
+            cwd,
+            timeout: timeoutMs,
+            maxBuffer: 10 * 1024 * 1024,
+            env: process.env,
+        }, (err, stdout, stderr) => {
+            const out = (String(stdout || "") + String(stderr || "")).slice(0, 30000);
+            const code = err && typeof (err as any).code === "number" ? (err as any).code : (err ? 1 : 0);
+            resolve({ stdout: out || (err ? String(err.message) : ""), code });
+        });
+        void child;
+    });
+}
+
+/** Executes one tool call. Returns a JSON string for the model. */
+export async function runAiTool(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+    const hub = ctx.hub;
+    const planMode = ctx.permission === "plan";
     try {
+        // ---- local workspace tools (shell / filesystem) ----
+        if (name === "shell") {
+            if (planMode) { return JSON.stringify({ error: "plan mode: command execution is disabled" }); }
+            const command = String(args.command ?? "").trim();
+            if (!command) { return JSON.stringify({ error: "empty command" }); }
+            const cwd = args.cwd ? resolvePath(ctx.cwd, String(args.cwd)) : ctx.cwd;
+            const timeout = Math.min(Math.max(Number(args.timeout_ms) || 120000, 1000), 600000);
+            const { stdout, code } = await runShell(command, cwd, timeout);
+            return JSON.stringify({ exit_code: code, output: stdout });
+        }
+        if (name === "read_file") {
+            const p = resolvePath(ctx.cwd, String(args.path ?? ""));
+            const max = Number(args.max_bytes) || 100000;
+            const data = fs.readFileSync(p, "utf8");
+            return JSON.stringify({ path: p, content: data.slice(0, max), truncated: data.length > max });
+        }
+        if (name === "write_file") {
+            if (planMode) { return JSON.stringify({ error: "plan mode: writing files is disabled" }); }
+            const p = resolvePath(ctx.cwd, String(args.path ?? ""));
+            fs.mkdirSync(path.dirname(p), { recursive: true });
+            fs.writeFileSync(p, String(args.content ?? ""), "utf8");
+            return JSON.stringify({ path: p, bytes: Buffer.byteLength(String(args.content ?? "")) });
+        }
+        if (name === "list_dir") {
+            const p = args.path ? resolvePath(ctx.cwd, String(args.path)) : ctx.cwd;
+            const entries = fs.readdirSync(p, { withFileTypes: true }).map((e) => ({ name: e.name, dir: e.isDirectory() }));
+            return JSON.stringify({ path: p, entries });
+        }
         switch (name) {
             case "memory_search": {
                 const recs = await hub.searchMemory({
