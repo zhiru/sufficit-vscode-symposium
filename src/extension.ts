@@ -37,6 +37,7 @@ import { scanKind, readAgentBody, readAgentModel, readAgentTools } from "./confi
 import { aiToolsForAgent } from "./adapters/aiTools";
 import { SufficitAuth } from "./auth/identity";
 import { SufficitAuthProvider } from "./auth/provider";
+import { setHubTokenProvider } from "./sync/hubClient";
 
 /** Normalizes a model label for pin matching: lowercase, drop "(...)", collapse spaces. */
 function normModel(s: string): string {
@@ -200,6 +201,8 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     context.subscriptions.push(auth.onDidChange(() => ConfigPanel.refresh()));
     // Native Accounts-menu integration (avatar/login at the bottom of the activity bar).
     SufficitAuthProvider.register(context, auth);
+    // Hub/MCP requests use the logged-in identity token when available.
+    setHubTokenProvider(() => auth.getAccessToken());
 
     const rawSessions = async (): Promise<SessionInfo[]> => {
         const all = await Promise.all(adapters.map((adapter) =>

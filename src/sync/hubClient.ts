@@ -36,6 +36,16 @@ export interface SaveResponse {
     data?: { id: string; createdAtUtc: string };
 }
 
+/**
+ * Optional provider of a Sufficit Identity access token (from the logged-in
+ * session). When set and it returns a token, the hub uses it as the Bearer
+ * instead of the static symposium.hub.token. Set at activation.
+ */
+let loginTokenProvider: (() => Promise<string | null>) | undefined;
+export function setHubTokenProvider(fn: () => Promise<string | null>): void {
+    loginTokenProvider = fn;
+}
+
 export class HubClient {
     private base(): string {
         return vscode.workspace.getConfiguration("symposium.hub").get<string>("url", "").replace(/\/+$/, "");
@@ -58,12 +68,17 @@ export class HubClient {
         return this.base().length > 0;
     }
 
-    private headers(): Record<string, string> {
+    private async headers(): Promise<Record<string, string>> {
         const h: Record<string, string> = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         };
-        const token = this.token();
+        // Prefer the logged-in identity token; fall back to the static setting.
+        let token = this.token();
+        if (loginTokenProvider) {
+            const live = await loginTokenProvider().catch(() => null);
+            if (live) { token = live; }
+        }
         if (token) {
             h["Authorization"] = `Bearer ${token}`;
         }
@@ -81,7 +96,7 @@ export class HubClient {
             return false;
         }
         try {
-            const res = await fetch(`${this.base()}/api/memory/health`, { headers: this.headers() });
+            const res = await fetch(`${this.base()}/api/memory/health`, { headers: await this.headers() });
             return res.ok;
         } catch {
             return false;
@@ -97,7 +112,7 @@ export class HubClient {
     async searchMemory(params: { query?: string; type?: string; limit?: number }): Promise<CompactRecord[]> {
         const res = await fetch(`${this.base()}/api/memory/search`, {
             method: "POST",
-            headers: this.headers(),
+            headers: await this.headers(),
             body: JSON.stringify({ limit: 20, ...params }),
         });
         if (!res.ok) {
@@ -110,7 +125,7 @@ export class HubClient {
     async webSearch(query: string, limit = 8): Promise<unknown> {
         const res = await fetch(`${this.base()}/api/ai/websearch`, {
             method: "POST",
-            headers: this.headers(),
+            headers: await this.headers(),
             body: JSON.stringify({ query, limit }),
         });
         if (!res.ok) {
@@ -126,7 +141,7 @@ export class HubClient {
         }
         const res = await fetch(`${this.base()}/api/memory/observations`, {
             method: "POST",
-            headers: this.headers(),
+            headers: await this.headers(),
             body: JSON.stringify({ ids }),
         });
         if (!res.ok) {
@@ -139,7 +154,7 @@ export class HubClient {
     async save(observation: Observation): Promise<string> {
         const res = await fetch(`${this.base()}/api/memory/save`, {
             method: "POST",
-            headers: this.headers(),
+            headers: await this.headers(),
             body: JSON.stringify(observation),
         });
         if (!res.ok) {
@@ -159,7 +174,7 @@ export class HubClient {
         }
         try {
             const url = `${this.base()}/api/vault/secrets/resolve?reference=${encodeURIComponent(reference)}`;
-            const res = await fetch(url, { headers: this.headers() });
+            const res = await fetch(url, { headers: await this.headers() });
             if (!res.ok) {
                 return null; // 404 unknown / 410 expired / 401 etc.
             }
