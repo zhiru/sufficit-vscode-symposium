@@ -1484,6 +1484,11 @@ export function renderHtml(): string {
         const ns = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(ns, "svg");
         svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("fill", "currentColor");
+        // Default size: an inline <svg> with only a viewBox (no width/height)
+        // falls back to the replaced-element default of 300x150 — which paints
+        // huge grey boxes wherever a CSS rule doesn't size the icon. Set a sane
+        // intrinsic size; explicit CSS (e.g. .avatar svg) still overrides it.
+        svg.setAttribute("width", "16"); svg.setAttribute("height", "16");
         const p = document.createElementNS(ns, "path"); p.setAttribute("d", ICONS[name] || "");
         svg.appendChild(p);
         return svg;
