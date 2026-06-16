@@ -1710,8 +1710,11 @@ export function renderHtml(): string {
         if (s < 2592000) { return Math.round(s / 86400) + "d"; }
         return new Date(t).toLocaleDateString([], { day: "2-digit", month: "short" });
     }
+    let tasksCollapsed = false;   // persisted across re-renders
     function renderTasks(items, project) {
         tasksEl.textContent = "";
+        // No tasks for this session → don't show the panel at all.
+        if (!items || !items.length) { tasksEl.classList.remove("has"); return; }
         const card = document.createElement("div"); card.className = "tkcard";
         const head = document.createElement("div"); head.className = "tkhead";
         head.appendChild(svgIcon("list"));
@@ -1724,31 +1727,29 @@ export function renderHtml(): string {
         refresh.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "refresh-tasks" }); });
         const chev = svgIcon("chevron"); chev.classList.add("tkchev");
         head.appendChild(ttl); head.appendChild(cnt); head.appendChild(refresh); head.appendChild(chev);
-        head.addEventListener("click", () => tasksEl.classList.toggle("collapsed"));
+        head.addEventListener("click", () => {
+            tasksCollapsed = !tasksCollapsed;
+            tasksEl.classList.toggle("collapsed", tasksCollapsed);
+        });
         card.appendChild(head);
-        if (!items.length) {
-            const empty = document.createElement("div"); empty.className = "tkempty";
-            empty.textContent = "Nenhuma task na memória para este projeto.";
-            card.appendChild(empty);
-        } else {
-            const list = document.createElement("div"); list.className = "tklist";
-            for (const it of items) {
-                const row = document.createElement("div"); row.className = "tkitem";
-                const isAnchor = String(it.type || "").indexOf("anchor") >= 0;
-                const badge = document.createElement("span");
-                badge.className = "tkbadge" + (isAnchor ? " anchor" : "");
-                badge.textContent = isAnchor ? "anchor" : "check";
-                const txt = document.createElement("span"); txt.className = "tktext";
-                txt.textContent = it.title || it.summary || "(sem título)";
-                txt.title = (it.title ? it.title + "\\n\\n" : "") + (it.summary || "");
-                const when = document.createElement("span"); when.className = "tkwhen"; when.textContent = relWhen(it.ts);
-                row.appendChild(badge); row.appendChild(txt); row.appendChild(when);
-                list.appendChild(row);
-            }
-            card.appendChild(list);
+        const list = document.createElement("div"); list.className = "tklist";
+        for (const it of items) {
+            const row = document.createElement("div"); row.className = "tkitem";
+            const isAnchor = String(it.type || "").indexOf("anchor") >= 0;
+            const badge = document.createElement("span");
+            badge.className = "tkbadge" + (isAnchor ? " anchor" : "");
+            badge.textContent = isAnchor ? "anchor" : "check";
+            const txt = document.createElement("span"); txt.className = "tktext";
+            txt.textContent = it.title || it.summary || "(sem título)";
+            txt.title = (it.title ? it.title + "\\n\\n" : "") + (it.summary || "");
+            const when = document.createElement("span"); when.className = "tkwhen"; when.textContent = relWhen(it.ts);
+            row.appendChild(badge); row.appendChild(txt); row.appendChild(when);
+            list.appendChild(row);
         }
+        card.appendChild(list);
         tasksEl.appendChild(card);
         tasksEl.classList.add("has");
+        tasksEl.classList.toggle("collapsed", tasksCollapsed);
     }
 
     // ---- queued messages (editable until dispatched) ----
