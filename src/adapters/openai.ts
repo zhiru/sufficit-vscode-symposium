@@ -303,6 +303,11 @@ class OpenAISession extends EventEmitter implements AgentSession {
 /** A human-readable one-liner for a tool call, instead of raw JSON args. */
 function friendlyToolDetail(name: string, args: Record<string, unknown>): string {
     const s = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
+    // A description provided by the model is the human intent — show it.
+    if (typeof args.description === "string" && args.description.trim()) {
+        const d0 = args.description.trim();
+        return d0.length > 160 ? d0.slice(0, 159) + "…" : d0;
+    }
     let d = "";
     switch (name) {
         case "shell": d = s(args.command).split("\n")[0]; break;

@@ -98,6 +98,7 @@ export const LOCAL_TOOLS: OpenAITool[] = [
                 type: "object",
                 properties: {
                     command: { type: "string", description: "The command line to execute (run via bash -lc)." },
+                    description: { type: "string", description: "A short human-readable description (5-10 words) of what this command does, shown to the user so they understand the step." },
                     cwd: { type: "string", description: "Optional working directory (absolute, or relative to the session cwd). Defaults to the session cwd." },
                     timeout_ms: { type: "integer", description: "Optional timeout in milliseconds (default 120000, max 600000)." },
                 },

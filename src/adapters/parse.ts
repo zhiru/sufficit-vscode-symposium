@@ -21,7 +21,10 @@ export function summarizeToolInput(input: unknown): string {
         : typeof o.notebook_path === "string" ? o.notebook_path
             : typeof o.path === "string" ? o.path : undefined;
     let s = "";
-    if (filePath) {
+    // A human-readable description (e.g. Bash tool's `description`) is the intent
+    // the user cares about — prefer it over the raw command/args.
+    if (typeof o.description === "string" && o.description.trim()) { s = o.description.trim(); }
+    else if (filePath) {
         s = short(filePath);
         if (typeof o.offset === "number") {
             const end = typeof o.limit === "number" ? o.offset + o.limit : undefined;
