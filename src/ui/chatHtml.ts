@@ -86,6 +86,7 @@ export function renderHtml(): string {
     @media (prefers-reduced-motion: reduce) {
         #progress::before, .spinner { animation: none; }
         #progress.on { opacity: 1; }
+        #composer.working::after { animation: none; opacity: 0.5; }
     }
 
     /* ---- sessions pane ---- */
@@ -622,6 +623,20 @@ export function renderHtml(): string {
         display: flex; flex-direction: column;
     }
     #composer:focus-within { border-color: var(--vscode-focusBorder); }
+    /* Busy indicator: a subtle light sweeping around the composer border (like
+       the native chat), instead of a top bar that looks global. */
+    @property --symAng { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+    #composer.working::after {
+        content: ""; position: absolute; inset: -1px; border-radius: 9px; padding: 1.5px;
+        background: conic-gradient(from var(--symAng),
+            transparent 0deg, transparent 250deg,
+            var(--vscode-progressBar-background, var(--vscode-focusBorder, #0e70c0)) 320deg,
+            transparent 360deg);
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+        animation: symspin 1.6s linear infinite; pointer-events: none; z-index: 2;
+    }
+    @keyframes symspin { to { --symAng: 360deg; } }
     #chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px 0 8px; }
     #chips:empty { display: none; }
     .chip {
@@ -1417,8 +1432,14 @@ export function renderHtml(): string {
     }
 
     const progress = document.getElementById("progress");
-    // Top progress bar reflects any pending work (switching or a running turn).
-    function syncProgress() { progress.classList.toggle("on", loading || busy); }
+    const composerEl = document.getElementById("composer");
+    // Busy/loading shows as a subtle sweep around the composer border (native-
+    // chat style), not a top bar that reads as global.
+    function syncProgress() {
+        const on = loading || busy;
+        progress.classList.remove("on");          // retire the top bar
+        if (composerEl) { composerEl.classList.toggle("working", on); }
+    }
     // Full loading state shown while a session is being opened (empty log).
     function setLoading(on, text) {
         loading = on;
