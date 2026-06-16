@@ -636,6 +636,9 @@ export function renderHtml(): string {
     .chip .chipIcon { width: 11px; height: 11px; opacity: 0.7; flex-shrink: 0; }
     .chip .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .chip.activeChip { border-color: var(--vscode-focusBorder); }
+    /* preview-tab suggestion: dashed + dimmed, click to attach */
+    .chip.suggestChip { border-style: dashed; opacity: 0.6; cursor: pointer; }
+    .chip.suggestChip:hover { opacity: 0.9; }
     .chip .x { cursor: pointer; opacity: 0.7; flex-shrink: 0; }
     .chip .x:hover { opacity: 1; }
     #addContext svg { width: 15px; height: 15px; }
@@ -823,6 +826,8 @@ export function renderHtml(): string {
     let activeFile = null;  // active editor path, offered as removable context
     let activeFileRange = null;  // { start, end } when lines are selected
     let activeFileDismissed = false;
+    let activeFilePreview = false;  // VS Code preview tab (italic) → suggestion only
+    let activeFilePinned = false;   // user clicked a preview suggestion to attach it
     function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
     let currentBackend = "", currentBackendName = "";
     let activeModel = "";
@@ -2161,9 +2166,21 @@ export function renderHtml(): string {
     function renderChips() {
         chips.querySelectorAll(".chip").forEach((el) => el.remove());
         // Active editor file as a removable context chip (like the native chat).
+        // A preview tab (italic, not really opened) is shown as a SUGGESTION only:
+        // dimmed/dashed, not auto-attached — click it to attach.
         if (activeFile && !activeFileDismissed) {
             const base = (activeFile.split("/").filter(Boolean).pop() || activeFile) + activeFileSuffix();
-            chips.appendChild(makeChip(base, activeFile + activeFileSuffix(), () => { activeFileDismissed = true; renderChips(); }, true));
+            const isSuggestion = activeFilePreview && !activeFilePinned;
+            const chip = makeChip(base, activeFile + activeFileSuffix(), () => { activeFileDismissed = true; renderChips(); }, !isSuggestion);
+            if (isSuggestion) {
+                chip.classList.add("suggestChip");
+                chip.title = activeFile + activeFileSuffix() + " — preview (clique para anexar ao contexto)";
+                chip.addEventListener("click", (e) => {
+                    if (e.target && e.target.classList && e.target.classList.contains("x")) { return; }
+                    activeFilePinned = true; renderChips();
+                });
+            }
+            chips.appendChild(chip);
         }
         for (const file of attachments) {
             chips.appendChild(makeChip(file.name, file.path, () => {
@@ -2271,7 +2288,11 @@ export function renderHtml(): string {
         // (the extension queues it), so allow submitting in every mode.
         input.value = "";
         const atts = attachments.map((a) => a.path);
-        if (activeFile && !activeFileDismissed) atts.unshift(activeFile + (activeFileRange ? " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")" : ""));
+        // A preview-tab file is only attached when the user pinned it (clicked the
+        // suggestion); a really-open file auto-attaches as before.
+        if (activeFile && !activeFileDismissed && (!activeFilePreview || activeFilePinned)) {
+            atts.unshift(activeFile + (activeFileRange ? " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")" : ""));
+        }
         const editFrom = editAnchor;
         const payload = {
             type: "send",
@@ -2436,6 +2457,7 @@ export function renderHtml(): string {
                 renderStatusbar(data);
                 activeFile = data.activeFile || null;
                 activeFileRange = (data.activeFileStart && data.activeFileEnd) ? { start: data.activeFileStart, end: data.activeFileEnd } : null;
+                activeFilePreview = !!data.activeFilePreview; activeFilePinned = false;
                 activeFileDismissed = false; renderChips();
                 setLoading(false);   // session resolved — reveal the conversation
                 break;
@@ -2443,9 +2465,10 @@ export function renderHtml(): string {
             case "active-file": {
                 // Editor switched or selection changed — refresh the context chip.
                 // Keep it dismissed only while the same file stays active.
-                if (data.path !== activeFile) { activeFileDismissed = false; }
+                if (data.path !== activeFile) { activeFileDismissed = false; activeFilePinned = false; }
                 activeFile = data.path || null;
                 activeFileRange = (data.start && data.end) ? { start: data.start, end: data.end } : null;
+                activeFilePreview = !!data.preview;
                 renderChips();
                 break;
             }

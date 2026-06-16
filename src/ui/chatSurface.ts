@@ -25,15 +25,21 @@ function activeEditorFile(): string | undefined {
 }
 
 /** Active-file context including a non-empty line selection (1-based, inclusive). */
-function activeEditorContext(): { path?: string; start?: number; end?: number } {
+function activeEditorContext(): { path?: string; start?: number; end?: number; preview?: boolean } {
     const ed = vscode.window.activeTextEditor;
     const path = ed && ed.document.uri.scheme === "file" ? ed.document.uri.fsPath : undefined;
     if (!path || !ed) { return { path }; }
+    // VS Code "preview" tab (italic title): a peeked file, not really opened.
+    // We surface it only as a context suggestion, not an auto-attachment.
+    let preview = false;
+    const tab = vscode.window.tabGroups.activeTabGroup?.activeTab;
+    const input = tab?.input as { uri?: vscode.Uri } | undefined;
+    if (tab?.isPreview && input?.uri?.fsPath === path) { preview = true; }
     const sel = ed.selection;
-    if (sel.isEmpty) { return { path }; }
+    if (sel.isEmpty) { return { path, preview }; }
     // A selection that ends at column 0 of a line doesn't include that line.
     const endLine = sel.end.character === 0 && sel.end.line > sel.start.line ? sel.end.line : sel.end.line + 1;
-    return { path, start: sel.start.line + 1, end: endLine };
+    return { path, start: sel.start.line + 1, end: endLine, preview };
 }
 
 const IMAGE_EXT: Record<string, string> = {
@@ -702,6 +708,7 @@ export class ChatSurface {
             activeFile: activeEditorContext().path,
             activeFileStart: activeEditorContext().start,
             activeFileEnd: activeEditorContext().end,
+            activeFilePreview: activeEditorContext().preview,
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
         });
         this.terminalSession = new TerminalSession(
@@ -761,6 +768,7 @@ export class ChatSurface {
             activeFile: activeEditorContext().path,
             activeFileStart: activeEditorContext().start,
             activeFileEnd: activeEditorContext().end,
+            activeFilePreview: activeEditorContext().preview,
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
         });
         controller.attach((message) => {
