@@ -1,8 +1,19 @@
 import * as http from "http";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { randomUUID } from "crypto";
 import * as vscode from "vscode";
 import { ResourceKind } from "../config/root";
 import { SymposiumApi, SendMode } from "./symposiumApi";
+
+/** VS Code commands the bridge is allowed to run (browser/navigation only). */
+const ALLOWED_COMMANDS = new Set<string>([
+    "simpleBrowser.show",
+    "simpleBrowser.api.open",
+    "vscode.open",
+    "workbench.action.browser.toggleDeviceEmulation",
+]);
 
 /**
  * Opt-in remote control bridge. Re-publishes the SymposiumApi facade over a
@@ -35,15 +46,24 @@ export class RemoteBridge {
             this.log(`[bridge] no token configured; generated ephemeral token: ${token}`);
         }
 
+        const url = `http://${host}:${port}`;
         this.server = http.createServer((req, res) => void this.handle(req, res, token));
         this.server.on("error", (err) => this.log(`[bridge] server error: ${err}`));
-        this.server.listen(port, host, () => this.log(`[bridge] listening on http://${host}:${port}`));
-        return `http://${host}:${port}`;
+        this.server.listen(port, host, () => this.log(`[bridge] listening on ${url}`));
+        // Publish url+token so local skills/scripts can reach the bridge without
+        // hardcoding them.
+        try {
+            const dir = path.join(os.homedir(), ".symposium");
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, "bridge.json"), JSON.stringify({ url, token }), { mode: 0o600 });
+        } catch (err) { this.log(`[bridge] bridge.json write failed: ${err}`); }
+        return url;
     }
 
     stop(): void {
         this.server?.close();
         this.server = undefined;
+        try { fs.rmSync(path.join(os.homedir(), ".symposium", "bridge.json"), { force: true }); } catch { /* ignore */ }
     }
 
     private authorized(req: http.IncomingMessage, url: URL, token: string): boolean {
@@ -68,6 +88,28 @@ export class RemoteBridge {
             // GET /health
             if (method === "GET" && parts[0] === "health") {
                 return json(res, 200, { ok: true, version: this.api.version });
+            }
+            // POST /vscode/command  {id, args?}  — run a whitelisted VS Code command
+            if (method === "POST" && parts[0] === "vscode" && parts[1] === "command") {
+                const body = await readBody(req);
+                if (!ALLOWED_COMMANDS.has(body.id)) { return json(res, 403, { error: `command not allowed: ${body.id}` }); }
+                const result = await vscode.commands.executeCommand(body.id, ...(Array.isArray(body.args) ? body.args : []));
+                return json(res, 200, { ok: true, result: result ?? null });
+            }
+            // POST /vscode/lmtool  {name, input?}  — invoke a VS Code Language Model Tool
+            if (method === "POST" && parts[0] === "vscode" && parts[1] === "lmtool") {
+                const body = await readBody(req);
+                const cts = new vscode.CancellationTokenSource();
+                try {
+                    const r = await vscode.lm.invokeTool(body.name, { input: body.input ?? {}, toolInvocationToken: undefined } as vscode.LanguageModelToolInvocationOptions<object>, cts.token);
+                    const text = (r.content as any[]).map((p) => (p instanceof vscode.LanguageModelTextPart ? p.value : JSON.stringify(p))).join("\n");
+                    return json(res, 200, { ok: true, result: text });
+                } finally { cts.dispose(); }
+            }
+            // GET /vscode/lmtools  — list available VS Code Language Model Tools
+            if (method === "GET" && parts[0] === "vscode" && parts[1] === "lmtools") {
+                const tools = (vscode.lm?.tools ?? []).map((t) => ({ name: t.name, description: t.description, tags: t.tags }));
+                return json(res, 200, tools);
             }
             // GET /sessions
             if (method === "GET" && parts[0] === "sessions" && parts.length === 1) {
