@@ -110,7 +110,11 @@ function openaiConfig(): OpenAIAdapterConfig {
         model: config.get<string>("model", ""),
         models: config.get<string[]>("models", []),
         headers: config.get<Record<string, string>>("headers", {}),
-        apiKey: config.get<string>("apiKey", ""),
+        // Gateway auth: explicit openai apiKey, else the static hub token (proven
+        // to satisfy the gateway's AIUser policy). Takes precedence over the
+        // login token, which may lack the AI claims — guarantees /models + chat
+        // work. When neither is set, the login token is used as the fallback.
+        apiKey: config.get<string>("apiKey", "") || vscode.workspace.getConfiguration("symposium.hub").get<string>("token", ""),
         maxToolHops: config.get<number>("maxToolHops", 50),
         log: symposiumLog,
     };

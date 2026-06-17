@@ -14,6 +14,7 @@ import { TODO_INJECTION } from "./todos";
 import { HubClient } from "../sync/hubClient";
 import { AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES, filterTools, runAiTool } from "./aiTools";
 import { lmToolDefs, lmToolDefsResponses, isLmTool, invokeLmTool } from "./lmTools";
+import { buildOpenAIModelList } from "./openaiModels";
 
 /** OpenAI tool call as streamed/accumulated from chat completions deltas. */
 interface ToolCall {
@@ -175,6 +176,42 @@ class OpenAISession extends EventEmitter implements AgentSession {
         try { return await openaiTokenProvider(); } catch { return null; }
     }
 
+    /**
+     * Best-effort model discovery from <baseUrl>/models, populating the shared
+     * cache so `model()` can resolve a default. Used by run() when no model is
+     * selected, so the very first turn after a reload still finds a model.
+     * Skipped when models are pinned in settings (the configured list wins).
+     */
+    private async discoverModels(loginToken?: string | null): Promise<void> {
+        if (this.cfg.models.length || !this.cfg.baseUrl) { return; }
+        const url = this.cfg.baseUrl.replace(/\/+$/, "") + "/models";
+        const headers: Record<string, string> = { ...this.cfg.headers };
+        const hasAuth = Object.keys(headers).some((k) => k.toLowerCase() === "authorization");
+        if (!hasAuth && this.cfg.apiKey) {
+            headers["authorization"] = `Bearer ${this.cfg.apiKey}`;
+        } else if (!hasAuth && loginToken) {
+            headers["authorization"] = `Bearer ${loginToken}`;
+        }
+        const res = await fetch(url, { headers });
+        if (!res.ok) { return; }
+        const json: any = await res.json();
+        const raw: any[] = json?.data ?? json?.models ?? [];
+        const list: string[] = [];
+        const labels: Record<string, string> = {};
+        for (const m of raw) {
+            const id = typeof m === "string" ? m : m?.id ?? m?.name;
+            if (typeof id !== "string") { continue; }
+            list.push(id);
+            const name = typeof m === "object" ? (m?.name ?? m?.title) : undefined;
+            if (typeof name === "string" && name && name !== id) { labels[id] = name; }
+        }
+        if (list.length) {
+            discoveredModels.set(this.cfg.baseUrl, list);
+            discoveredLabels.set(this.cfg.baseUrl, labels);
+            this.cfg.log?.(`[${this.backend}] discovered ${list.length} models from ${url}`);
+        }
+    }
+
     send(text: string, _images?: string[], preamble?: string[]): void {
         // One-shot app instructions (todo capability, autonomy, policy) go in as
         // `developer` messages — above the user turn, below the preset's system —
@@ -213,6 +250,30 @@ class OpenAISession extends EventEmitter implements AgentSession {
         const url = base + (responses ? "/responses" : "/chat/completions");
         const effort = this.options.reasoning;
         const loginToken = await this.authToken();   // logged-in Bearer, if needed
+        // Auth guard: when the gateway has no explicit apiKey/Authorization
+        // configured, it relies on the logged-in Sufficit token. If that token
+        // is missing (not logged in, or the token didn't persist — e.g. a
+        // code-server without a system keyring), fail early with a clear
+        // message instead of sending an unauthenticated request that the
+        // gateway answers with a cryptic HTTP 401.
+        const noExplicitAuth = !this.cfg.apiKey
+            && !Object.keys(this.cfg.headers).some((k) => k.toLowerCase() === "authorization");
+        if (noExplicitAuth && !loginToken) {
+            this.emit("event", { kind: "error", message: "Não autenticado: faça login no Sufficit (menu Contas / avatar) para usar o backend Sufficit AI. Se você já logou e o erro persiste, o token não está sendo guardado neste ambiente (code-server sem keyring): configure symposium.openai.apiKey ou um cabeçalho Authorization." });
+            this.emit("event", { kind: "turn-end" });
+            return;
+        }
+        // Model guard: never POST with an empty model (the gateway 400s). Try a
+        // best-effort discovery from <baseUrl>/models first; if still empty,
+        // tell the user to pick/configure a model instead of failing obscurely.
+        if (!this.model()) {
+            await this.discoverModels(loginToken).catch(() => undefined);
+        }
+        if (!this.model()) {
+            this.emit("event", { kind: "error", message: "Nenhum modelo selecionado para o Sufficit AI. Escolha um modelo no seletor da sessão ou defina symposium.openai.model / symposium.openai.models." });
+            this.emit("event", { kind: "turn-end" });
+            return;
+        }
         // Tools exposed to the model: local shell/filesystem tools (always — the
         // parity with the CLI backends) plus memory/web tools when the hub is
         // configured. The model calls them; we execute and feed results back.
@@ -513,8 +574,7 @@ export class OpenAIAdapter implements AgentAdapter {
     models(): string[] {
         const cfg = this.getConfig();
         const configured = cfg.models.length ? cfg.models : (discoveredModels.get(cfg.baseUrl) ?? []);
-        const list = configured.length ? configured : ["gpt-4o", "gpt-4o-mini"];
-        return [...new Set([cfg.model || list[0], ...list])];
+        return buildOpenAIModelList(configured, cfg.model);
     }
 
     /**

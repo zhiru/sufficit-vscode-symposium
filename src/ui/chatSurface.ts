@@ -220,6 +220,16 @@ export class ChatSurface {
                     void this.refreshTasks();
                     return;
                 }
+                case "refresh-models": {
+                    // Re-run remote model discovery for the current dialogue's
+                    // backend (e.g. after logging in, so GET /models stops 401ing).
+                    const current = this.controller?.backend ?? this.terminalSession?.backend;
+                    const adapter = current ? this.deps.adapterByBackend.get(current) : undefined;
+                    if (adapter) {
+                        this.refreshModels(adapter);
+                    }
+                    return;
+                }
                 case "new-session": {
                     await vscode.commands.executeCommand("symposium.newSession");
                     return;

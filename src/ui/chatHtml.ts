@@ -996,8 +996,36 @@ export function renderHtml(): string {
             ctxMenu.appendChild(box);
             setTimeout(() => box.focus(), 0);
         }
+        if (opts.refreshAction) {
+            const rb = document.createElement("div"); rb.className = "mi";
+            const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = "↻";
+            const lbl = document.createElement("span"); lbl.className = "milbl"; lbl.textContent = opts.refreshAction.label || "Refresh";
+            rb.appendChild(tick); rb.appendChild(lbl);
+            if (opts.refreshAction.detail) { const d = document.createElement("span"); d.className = "midetail"; d.textContent = opts.refreshAction.detail; rb.appendChild(d); }
+            rb.addEventListener("click", () => { hideCtx(); opts.refreshAction.onClick(); });
+            ctxMenu.appendChild(rb);
+        }
         renderRows("");
         ctxMenu.appendChild(list);
+
+        // Optional free-form entry row: lets the user type a value not present
+        // in the list (used by the model picker when discovery returned none).
+        if (opts.manualEntry) {
+            const me = opts.manualEntry;
+            const wrap = document.createElement("div"); wrap.className = "menuManual";
+            const input = document.createElement("input");
+            input.className = "menuSearch"; input.type = "text";
+            input.placeholder = me.placeholder || me.label || "Type a value…";
+            input.addEventListener("click", (e) => e.stopPropagation());
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") { e.preventDefault(); const v = input.value; hideCtx(); me.onSubmit(v); }
+                else if (e.key === "Escape") { hideCtx(); }
+            });
+            const hint = document.createElement("div"); hint.className = "menuGroup"; hint.textContent = me.label || "Manual entry";
+            wrap.appendChild(hint); wrap.appendChild(input);
+            ctxMenu.appendChild(wrap);
+            if (!options.length) { setTimeout(() => input.focus(), 0); }
+        }
 
         ctxMenu.style.display = "block";
         const r = anchorEl.getBoundingClientRect();
@@ -1017,8 +1045,15 @@ export function renderHtml(): string {
     function setReasoningLabel() { reasoningLbl.textContent = reasoningValue && reasoningValue !== "default" ? "effort: " + reasoningValue : defLabel(reasoningDefault); }
     modelPicker.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        if (modelPicker.disabled || !modelList.length) return;
-        openChoiceMenu(modelPicker, modelList.map((m) => ({ value: m, label: m === "default" ? defLabel(modelDefault) : modelLabel(m) })), modelValue, (v) => { modelValue = v; setModelLabel(); });
+        if (modelPicker.disabled) return;
+        const opts = modelList.map((m) => ({ value: m, label: m === "default" ? defLabel(modelDefault) : modelLabel(m) }));
+        // Always offer a manual entry so the user is never stuck when remote
+        // discovery (GET /models) returned nothing — e.g. not logged in yet, or
+        // the gateway answered 401. Picking it prompts for a free-form id.
+        openChoiceMenu(modelPicker, opts, modelValue, (v) => { modelValue = v; setModelLabel(); }, {
+            refreshAction: { label: "Atualizar modelos", detail: "Refaz GET /models", onClick: () => vscode.postMessage({ type: "refresh-models" }) },
+            manualEntry: { label: "Digitar modelo…", placeholder: "ex.: gpt-4o, claude-3-5-sonnet", onSubmit: (v) => { if (v && v.trim()) { modelValue = v.trim(); setModelLabel(); } } },
+        });
     });
     reasoningPicker.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -2522,8 +2557,11 @@ export function renderHtml(): string {
                 if (!modelValue || (modelValue !== "default" && !modelList.includes(modelValue))) {
                     modelValue = modelList[0] || "";
                 }
-                modelPicker.disabled = !modelList.length;
-                modelPicker.style.display = modelList.length ? "" : "none";
+                // Keep the picker visible even with an empty list: the menu
+                // offers a manual-entry fallback so the user can always pick a
+                // model (remote discovery may have failed, e.g. 401 / no login).
+                modelPicker.disabled = false;
+                modelPicker.style.display = "";
                 setModelLabel();
                 reasoningList = data.reasoningLevels || [];
                 reasoningValue = reasoningList[0] || "default";
@@ -2636,7 +2674,7 @@ export function renderHtml(): string {
                         modelValue = modelList[0] || "";
                     }
                     modelPicker.disabled = false;
-                    modelPicker.style.display = modelList.length ? "" : "none";
+                    modelPicker.style.display = "";
                     setModelLabel();
                     setStatus();   // refresh "model: <name>" with the friendly label
                 }
