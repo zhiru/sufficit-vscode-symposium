@@ -383,7 +383,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
             const picks = await Promise.all(adapters.map(async (adapter) => {
                 const probe = await adapter.available();
                 return {
-                    label: adapter.backend,
+                    label: (adapter as { displayName?: string }).displayName ?? adapter.backend,
                     description: probe.ok ? probe.version : `unavailable: ${probe.error}`,
                     adapter,
                     ok: probe.ok,
@@ -424,7 +424,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
             }
             const picks = await Promise.all(adapters.map(async (adapter) => {
                 const probe = await adapter.available();
-                return { label: adapter.backend, description: probe.ok ? probe.version : `unavailable: ${probe.error}`, adapter, ok: probe.ok };
+                return { label: (adapter as { displayName?: string }).displayName ?? adapter.backend, description: probe.ok ? probe.version : `unavailable: ${probe.error}`, adapter, ok: probe.ok };
             }));
             const choice = await vscode.window.showQuickPick(picks, { placeHolder: `Backend para "${agent.name}"` });
             if (!choice) {
@@ -476,7 +476,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
             const cliAdapters = adapters.filter((a) => CLI_BACKENDS.has(a.backend));
             const picks = await Promise.all(cliAdapters.map(async (adapter) => {
                 const probe = await adapter.available();
-                return { label: adapter.backend, description: probe.ok ? probe.version : `unavailable: ${probe.error}`, backend: adapter.backend, ok: probe.ok };
+                return { label: (adapter as { displayName?: string }).displayName ?? adapter.backend, description: probe.ok ? probe.version : `unavailable: ${probe.error}`, backend: adapter.backend, ok: probe.ok };
             }));
             const choice = await vscode.window.showQuickPick(picks.filter((p) => p.ok), {
                 placeHolder: "Launch which agent in a terminal session?",
