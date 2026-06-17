@@ -1455,7 +1455,7 @@ export function renderHtml(): string {
 
     function setStatus() {
         const q = queued > 0 ? " · " + queued + " queued" : "";
-        status.textContent = busy ? ("thinking..." + q) : (activeModel ? "model: " + activeModel : "");
+        status.textContent = busy ? ("thinking..." + q) : (activeModel ? "model: " + modelLabel(activeModel) : "");
         // Model/reasoning stay changeable at all times (even while a turn runs):
         // a change applies to the next/queued message. Only disabled when there
         // are no options to pick.
@@ -2601,6 +2601,7 @@ export function renderHtml(): string {
                     modelPicker.disabled = false;
                     modelPicker.style.display = modelList.length ? "" : "none";
                     setModelLabel();
+                    setStatus();   // refresh "model: <name>" with the friendly label
                 }
                 break;
             }
