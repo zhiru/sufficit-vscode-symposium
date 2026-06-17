@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { parseTodoFence } from "../adapters/todos";
+import { buildOutboundPrompt } from "./outboundPrompt";
 
 type SendMode = "send" | "queue" | "steer";
 
@@ -13,12 +14,6 @@ interface PendingMessage {
     permission?: string;
     autonomy?: string;
 }
-
-// Injected once when the user marks themselves "away": full autonomy, no prompts.
-const AUTONOMY_PREAMBLE =
-    "[Autonomy mode] The user is not present to answer questions or make decisions and has given you full autonomy. " +
-    "Do not wait for input or use interactive prompts (e.g. AskUserQuestion); make reasonable assumptions, decide, " +
-    "and carry the task through end-to-end. Briefly state any assumptions and keep going.";
 
 /**
  * Backend-side state of one dialogue. Owns the agent process and KEEPS IT
@@ -35,6 +30,7 @@ export class ChatController {
     private session: AgentSession | undefined;
     private busy = false;
     private firstTitle = "";
+    private outboundPolicyInjected = false;
     private todoInjected = false;
     private autonomyInjected = false;
     private seedInjected = false;
@@ -334,35 +330,26 @@ export class ChatController {
         const canVision = this.adapter.supportsImages?.() === true;
         const images = canVision ? msg.attachments.filter(isImage) : [];
         const fileAtts = canVision ? msg.attachments.filter((p) => !isImage(p)) : msg.attachments;
-        let fullText = msg.text;
-        if (fileAtts.length) {
-            fullText += "\n\nAttached files (read them from disk):\n" +
-                fileAtts.map((p) => `- ${p}`).join("\n");
-        }
-        // Inject a todo capability once, for CLIs without a native plan tool.
-        if (!this.todoInjected && this.adapter.hasNativeTodo?.() === false) {
-            const inj = this.adapter.todoInjection?.();
-            if (inj) { fullText = inj + "\n\n---\n\n" + fullText; }
-            this.todoInjected = true;
-        }
-        // Handoff: seed a brand-new session with the prior conversation once, so
-        // a different backend can continue the dialogue as if it were already in
-        // the room. Prepended to the very first user message of this session.
-        if (!this.seedInjected && this.options.seedHistory) {
-            fullText = this.options.seedHistory + "\n\n---\n\n" + fullText;
-            this.seedInjected = true;
-        }
-        // Autonomy: prepend the preamble once per "away" streak; reset on return.
-        if (msg.autonomy === "away") {
-            if (!this.autonomyInjected) { fullText = AUTONOMY_PREAMBLE + "\n\n---\n\n" + fullText; this.autonomyInjected = true; }
-        } else {
-            this.autonomyInjected = false;
-        }
+        const outbound = buildOutboundPrompt({
+            text: msg.text,
+            fileAttachments: fileAtts,
+            policyInjected: this.outboundPolicyInjected,
+            todoInjected: this.todoInjected,
+            seedInjected: this.seedInjected,
+            autonomyInjected: this.autonomyInjected,
+            todoInjection: this.adapter.hasNativeTodo?.() === false ? this.adapter.todoInjection?.() : undefined,
+            seedHistory: this.options.seedHistory,
+            autonomy: msg.autonomy,
+        });
+        this.outboundPolicyInjected = outbound.state.policyInjected;
+        this.todoInjected = outbound.state.todoInjected;
+        this.seedInjected = outbound.state.seedInjected;
+        this.autonomyInjected = outbound.state.autonomyInjected;
         if (!this.firstTitle && msg.text.trim()) { this.firstTitle = msg.text.trim().slice(0, 60); }
         this.busy = true;
         this.onStatusChange?.();
         this.emit({ type: "user", text: msg.text, attachments: msg.attachments });
-        this.session.send(fullText, images);
+        this.session.send(outbound.text, images);
     }
 
     private onEvent(event: AgentEvent): void {

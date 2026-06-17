@@ -125,6 +125,7 @@ interface CustomAdapterDef {
     models?: string[];
     headers?: Record<string, string>;
     apiKey?: string;
+    supportsDeveloperRole?: boolean;
 }
 
 /** Reads the user's extra OpenAI-compatible adapters (symposium.adapters). */
@@ -161,6 +162,7 @@ function buildCustomAdapters(defs: CustomAdapterDef[]): OpenAIAdapter[] {
                 models: e.models ?? [],
                 headers: e.headers ?? {},
                 apiKey: e.apiKey ?? "",
+                supportsDeveloperRole: e.supportsDeveloperRole ?? false,
                 maxToolHops: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxToolHops", 50),
                 log: symposiumLog,
             };

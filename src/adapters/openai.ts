@@ -70,6 +70,12 @@ export interface OpenAIAdapterConfig {
     headers: Record<string, string>;
     /** Convenience: if set and no Authorization header, sent as Bearer. */
     apiKey?: string;
+    /**
+     * Whether this gateway supports the OpenAI `developer` message role.
+     * Built-in Sufficit AI handles this upstream; custom gateways may need the
+     * prompt downgraded to `system`.
+     */
+    supportsDeveloperRole?: boolean;
     /** Max tool round-trips per turn before pausing (default 50). */
     maxToolHops?: number;
     log?: (message: string) => void;
@@ -116,14 +122,19 @@ class OpenAISession extends EventEmitter implements AgentSession {
         this.sessionId = resumed?.id ?? randomUUID();
         if (resumed) {
             this.messages.push(...resumed.messages); this.title = resumed.title;
+            // Restore the model last used in this session (unless the caller
+            // explicitly overrode it), so reopening keeps the same model.
+            if (!this.options.model && resumed.model) { this.options.model = resumed.model; }
         } else {
             if (options.systemPrompt) {
                 this.messages.push({ role: "system", content: options.systemPrompt });
             }
             if (options.developerPrompt) {
-                // OpenAI-compatible APIs support `developer`; other adapters map
-                // developerPrompt to system (or ignore it) as needed.
-                this.messages.push({ role: "developer", content: options.developerPrompt });
+                const developerRole = this.cfg.supportsDeveloperRole !== false;
+                this.messages.push({
+                    role: developerRole ? "developer" : "system",
+                    content: options.developerPrompt,
+                });
             }
         }
         queueMicrotask(() => this.emit("event", { kind: "session", sessionId: this.sessionId, model: this.model() }));

@@ -2760,10 +2760,15 @@ export function renderHtml(): string {
                     renderError(ev.message);
                 }
                 else if (ev.kind === "session") {
-                    if (ev.model) { activeModel = ev.model; }
+                    if (ev.model) {
+                        activeModel = ev.model;
+                        // Reflect the session's (restored) model in the picker when
+                        // it's a known option, so reopening shows the last model used.
+                        if (modelList.includes(ev.model)) { modelValue = ev.model; setModelLabel(); }
+                    }
                     activeSessionId = ev.sessionId || activeSessionId;
                     bindWorkingSet(ev.sessionId);   // migrate a new session's edits to its real id
-                    append("meta", "session " + ev.sessionId + (ev.model ? " · " + ev.model : ""));
+                    append("meta", "session " + ev.sessionId + (ev.model ? " · " + modelLabel(ev.model) : ""));
                     setStatus();
                 }
                 else if (ev.kind === "turn-end") {
