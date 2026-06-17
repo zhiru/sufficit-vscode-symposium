@@ -670,6 +670,18 @@ export function renderHtml(): string {
     .chip .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .chip.activeChip { border-color: var(--vscode-focusBorder); }
     /* preview-tab suggestion: dashed + dimmed, click to attach */
+    .chip.clickable { cursor: pointer; }
+    .chip.clickable:hover .lbl { text-decoration: underline; }
+    /* attachment pills inside a user message */
+    .msgAtts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+    .msgAtt {
+        display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+        font-size: 0.85em; padding: 2px 8px; border-radius: 10px;
+        background: var(--vscode-badge-background, rgba(128,128,128,0.25));
+        color: var(--vscode-badge-foreground, var(--vscode-foreground));
+    }
+    .msgAtt:hover { text-decoration: underline; }
+    .msgAtt .chipIcon { width: 11px; height: 11px; opacity: 0.8; }
     .chip.suggestChip { border-style: dashed; opacity: 0.6; cursor: pointer; }
     .chip.suggestChip:hover { opacity: 0.9; }
     .chip .x { cursor: pointer; opacity: 0.7; flex-shrink: 0; }
@@ -2207,15 +2219,23 @@ export function renderHtml(): string {
         ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
     }
 
-    function makeChip(label, fullPath, onRemove, active) {
+    function makeChip(label, fullPath, onRemove, active, openPath) {
         const chip = document.createElement("span");
         chip.className = "chip" + (active ? " activeChip" : "");
-        chip.title = fullPath;
+        chip.title = openPath ? "Abrir " + (openPath) : fullPath;
         const ic = svgIcon("file"); ic.classList.add("chipIcon"); chip.appendChild(ic);
         const lb = document.createElement("span"); lb.className = "lbl"; lb.textContent = label; chip.appendChild(lb);
         const x = document.createElement("span"); x.className = "x"; x.textContent = "✕";
-        x.addEventListener("click", onRemove);
+        x.addEventListener("click", (e) => { e.stopPropagation(); onRemove(); });
         chip.appendChild(x);
+        // Click the chip body (not ✕) to open/preview the file.
+        if (openPath) {
+            chip.classList.add("clickable");
+            chip.addEventListener("click", (e) => {
+                if (e.target && e.target.classList && e.target.classList.contains("x")) { return; }
+                vscode.postMessage({ type: "open-file", path: openPath });
+            });
+        }
         return chip;
     }
     function renderChips() {
@@ -2226,7 +2246,8 @@ export function renderHtml(): string {
         if (activeFile && !activeFileDismissed) {
             const base = (activeFile.split("/").filter(Boolean).pop() || activeFile) + activeFileSuffix();
             const isSuggestion = activeFilePreview && !activeFilePinned;
-            const chip = makeChip(base, activeFile + activeFileSuffix(), () => { activeFileDismissed = true; renderChips(); }, !isSuggestion);
+            // Suggestion chip clicks to PIN; an attached chip clicks to OPEN.
+            const chip = makeChip(base, activeFile + activeFileSuffix(), () => { activeFileDismissed = true; renderChips(); }, !isSuggestion, isSuggestion ? null : activeFile);
             if (isSuggestion) {
                 chip.classList.add("suggestChip");
                 chip.title = activeFile + activeFileSuffix() + " — preview (clique para anexar ao contexto)";
@@ -2241,7 +2262,7 @@ export function renderHtml(): string {
             chips.appendChild(makeChip(file.name, file.path, () => {
                 attachments = attachments.filter((a) => a.path !== file.path);
                 renderChips();
-            }, false));
+            }, false, file.path));
         }
     }
 
@@ -2676,8 +2697,18 @@ export function renderHtml(): string {
                 const el = message("user", data.text, Date.now());
                 if (data.attachments?.length) {
                     const list = document.createElement("div");
-                    list.className = "tool";
-                    list.textContent = "📎 " + data.attachments.map((p) => p.split("/").pop()).join(", ");
+                    list.className = "msgAtts";
+                    for (const p of data.attachments) {
+                        const a = document.createElement("span"); a.className = "msgAtt";
+                        a.title = "Abrir " + p;
+                        const ic = svgIcon("file"); ic.classList.add("chipIcon"); a.appendChild(ic);
+                        // strip any " (selected lines …)" suffix for the path to open
+                        const cleanPath = String(p).replace(/ \(selected lines.*$/, "");
+                        const lbl = document.createElement("span"); lbl.textContent = String(p).split("/").pop();
+                        a.appendChild(lbl);
+                        a.addEventListener("click", () => vscode.postMessage({ type: "open-file", path: cleanPath }));
+                        list.appendChild(a);
+                    }
                     el.appendChild(list);
                 }
                 busy = true; setStatus();   // a turn just started (covers queued flush)

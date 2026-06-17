@@ -262,8 +262,9 @@ export class ChatSurface {
                 }
                 case "open-file": {
                     if (typeof message.path === "string") {
-                        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(message.path));
-                        await vscode.window.showTextDocument(doc, { preview: true });
+                        // vscode.open handles text AND binary (images open in the
+                        // image preview), unlike openTextDocument.
+                        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(message.path), { preview: true });
                     }
                     return;
                 }
