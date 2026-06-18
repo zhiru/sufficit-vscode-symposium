@@ -215,6 +215,11 @@ export function renderHtml(): string {
     #chatTitle { flex: 1; opacity: 0.75; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #listToggle { display: none; }
     #root.narrow #listToggle { display: inline-flex; }
+    /* Message area wrapper: holds the scrollable log + the floating
+       scroll-to-bottom button, so the button anchors to the bottom of the
+       messages (above the queued/plan/changed-files panels), never overlapping
+       their Approve/Reject buttons. */
+    #logWrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
     #log {
         flex: 1; overflow-y: auto; padding: 16px 16px 6px 16px; user-select: text; cursor: text;
         font-size: 13.5px; line-height: 1.65;
@@ -625,7 +630,7 @@ export function renderHtml(): string {
     #composer:focus-within { border-color: var(--vscode-focusBorder); }
     /* Scroll-to-bottom button: floats just above the composer, only when scrolled up. */
     #scrollBottom {
-        position: absolute; bottom: calc(100% + 8px); right: 8px; z-index: 5;
+        position: absolute; bottom: 10px; right: 16px; z-index: 5;
         width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
         display: none; align-items: center; justify-content: center;
         background: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background, #2a2a2a));
@@ -807,19 +812,21 @@ export function renderHtml(): string {
                 <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.5 1 6l3.5 3.5V7H10V5H4.5V2.5Zm7 4L15 10l-3.5 3.5V11H6V9h5.5V6.5Z"/></svg>
             </button>
         </div>
-        <div id="log"></div>
-        <div id="emptyState">
-            <div class="esLogo"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.5 1.5h1V3H11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2.5V1.5ZM6 6.5A1 1 0 1 0 6 8.5 1 1 0 0 0 6 6.5Zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM1 6h1v4H1V6Zm13 0h1v4h-1V6Z"/></svg></div>
-            <div class="esTitle">Symposium</div>
-            <div class="esHint">Type below to start a conversation.</div>
+        <div id="logWrap">
+            <div id="log"></div>
+            <div id="emptyState">
+                <div class="esLogo"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.5 1.5h1V3H11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2.5V1.5ZM6 6.5A1 1 0 1 0 6 8.5 1 1 0 0 0 6 6.5Zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM1 6h1v4H1V6Zm13 0h1v4h-1V6Z"/></svg></div>
+                <div class="esTitle">Symposium</div>
+                <div class="esHint">Type below to start a conversation.</div>
+            </div>
+            <div id="loadingState"><span class="spinner"></span><span id="loadingText">Loading session…</span></div>
+            <button id="scrollBottom" title="Ir para o fim"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 13.5 13 8.5h-3v-6H6v6H3L8 13.5Z"/></svg></button>
         </div>
-        <div id="loadingState"><span class="spinner"></span><span id="loadingText">Loading session…</span></div>
         <div id="queued"></div>
         <div id="tasks"></div>
         <div id="plan"></div>
         <div id="changedFiles"></div>
         <div id="composer">
-            <button id="scrollBottom" title="Ir para o fim"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 13.5 13 8.5h-3v-6H6v6H3L8 13.5Z"/></svg></button>
             <div id="slash"></div>
             <div id="chips"></div>
             <textarea id="input" placeholder="Ask the agent…  (Enter sends · Shift+Enter newline)"></textarea>
