@@ -1440,7 +1440,18 @@ export function renderHtml(): string {
     function endStream() { streamMsg = null; streamBody = null; streamText = ""; }
 
     // ---- minimal, safe markdown → DOM (no innerHTML of untrusted text) ----
+    // Strip memory-citation markup emitted by the Sufficit AI / responses
+    // backend (e.g. <oai-mem-citation ...>text</oai-mem-citation>). Keep any
+    // inner text, drop the tags. Template-safe (no single-backslash regex).
+    function stripCitations(s) {
+        if (s.indexOf("oai-mem-citation") < 0) return s;
+        const openRe = new RegExp("<oai-mem-citation[^>]*>", "gi");
+        const closeRe = new RegExp("</oai-mem-citation>", "gi");
+        return s.replace(openRe, "").replace(closeRe, "");
+    }
+
     function renderMarkdown(container, src) {
+        src = stripCitations(String(src));
         const lines = String(src).split("\\n");
         let i = 0; let list = null;
         const flushList = () => { list = null; };
@@ -1454,7 +1465,7 @@ export function renderHtml(): string {
                 const close = "</" + codexTag + ">";
                 while (i < lines.length && lines[i].trim() !== close) { body.push(lines[i]); i++; }
                 if (i < lines.length && lines[i].trim() === close) i++;
-                container.appendChild(tagBlock(codexTag, body.join("\n")));
+                container.appendChild(tagBlock(codexTag, body.join("\\n")));
                 continue;
             }
             const fence = line.match(/^\`\`\`(\\w*)\\s*$/);
