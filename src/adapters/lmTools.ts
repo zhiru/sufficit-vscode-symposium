@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { OpenAITool } from "./aiTools";
+import { sanitizeToolParametersForOpenAI } from "./openaiSchema";
 
 /**
  * Bridges VS Code's Language Model Tools (`vscode.lm.tools`) to the OpenAI
@@ -54,7 +55,7 @@ export function lmToolDefs(): OpenAITool[] {
         function: {
             name: sanitize(t.name),
             description: (t.description || t.name).slice(0, 1024),
-            parameters: (t.inputSchema as Record<string, unknown>) ?? { type: "object", properties: {} },
+            parameters: sanitizeToolParametersForOpenAI(t.inputSchema),
         },
     }));
 }
