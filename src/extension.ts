@@ -303,11 +303,29 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         // Live sessions not yet written to disk are merged in (top) so a brand-
         // new running session shows its working indicator immediately.
         listSessions: async () => {
+            const liveInfos = runtime.liveInfos();
+            const reconciledLive = new Set<string>();
             const disk = store.decorate(await rawSessions(), true)
-                .map((s) => ({ ...s, status: runtime.statusFor(s.sessionId) }));
+                .map((s) => {
+                    let status = runtime.statusFor(s.sessionId);
+                    if (!status) {
+                        const byCwd = liveInfos.find((l) =>
+                            !reconciledLive.has(l.sessionId)
+                            && l.backend === s.backend
+                            && !!l.cwd
+                            && l.cwd === s.cwd
+                            && (l.sessionId.startsWith("new-") || !runtime.findBySessionId(s.sessionId))
+                        );
+                        if (byCwd) {
+                            status = byCwd.status;
+                            reconciledLive.add(byCwd.sessionId);
+                        }
+                    }
+                    return { ...s, status };
+                });
             const known = new Set(disk.map((s) => s.sessionId));
-            const live = runtime.liveInfos()
-                .filter((l) => !known.has(l.sessionId))
+            const live = liveInfos
+                .filter((l) => !known.has(l.sessionId) && !reconciledLive.has(l.sessionId))
                 .map((l) => ({ ...l, updatedAt: new Date() } as SessionInfo));
             return [...live, ...disk];
         },
