@@ -94,7 +94,7 @@ export const LOCAL_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "shell",
-            description: "Run a shell command on the host, in the session's working directory, and return its combined stdout+stderr and exit code. Use for builds, tests, git, file inspection, system diagnostics — anything you would otherwise ask the user to paste into a terminal. Non-interactive only.",
+            description: "Run a shell command on the host (bash -lc) in the session working directory and return combined stdout+stderr and exit code. Use for builds, tests, git, process/system diagnostics. Do NOT use shell (python/sed/awk/cat>>/heredocs/echo>) to read or edit files — use read_file/write_file/list_dir instead so edits are tracked and reviewable. Non-interactive only.",
             parameters: {
                 type: "object",
                 properties: {
@@ -111,7 +111,7 @@ export const LOCAL_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "read_file",
-            description: "Read a UTF-8 text file from the host and return its contents.",
+            description: "Read a UTF-8 text file from the host and return its contents. ALWAYS prefer this over shell cat/head/tail/python for reading files.",
             parameters: {
                 type: "object",
                 properties: {
@@ -126,7 +126,7 @@ export const LOCAL_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "write_file",
-            description: "Write (create or overwrite) a UTF-8 text file on the host. Creates parent directories as needed.",
+            description: "Create or overwrite a UTF-8 text file on the host (creates parent dirs). This is the canonical way to author/edit files — ALWAYS use this instead of shell (python open('w'), sed -i, echo>, cat<<EOF). Edits via this tool are tracked and reviewable; shell edits are not.",
             parameters: {
                 type: "object",
                 properties: {
@@ -141,7 +141,7 @@ export const LOCAL_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "list_dir",
-            description: "List entries of a directory on the host (names + whether each is a directory).",
+            description: "List entries of a directory on the host (names + whether each is a directory). Prefer this over shell ls/find for directory listings.",
             parameters: {
                 type: "object",
                 properties: {
@@ -207,18 +207,29 @@ export const ALL_AI_TOOL_NAMES = [...AI_TOOLS, ...LOCAL_TOOLS].map((t) => t.func
  */
 export function aiToolsForAgent(declared: string[]): string[] {
     const has = (re: RegExp) => declared.some((d) => re.test(d));
-    const names: string[] = [];
+    const names = new Set<string>();
     if (has(/^sufficit-ai\b|^sufficit-ai\/|^memory\b/i)) {
-        names.push("memory_search", "memory_get_observations", "memory_save");
+        names.add("memory_search"); names.add("memory_get_observations"); names.add("memory_save");
     }
     if (has(/^web\b|^search\b|^web_search\b|^browse\b|^fetch\b/i)) {
-        names.push("web_search", "fetch_url", "open_url");
+        names.add("web_search"); names.add("fetch_url"); names.add("open_url");
     }
-    // Shell/filesystem parity tools, enabled by a shell/exec/bash/fs capability.
-    if (has(/^shell\b|^exec\b|^bash\b|^terminal\b|^fs\b|^filesystem\b/i)) {
-        names.push(...LOCAL_TOOL_NAMES);
+    // Full shell/filesystem parity, enabled by a shell/exec/bash/terminal capability.
+    if (has(/^shell\b|^exec\b|^bash\b|^terminal\b/i)) {
+        for (const n of LOCAL_TOOL_NAMES) { names.add(n); }
     }
-    return names;
+    // Granular file access: read/write/edit/fs/filesystem give the file tools
+    // (read_file/write_file/list_dir) WITHOUT exposing the shell — so an agent
+    // can author files/plans for you without arbitrary command execution.
+    if (has(/^fs\b|^filesystem\b/i)) {
+        names.add("read_file"); names.add("write_file"); names.add("list_dir");
+    }
+    if (has(/^read\b|^read_file\b/i)) { names.add("read_file"); names.add("list_dir"); }
+    if (has(/^write\b|^write_file\b|^edit\b|^edit_file\b/i)) {
+        names.add("write_file"); names.add("read_file"); names.add("list_dir");
+    }
+    if (has(/^list\b|^list_dir\b|^ls\b/i)) { names.add("list_dir"); }
+    return [...names];
 }
 
 /** Filters tool definitions to an allowlist of names (undefined = all). */
