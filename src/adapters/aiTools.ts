@@ -341,18 +341,21 @@ async function runShellInTerminal(command: string, cwd: string, timeoutMs: numbe
     term.show(true);
     progress?.onTerminal?.(name);
 
-    // Run the command ONCE in the visible terminal, teeing stdout/stderr into a
-    // temp file so the model still receives the final result. Polling the files
-    // is the only reliable public-API way to observe a VS Code terminal.
+    // Run the command ONCE in the visible terminal. We tee output to a temp file
+    // so the model still gets the result, and capture the COMMAND'S OWN exit
+    // code — not the tee's. Using a group with a trailing redirect (not process
+    // substitution) avoids the spurious SIGPIPE/141 that `cmd > >(tee ...)`
+    // introduces when the command's pipeline closes early (e.g. `... | head`).
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "symposium-shell-"));
     const outFile = path.join(dir, "output.log");
     const codeFile = path.join(dir, "exit.code");
     fs.writeFileSync(outFile, "", "utf8");
-    const wrapped = [
-        "set +e",
-        `${command} > >(tee -a ${shellQuote(outFile)}) 2> >(tee -a ${shellQuote(outFile)} >&2)`,
-        `printf '%s' $? > ${shellQuote(codeFile)}`,
-    ].join("\n");
+    // Write the user command to a script file so quoting/heredocs/pipes are
+    // preserved verbatim, then run it capturing its real exit status.
+    const cmdFile = path.join(dir, "command.sh");
+    fs.writeFileSync(cmdFile, command + "\n", "utf8");
+    const wrapped =
+        `{ bash ${shellQuote(cmdFile)}; printf '%s' "$?" > ${shellQuote(codeFile)}; } 2>&1 | tee -a ${shellQuote(outFile)}`;
     term.sendText(wrapped);
 
     const started = Date.now();
