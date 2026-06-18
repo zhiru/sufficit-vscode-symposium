@@ -526,13 +526,14 @@ export function renderHtml(): string {
         font-variant-numeric: tabular-nums;
     }
     #plan .plhead .plbtn {
-        flex-shrink: 0; background: none; border: none; cursor: pointer; padding: 2px 5px;
-        border-radius: 4px; color: var(--vscode-foreground); opacity: 0.68; display: inline-flex; align-items: center; gap: 3px;
-        font: inherit; font-size: 0.82em;
+        flex-shrink: 0; width: 22px; height: 22px; background: none; border: none; cursor: pointer; padding: 3px;
+        border-radius: 4px; color: var(--vscode-foreground); opacity: 0.72; display: inline-flex; align-items: center; justify-content: center;
+        font: inherit;
     }
-    #plan .plhead .plbtn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
-    #plan .plhead .plbtn.danger:hover { color: var(--vscode-errorForeground); }
-    #plan .plhead .plbtn svg { width: 12px; height: 12px; }
+    #plan .plhead .plbtn:hover:not(:disabled) { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+    #plan .plhead .plbtn.danger:hover:not(:disabled) { color: var(--vscode-errorForeground); }
+    #plan .plhead .plbtn:disabled { opacity: 0.28; cursor: default; }
+    #plan .plhead .plbtn svg { width: 13px; height: 13px; }
     #plan .plhead svg.plchev { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.8; transition: transform 150ms ease; }
     #plan:not(.collapsed) .plhead svg.plchev { transform: rotate(0deg); }
     #plan.collapsed .plhead svg.plchev { transform: rotate(-90deg); }
@@ -1843,11 +1844,12 @@ export function renderHtml(): string {
         const ttl = document.createElement("span"); ttl.className = "pltitle";
         ttl.textContent = summary; ttl.title = summary;
         const cnt = document.createElement("span"); cnt.className = "plcount"; cnt.textContent = done + "/" + todos.length;
-        const doneBtn = document.createElement("button"); doneBtn.className = "plbtn"; doneBtn.title = "Limpar tarefas concluídas";
-        doneBtn.appendChild(svgIcon("check")); doneBtn.appendChild(document.createTextNode("Done"));
-        doneBtn.addEventListener("click", (e) => { e.stopPropagation(); clearTodos("done"); });
-        const allBtn = document.createElement("button"); allBtn.className = "plbtn danger"; allBtn.title = "Limpar todas as tarefas";
-        allBtn.appendChild(svgIcon("trash")); allBtn.appendChild(document.createTextNode("All"));
+        const doneBtn = document.createElement("button"); doneBtn.className = "plbtn"; doneBtn.title = "Limpar tarefas concluídas"; doneBtn.setAttribute("aria-label", "Limpar concluídas");
+        doneBtn.disabled = done === 0;
+        doneBtn.appendChild(svgIcon("check"));
+        doneBtn.addEventListener("click", (e) => { e.stopPropagation(); if (!doneBtn.disabled) { clearTodos("done"); } });
+        const allBtn = document.createElement("button"); allBtn.className = "plbtn danger"; allBtn.title = "Limpar todas as tarefas"; allBtn.setAttribute("aria-label", "Limpar todas");
+        allBtn.appendChild(svgIcon("trash"));
         allBtn.addEventListener("click", (e) => { e.stopPropagation(); clearTodos("all"); });
         head.appendChild(ttl); head.appendChild(cnt); head.appendChild(doneBtn); head.appendChild(allBtn); head.appendChild(chev);
         head.addEventListener("click", () => planEl.classList.toggle("collapsed"));
