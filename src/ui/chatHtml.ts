@@ -915,7 +915,7 @@ export function renderHtml(): string {
     let activeFilePreview = false;  // VS Code preview tab (italic) → suggestion only
     let activeFilePinned = false;   // user clicked a preview suggestion to attach it
     function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
-    let currentBackend = "", currentBackendName = "";
+    let currentBackend = "", currentBackendName = "", agentLabels = null;
     let activeModel = "";
     let activeSessionId = "";
     let busy = false;
@@ -2611,6 +2611,7 @@ export function renderHtml(): string {
                 startWorkingSet(activeSessionId);   // bind edited-files set to this session
                 currentBackend = data.backend || "";
                 currentBackendName = data.backendName || "";
+                agentLabels = data.agentLabels || null;
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + (data.backendName || data.backend);
                 modelDefault = data.modelDefault || "";
                 modelLabels = data.modelLabels || {};
@@ -2865,12 +2866,17 @@ export function renderHtml(): string {
                 else if (ev.kind === "session") {
                     if (ev.model) {
                         activeModel = ev.model;
-                        // Reflect the session's (restored) model in the picker when
-                        // it's a known option, so reopening shows the last model used.
                         if (modelList.includes(ev.model)) { modelValue = ev.model; setModelLabel(); }
                     }
                     activeSessionId = ev.sessionId || activeSessionId;
-                    bindWorkingSet(ev.sessionId);   // migrate a new session's edits to its real id
+                    bindWorkingSet(ev.sessionId);
+                    if (agentLabels) {
+                        const parts = ["agent: " + agentLabels.agent, "model: " + (ev.model ? modelLabel(ev.model) : "default"), "backend: " + (currentBackendName || currentBackend)];
+                        if (agentLabels.toolsDeclared && agentLabels.toolsDeclared.length) { parts.push("tools: " + agentLabels.toolsDeclared.join(", ")); }
+                        append("meta", parts.join(" · "));
+                        // only once, so re-opening a saved session won't show stale agent badges
+                        agentLabels = null;
+                    }
                     append("meta", "session " + ev.sessionId + (ev.model ? " · " + modelLabel(ev.model) : ""));
                     setStatus();
                 }

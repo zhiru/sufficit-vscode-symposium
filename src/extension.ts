@@ -505,13 +505,20 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
                 return;
             }
             const model = await resolveModelPin(choice.adapter, readAgentModel(agent.name));
+            const tools = readAgentTools(agent.name);
+            const allowedTools = aiToolsForAgent(tools);
             const options: SessionStartOptions = {
                 cwd: defaultCwd(),
                 developerPrompt: readAgentBody(agent.name),
-                aiTools: aiToolsForAgent(readAgentTools(agent.name)),
+                aiTools: allowedTools,
                 ...(model ? { model } : {}),
             };
             const title = `Agente: ${agent.name}`;
+            // Surface will render these as inline meta so we always know which
+            // agent is bound to this dialogue, without piggybacking on developerPrompt.
+            (options as any).__agentName = agent.name;
+            (options as any).__toolsDeclared = tools;
+            (options as any).__toolsAllowed = allowedTools;
             if (inEditor()) {
                 ChatPanel.show(context, deps).openDialogue(choice.adapter.backend, options, title);
             } else {
