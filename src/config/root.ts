@@ -203,7 +203,7 @@ export function sanitize(name: string): string {
 function template(kind: ResourceKind, name: string, description: string): string {
     const fm = [`name: ${name}`, `description: ${description}`, "version: 1"];
     if (kind === "agent") {
-        fm.push("model: default", "tools: []", "skills: []", "instructions: []");
+        fm.push("model: default", "bootstrap: true", "tools: []", "skills: []", "instructions: []");
         return `---\n${fm.join("\n")}\n---\n\n# ${name}\n\nInstruções do agente aqui.\n`;
     }
     if (kind === "tool") {
@@ -281,6 +281,17 @@ export function readAgentTools(name: string): string[] {
     }
 }
 
+/** Reads an agent-def's `bootstrap:` field. Defaults to true for compatible agents
+ * created before this field existed. */
+export function readAgentBootstrap(name: string): boolean {
+    try {
+        const v = parseFrontmatterRaw(fs.readFileSync(resourcePath("agent", name), "utf8"))["bootstrap"];
+        if (v === undefined || v === "") { return true; }
+        return v.toLowerCase() !== "false";
+    } catch {
+        return true;
+    }
+}
 /** Reads an agent-def's `model:` pin (a label or id). Empty when absent. */
 export function readAgentModel(name: string): string {
     try {

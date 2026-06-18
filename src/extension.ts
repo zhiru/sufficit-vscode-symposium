@@ -33,7 +33,7 @@ import { ConfigPanel } from "./ui/configPanel";
 import { createSymposiumApi, SymposiumApi } from "./api/symposiumApi";
 import { RemoteBridge } from "./api/bridge";
 import { seedExamples } from "./config/seed";
-import { scanKind, readAgentBody, readAgentModel, readAgentTools } from "./config/root";
+import { scanKind, readAgentBody, readAgentBootstrap, readAgentModel, readAgentTools } from "./config/root";
 import { aiToolsForAgent } from "./adapters/aiTools";
 import { SufficitAuth } from "./auth/identity";
 import { SufficitAuthProvider } from "./auth/provider";
@@ -481,9 +481,9 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         // New session bound to a local agent-def: seeds the system prompt from the
         // agent's instructions and gates AI tools (memory/web) by its declared tools.
         vscode.commands.registerCommand("symposium.newAgentSession", async () => {
-            const agents = scanKind("agent");
+            const agents = scanKind("agent").filter((a) => readAgentBootstrap(a.name) !== false);
             if (agents.length === 0) {
-                void vscode.window.showWarningMessage("Nenhum agente em ~/.symposium/repo/agents. Use Seed/Import ou crie um na Configuração.");
+                void vscode.window.showWarningMessage("Nenhum agente elegível em ~/.symposium/repo/agents. Use Seed/Import ou crie um na Configuração.");
                 return;
             }
             const agent = await vscode.window.showQuickPick(
