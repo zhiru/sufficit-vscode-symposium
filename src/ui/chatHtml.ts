@@ -728,6 +728,16 @@ export function renderHtml(): string {
         display: flex; flex-direction: column;
     }
     #composer:focus-within { border-color: var(--vscode-focusBorder); }
+    #composer.dragover { border-color: var(--vscode-focusBorder); box-shadow: 0 0 0 1px var(--vscode-focusBorder); }
+    #dropHint {
+        display: none; position: absolute; inset: 0; z-index: 6;
+        align-items: center; justify-content: center; pointer-events: none;
+        border-radius: 8px; font-size: 0.9em; font-weight: 600;
+        color: var(--vscode-foreground);
+        background: var(--vscode-editor-inactiveSelectionBackground, rgba(120,160,255,0.14));
+        border: 1.5px dashed var(--vscode-focusBorder);
+    }
+    #composer.dragover #dropHint { display: flex; }
     /* Scroll-to-bottom button: floats just above the composer, only when scrolled up. */
     #scrollBottom {
         position: absolute; bottom: 10px; right: 28px; z-index: 5;
@@ -933,6 +943,7 @@ export function renderHtml(): string {
         <div id="plan"></div>
         <div id="changedFiles"></div>
         <div id="composer">
+            <div id="dropHint">Solte os arquivos para anexar ao contexto</div>
             <div id="slash"></div>
             <div id="chips"></div>
             <textarea id="input" placeholder="Ask the agent…  (Enter sends · Shift+Enter newline)"></textarea>
@@ -2856,6 +2867,51 @@ export function renderHtml(): string {
     // Single listener on the document (paste bubbles up from the textarea);
     // adding it to both the input and the document fired it twice.
     document.addEventListener("paste", handlePaste);
+
+    function uriListFromDrop(dt) {
+        const raw = dt.getData("text/uri-list") || "";
+        return raw.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+    }
+    function filePayload(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64 = String(reader.result || "").split(",")[1] || "";
+                resolve({ name: file.name || "dropped-file", mime: file.type || "application/octet-stream", data: base64 });
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+        });
+    }
+    async function handleDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        composerEl.classList.remove("dragover");
+        const dt = e.dataTransfer;
+        if (!dt) return;
+        const uris = uriListFromDrop(dt);
+        if (uris.length) {
+            vscode.postMessage({ type: "drop-uris", uris });
+            return;
+        }
+        const files = Array.from(dt.files || []);
+        if (!files.length) return;
+        const payloads = (await Promise.all(files.map(filePayload))).filter(Boolean);
+        if (payloads.length) vscode.postMessage({ type: "drop-files", files: payloads });
+    }
+    if (composerEl) {
+        ["dragenter", "dragover"].forEach((type) => composerEl.addEventListener(type, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+            composerEl.classList.add("dragover");
+        }));
+        ["dragleave", "dragend"].forEach((type) => composerEl.addEventListener(type, (e) => {
+            if (type === "dragleave" && composerEl.contains(e.relatedTarget)) return;
+            composerEl.classList.remove("dragover");
+        }));
+        composerEl.addEventListener("drop", handleDrop);
+    }
 
     window.addEventListener("message", ({ data }) => {
         switch (data.type) {

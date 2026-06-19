@@ -64,6 +64,33 @@ async function writePastedImage(mime: string, base64: string): Promise<{ path: s
     return { path: full, name };
 }
 
+async function writeDroppedFile(name: string | undefined, mime: string | undefined, base64: string): Promise<{ path: string; name: string } | undefined> {
+    if (!base64) {
+        return undefined;
+    }
+    const safeName = path.basename(String(name || `drop-${Date.now()}`)).replace(/[\\/]/g, "_");
+    const inferred = mime && IMAGE_EXT[mime] ? `drop-${Date.now()}.${IMAGE_EXT[mime]}` : `drop-${Date.now()}-${safeName}`;
+    const finalName = safeName && safeName !== "." ? safeName : inferred;
+    const dir = path.join(os.tmpdir(), "symposium-drops");
+    await fs.promises.mkdir(dir, { recursive: true });
+    const full = path.join(dir, finalName);
+    await fs.promises.writeFile(full, Buffer.from(base64, "base64"));
+    symposiumLog(`[surface] dropped file saved: ${full}`);
+    return { path: full, name: finalName };
+}
+
+function attachmentFromUri(uri: string): { path: string; name: string } | undefined {
+    try {
+        const parsed = vscode.Uri.parse(uri.trim());
+        if (parsed.scheme !== "file") {
+            return undefined;
+        }
+        return { path: parsed.fsPath, name: path.basename(parsed.fsPath) };
+    } catch {
+        return undefined;
+    }
+}
+
 export interface ChatSurfaceDeps {
     adapterByBackend: Map<string, AgentAdapter>;
     listSessions(): Promise<SessionInfo[]>;
@@ -252,6 +279,34 @@ export class ChatSurface {
                     const file = await writePastedImage(message.mime, message.data);
                     if (file) {
                         this.post({ type: "attachments-picked", files: [file] });
+                    }
+                    return;
+                }
+                case "drop-file": {
+                    const file = await writeDroppedFile(message.name, message.mime, message.data);
+                    if (file) {
+                        this.post({ type: "attachments-picked", files: [file] });
+                    }
+                    return;
+                }
+                case "drop-files": {
+                    const payloads = Array.isArray(message.files) ? message.files : [];
+                    const written = await Promise.all(
+                        payloads.map((f: { name?: string; mime?: string; data?: string }) =>
+                            writeDroppedFile(f?.name, f?.mime, f?.data ?? "")),
+                    );
+                    const files = written.filter((f: { path: string; name: string } | undefined): f is { path: string; name: string } => Boolean(f));
+                    if (files.length) {
+                        this.post({ type: "attachments-picked", files });
+                    }
+                    return;
+                }
+                case "drop-uris": {
+                    const files = Array.isArray(message.uris)
+                        ? message.uris.map((u: string) => attachmentFromUri(u)).filter((f: { path: string; name: string } | undefined): f is { path: string; name: string } => Boolean(f))
+                        : [];
+                    if (files.length) {
+                        this.post({ type: "attachments-picked", files });
                     }
                     return;
                 }
