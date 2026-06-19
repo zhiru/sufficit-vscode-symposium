@@ -22,6 +22,21 @@ export type LmToolMode = "off" | "terminal" | "all";
 // the "all" mode for tool-discovery skills); it only matters for .ipynb work.
 const TERMINAL_MATCH = /terminal|task|test|exec|browser|playwright|navigate/i;
 
+// Tools we never bridge, regardless of mode. Copilot ships its own memory
+// tools (copilot_memory / *memory*) that persist to Copilot's own store —
+// unrelated to the Sufficit memory (memory_search/memory_save). Bridging them
+// would let the agent silently write to the wrong memory, so they are blocked
+// by default. Matched by substring so renames across versions still hit.
+const DEFAULT_TOOL_BLOCKLIST = /copilot_memory|^memory$|_memory|memory_/i;
+
+function isBlocked(name: string): boolean {
+    if (DEFAULT_TOOL_BLOCKLIST.test(name)) { return true; }
+    const extra = vscode.workspace
+        .getConfiguration("symposium")
+        .get<string[]>("lmToolsBlocklist", []);
+    return extra.some((pat) => pat && name.toLowerCase().includes(pat.toLowerCase()));
+}
+
 function mode(): LmToolMode {
     const v = vscode.workspace.getConfiguration("symposium").get<string>("lmTools", "terminal");
     return v === "off" || v === "all" ? v : "terminal";
@@ -40,9 +55,10 @@ function selectedTools(): readonly vscode.LanguageModelToolInformation[] {
     const m = mode();
     if (m === "off") { return []; }
     const all = vscode.lm?.tools ?? [];
-    const picked = m === "all"
+    const picked = (m === "all"
         ? all
-        : all.filter((t) => TERMINAL_MATCH.test(t.name) || (t.tags ?? []).some((g) => TERMINAL_MATCH.test(g)));
+        : all.filter((t) => TERMINAL_MATCH.test(t.name) || (t.tags ?? []).some((g) => TERMINAL_MATCH.test(g))))
+        .filter((t) => !isBlocked(t.name));
     // De-dupe by sanitized name (collisions would map to one tool anyway) and
     // cap the total to keep the tool payload small for the model.
     const seen = new Set<string>();
