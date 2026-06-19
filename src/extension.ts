@@ -289,6 +289,11 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         await context.globalState.update(FLAG, true);
     })();
 
+    // Session ids currently being deleted (scrub may run in the background).
+    // They are flagged in the list (visual marker) and excluded once gone so
+    // a live controller can't re-inject them mid-delete.
+    const deleting = new Set<string>();
+
     const rawSessions = async (): Promise<SessionInfo[]> => {
         const all = await Promise.all(adapters.map((adapter) =>
             adapter.listSessions().catch(() => [] as SessionInfo[])));
@@ -327,7 +332,8 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
             const live = liveInfos
                 .filter((l) => !known.has(l.sessionId) && !reconciledLive.has(l.sessionId))
                 .map((l) => ({ ...l, updatedAt: new Date() } as SessionInfo));
-            return [...live, ...disk];
+            return [...live, ...disk].map((s) =>
+                deleting.has(s.sessionId) ? { ...s, deleting: true } : s);
         },
         // Resume must run in the session's original cwd: the CLIs scope sessions per directory.
         cwdFor: (info) =>
@@ -704,8 +710,15 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
             if (confirm !== "Delete permanently") {
                 return;
             }
+            // Flag it as deleting straight away: the list shows a marker + the
+            // session is excluded from re-injection while the scrub runs.
+            deleting.add(info.sessionId);
+            runtime.disposeBySessionId(info.sessionId); // stop it if running
+            // Close the conversation pane now if it's showing this session.
+            chatView.sessionDeleted(info.sessionId);
+            ChatPanel.sessionDeleted(info.sessionId);
+            refreshAll();
             try {
-                runtime.disposeBySessionId(info.sessionId); // stop it if running
                 snapshots.clearSession(info.sessionId);      // drop in-memory baselines
                 const residual = await adapter.deleteSession(info);
                 await store.forget(info);
@@ -713,10 +726,6 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
                 // expiry) — tasks are bound to the session id.
                 let expired = 0;
                 try { expired = await expireSessionTasks(new HubClient(), info.sessionId); } catch { /* best-effort */ }
-                refreshAll();
-                // Close the conversation pane if it's showing the deleted session.
-                chatView.sessionDeleted(info.sessionId);
-                ChatPanel.sessionDeleted(info.sessionId);
                 if (expired) { symposiumLog(`[delete] expired ${expired} memory task(s) for ${info.sessionId}`); }
                 if (Array.isArray(residual) && residual.length) {
                     void vscode.window.showWarningMessage(
@@ -729,6 +738,12 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
                     `Delete failed: ${error instanceof Error ? error.message : error}`,
                     JSON.stringify({ action: "deleteSession", backend: info.backend, sessionId: info.sessionId, title: info.title, error: errorDetails(error) }, null, 2),
                 );
+            } finally {
+                // Whether scrub succeeded or failed, stop flagging it; a failed
+                // delete reappears (now off disk-or-not per adapter) so the user
+                // can retry, a successful one is already gone from disk.
+                deleting.delete(info.sessionId);
+                refreshAll();
             }
         }),
     );

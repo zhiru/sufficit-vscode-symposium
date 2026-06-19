@@ -162,6 +162,13 @@ export function renderHtml(): string {
         border-top-color: var(--vscode-charts-blue, #3794ff);
         animation: spin 0.7s linear infinite;
     }
+    .sessionItem .statusDot .spinner.del {
+        width: 11px; height: 11px; border-width: 2px; vertical-align: 0;
+        border-top-color: var(--vscode-errorForeground, #f14c4c);
+    }
+    .sessionItem.deleting { opacity: 0.55; pointer-events: none; }
+    .sessionItem.deleting .ttl { text-decoration: line-through; font-style: italic; }
+    .sessionItem.deleting .sub { color: var(--vscode-errorForeground, #f14c4c); opacity: 0.85; }
     .sessionItem .body { flex: 1; min-width: 0; }
     .sessionItem .ttl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sessionItem .sub { opacity: 0.6; font-size: 0.82em; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2337,7 +2344,7 @@ export function renderHtml(): string {
     }
     function renderSessionItem(s) {
             const el = document.createElement("div");
-            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "");
+            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "") + (s.deleting ? " deleting" : "");
             // Pinned items reorder by drag-and-drop (the up/down menu still works).
             if (s.pinned) {
                 el.draggable = true;
@@ -2351,7 +2358,9 @@ export function renderHtml(): string {
             // Live status indicator: spinner = working, green dot = idle/live.
             const statusDot = document.createElement("div");
             statusDot.className = "statusDot";
-            if (s.status === "working") {
+            if (s.deleting) {
+                const w = document.createElement("span"); w.className = "spinner del"; w.title = "Deleting…"; statusDot.appendChild(w);
+            } else if (s.status === "working") {
                 const w = document.createElement("span"); w.className = "work"; w.title = "Agent working…"; statusDot.appendChild(w);
             } else if (s.status === "idle") {
                 const d = document.createElement("span"); d.className = "idle"; d.title = "Running session (idle)"; statusDot.appendChild(d);
@@ -2369,7 +2378,7 @@ export function renderHtml(): string {
             ttl.title = s.title + "\\n" + s.sessionId;
             const sub = document.createElement("span");
             sub.className = "sub";
-            const statusText = s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : "");
+            const statusText = s.deleting ? "deleting… · " : (s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : ""));
             sub.textContent = statusText + s.backend + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
             sub.title = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "";
             body.appendChild(ttl);

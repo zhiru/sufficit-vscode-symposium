@@ -41,6 +41,8 @@ export interface SessionInfo {
     pinIndex?: number;
     /** Live runtime status: a session with a running controller. */
     status?: "working" | "idle";
+    /** True while a permanent delete / scrub is in progress in the background. */
+    deleting?: boolean;
 }
 
 /** One past message reconstructed from a stored transcript. */

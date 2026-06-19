@@ -72,13 +72,19 @@ export class LiveSessions {
     }
 
     /** Stops and unregisters the controller for a session id, if any. */
-    disposeBySessionId(sessionId: string): void {
+    disposeBySessionId(sessionId: string): boolean {
+        let disposed = false;
         for (const [key, controller] of this.controllers) {
-            if (controller.sessionId === sessionId) {
+            // Match by the live/backend session id OR the registry key, so a
+            // brand-new session (key "new-N") or one keyed by its resume id is
+            // reliably removed even if controller.sessionId hasn't reconciled.
+            if (controller.sessionId === sessionId || key === sessionId) {
                 controller.dispose();
                 this.controllers.delete(key);
+                disposed = true;
             }
         }
+        return disposed;
     }
 
     disposeAll(): void {
