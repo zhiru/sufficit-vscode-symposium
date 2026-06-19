@@ -56,18 +56,30 @@ export function renderHtml(): string {
     }
     @keyframes slide { 0% { left: -40%; } 50% { left: 40%; } 100% { left: 100%; } }
     .spinner {
-        display: inline-block; width: 14px; height: 14px; vertical-align: -2px;
-        border: 2px solid color-mix(in srgb, var(--vscode-foreground) 25%, transparent);
+        display: inline-block; width: 16px; height: 16px; vertical-align: -3px;
+        border: 2px solid color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
         border-top-color: var(--vscode-progressBar-background, var(--vscode-focusBorder));
-        border-radius: 50%; animation: spin 0.7s linear infinite;
+        border-radius: 50%; animation: spin 0.75s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes ldFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes ldPulse { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
     #loadingState {
         display: none; flex-direction: column; align-items: center; justify-content: center;
-        gap: 10px; flex: 1; opacity: 0.7; font-size: 0.9em;
+        gap: 16px; flex: 1;
     }
-    #root.loading #loadingState { display: flex; }
+    #root.loading #loadingState { display: flex; animation: ldFadeIn 0.22s ease; }
     #root.loading #log { display: none; }
+    #loadingState .ldLogo {
+        width: 54px; height: 54px; border-radius: 14px; display: inline-flex;
+        align-items: center; justify-content: center;
+        background: var(--vscode-chat-avatarBackground, var(--vscode-badge-background, rgba(128,128,128,0.18)));
+        color: var(--vscode-icon-foreground, var(--vscode-foreground));
+        animation: ldPulse 2.2s ease-in-out infinite;
+    }
+    #loadingState .ldLogo svg { width: 28px; height: 28px; }
+    #loadingState .ldName { font-size: 0.95em; font-weight: 600; opacity: 0.85; }
+    #loadingState .ldSub { display: flex; align-items: center; gap: 7px; font-size: 0.82em; opacity: 0.5; }
     /* boot/startup screen: visible immediately on parse, hidden once a session resolves */
     #bootState {
         position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -193,13 +205,6 @@ export function renderHtml(): string {
         border-top-color: var(--vscode-charts-blue, #3794ff);
         animation: spin 0.7s linear infinite;
     }
-    .sessionItem .statusDot .spinner.del {
-        width: 11px; height: 11px; border-width: 2px; vertical-align: 0;
-        border-top-color: var(--vscode-errorForeground, #f14c4c);
-    }
-    .sessionItem.deleting { opacity: 0.55; pointer-events: none; }
-    .sessionItem.deleting .ttl { text-decoration: line-through; font-style: italic; }
-    .sessionItem.deleting .sub { color: var(--vscode-errorForeground, #f14c4c); opacity: 0.85; }
     .sessionItem .body { flex: 1; min-width: 0; }
     .sessionItem .ttl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sessionItem .sub { opacity: 0.6; font-size: 0.82em; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -219,17 +224,18 @@ export function renderHtml(): string {
     #ctxMenu .miIcon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 8px; opacity: 0.85; }
     #ctxMenu .mi { display: flex; align-items: center; }
     #ctxMenu {
-        position: fixed; z-index: 50; display: none; min-width: 160px;
+        position: fixed; z-index: 50; display: none; min-width: 220px; max-width: 340px;
         background: var(--vscode-menu-background, var(--vscode-editor-background));
         color: var(--vscode-menu-foreground, var(--vscode-foreground));
         border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, #454545));
-        border-radius: 5px; padding: 4px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+        border-radius: 6px; padding: 4px 0; box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+        animation: menuIn 0.13s ease;
     }
-    #ctxMenu .mi { padding: 5px 14px; cursor: pointer; font-size: 0.9em; white-space: nowrap; }
+    @keyframes menuIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    #ctxMenu .mi { padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: background 100ms ease; }
     #ctxMenu .mi:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground)); color: var(--vscode-menu-selectionForeground, inherit); }
     #ctxMenu .mi.danger { color: var(--vscode-errorForeground); }
     #ctxMenu .sep { height: 1px; margin: 4px 0; background: var(--vscode-menu-separatorBackground, rgba(128,128,128,0.3)); }
-    #ctxMenu { max-width: 340px; }
     #ctxMenu .menuSearch {
         display: block; box-sizing: border-box; width: calc(100% - 16px); margin: 4px 8px 6px 8px; padding: 4px 7px;
         background: var(--vscode-input-background); color: var(--vscode-input-foreground);
@@ -237,10 +243,14 @@ export function renderHtml(): string {
     }
     #ctxMenu .menuSearch:focus { border-color: var(--vscode-focusBorder); }
     #ctxMenu .menuList { max-height: 320px; overflow-y: auto; }
-    #ctxMenu .menuGroup { padding: 5px 12px 2px; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.5; font-weight: 600; }
-    #ctxMenu .mi { display: flex; align-items: center; gap: 6px; }
-    #ctxMenu .mi .tick { width: 12px; flex-shrink: 0; color: var(--vscode-focusBorder); }
-    #ctxMenu .mi .milbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #ctxMenu .menuGroup { padding: 8px 12px 3px; font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.45; font-weight: 700; }
+    #ctxMenu .mi { display: flex; align-items: center; gap: 8px; }
+    #ctxMenu .mi .tick { width: 13px; flex-shrink: 0; color: var(--vscode-focusBorder); }
+    #ctxMenu .mi .miico { flex-shrink: 0; opacity: 0.55; display: flex; align-items: center; }
+    #ctxMenu .mi .milbl { flex: 1; overflow: hidden; }
+    #ctxMenu .mi .milbl-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #ctxMenu .mi.active .milbl-text { color: var(--vscode-focusBorder); font-weight: 600; }
+    #ctxMenu .mi .milbl-desc { font-size: 0.77em; opacity: 0.52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
     #ctxMenu .mi .midetail { opacity: 0.5; font-size: 0.85em; flex-shrink: 0; }
 
     /* ---- chat column ---- */
@@ -323,14 +333,6 @@ export function renderHtml(): string {
     .msgCopy.done { opacity: 1 !important; color: var(--vscode-charts-green, #89d185); }
     .msgCopy svg { width: 13px; height: 13px; }
 
-    .loadOlder {
-        display: block; margin: 8px auto; padding: 4px 12px;
-        font-size: 11px; cursor: pointer;
-        color: var(--vscode-textLink-foreground);
-        background: transparent; border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
-        border-radius: 12px;
-    }
-    .loadOlder:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); }
     .branchBanner {
         display: flex; align-items: flex-start; gap: 10px;
         margin: 10px 0 14px 0; padding: 10px 12px;
@@ -728,16 +730,6 @@ export function renderHtml(): string {
         display: flex; flex-direction: column;
     }
     #composer:focus-within { border-color: var(--vscode-focusBorder); }
-    #composer.dragover { border-color: var(--vscode-focusBorder); box-shadow: 0 0 0 1px var(--vscode-focusBorder); }
-    #dropHint {
-        display: none; position: absolute; inset: 0; z-index: 6;
-        align-items: center; justify-content: center; pointer-events: none;
-        border-radius: 8px; font-size: 0.9em; font-weight: 600;
-        color: var(--vscode-foreground);
-        background: var(--vscode-editor-inactiveSelectionBackground, rgba(120,160,255,0.14));
-        border: 1.5px dashed var(--vscode-focusBorder);
-    }
-    #composer.dragover #dropHint { display: flex; }
     /* Scroll-to-bottom button: floats just above the composer, only when scrolled up. */
     #scrollBottom {
         position: absolute; bottom: 10px; right: 28px; z-index: 5;
@@ -935,7 +927,11 @@ export function renderHtml(): string {
                 <div class="esTitle">Symposium</div>
                 <div class="esHint">Type below to start a conversation.</div>
             </div>
-            <div id="loadingState"><span class="spinner"></span><span id="loadingText">Loading session…</span></div>
+            <div id="loadingState">
+                <div class="ldLogo"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.5 1.5h1V3H11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2.5V1.5ZM6 6.5A1 1 0 1 0 6 8.5 1 1 0 0 0 6 6.5Zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM1 6h1v4H1V6Zm13 0h1v4h-1V6Z"/></svg></div>
+                <div class="ldName">Symposium</div>
+                <div class="ldSub"><span class="spinner"></span><span id="loadingText">Loading session…</span></div>
+            </div>
             <button id="scrollBottom" title="Ir para o fim"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 13.5 13 8.5h-3v-6H6v6H3L8 13.5Z"/></svg></button>
         </div>
         <div id="queued"></div>
@@ -943,7 +939,6 @@ export function renderHtml(): string {
         <div id="plan"></div>
         <div id="changedFiles"></div>
         <div id="composer">
-            <div id="dropHint">Solte os arquivos para anexar ao contexto</div>
             <div id="slash"></div>
             <div id="chips"></div>
             <textarea id="input" placeholder="Ask the agent…  (Enter sends · Shift+Enter newline)"></textarea>
@@ -997,28 +992,11 @@ export function renderHtml(): string {
 
     let attachments = [];   // [{path, name}]
     let activeFile = null;  // active editor path, offered as removable context
-    let activeFileRange = null;  // { start, end, startColumn?, endColumn? } when text is selected
+    let activeFileRange = null;  // { start, end } when lines are selected
     let activeFileDismissed = false;
     let activeFilePreview = false;  // VS Code preview tab (italic) → suggestion only
     let activeFilePinned = false;   // user clicked a preview suggestion to attach it
-    function activeFileSuffix() {
-        if (!activeFileRange) { return ""; }
-        const sc = activeFileRange.startColumn, ec = activeFileRange.endColumn;
-        if (activeFileRange.start === activeFileRange.end) {
-            return sc && ec && sc !== ec ? ":" + activeFileRange.start + ":" + sc + "-" + ec : ":" + activeFileRange.start;
-        }
-        return ":" + activeFileRange.start + "-" + activeFileRange.end;
-    }
-    function activeFileContextNote() {
-        if (!activeFileRange) { return ""; }
-        const sc = activeFileRange.startColumn, ec = activeFileRange.endColumn;
-        if (activeFileRange.start === activeFileRange.end) {
-            return sc && ec && sc !== ec
-                ? " (selected line " + activeFileRange.start + ", columns " + sc + "-" + ec + ")"
-                : " (selected line " + activeFileRange.start + ")";
-        }
-        return " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")";
-    }
+    function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
     let currentBackend = "", currentBackendName = "", agentLabels = null;
     let activeModel = "";
     let activeSessionId = "";
@@ -1259,19 +1237,28 @@ export function renderHtml(): string {
         if (permissionModes.length) {
             const gh = document.createElement("div"); gh.className = "menuGroup"; gh.textContent = "Permission mode"; list.appendChild(gh);
             for (const p of permissionModes) {
-                const mi = document.createElement("div"); mi.className = "mi";
-                const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = p === permissionValue ? "✓" : "";
-                const lbl = document.createElement("span"); lbl.className = "milbl"; lbl.textContent = p + (p === permissionDefault ? " (default)" : "");
-                mi.appendChild(tick); mi.appendChild(lbl); mi.title = PERM_DESC[p] || "";
-                mi.addEventListener("click", () => { permissionValue = p; });
+                const isActive = p === permissionValue;
+                const mi = document.createElement("div"); mi.className = "mi" + (isActive ? " active" : "");
+                const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = isActive ? "✓" : "";
+                const lbl = document.createElement("span"); lbl.className = "milbl";
+                const lblText = document.createElement("span"); lblText.className = "milbl-text";
+                lblText.textContent = p + (p === permissionDefault ? " (default)" : "");
+                const lblDesc = document.createElement("span"); lblDesc.className = "milbl-desc";
+                lblDesc.textContent = PERM_DESC[p] || "";
+                lbl.appendChild(lblText); lbl.appendChild(lblDesc);
+                mi.appendChild(tick); mi.appendChild(lbl);
+                mi.addEventListener("click", () => { permissionValue = p; ctxMenu.style.display = "none"; });
                 list.appendChild(mi);
             }
             const sep = document.createElement("div"); sep.className = "sep"; list.appendChild(sep);
         }
         const open = document.createElement("div"); open.className = "mi";
-        const t = document.createElement("span"); t.className = "tick"; const l = document.createElement("span"); l.className = "milbl"; l.textContent = "Open Settings…";
-        open.appendChild(t); open.appendChild(l);
-        open.addEventListener("click", () => vscode.postMessage({ type: "open-settings" }));
+        const t = document.createElement("span"); t.className = "tick";
+        const lbl = document.createElement("span"); lbl.className = "milbl";
+        const lt = document.createElement("span"); lt.className = "milbl-text"; lt.textContent = "Open Settings…";
+        lbl.appendChild(lt);
+        open.appendChild(t); open.appendChild(lbl);
+        open.addEventListener("click", () => { vscode.postMessage({ type: "open-settings" }); ctxMenu.style.display = "none"; });
         list.appendChild(open);
         ctxMenu.appendChild(list);
         ctxMenu.style.display = "block";
@@ -1347,125 +1334,25 @@ export function renderHtml(): string {
     log.addEventListener("scroll", updateScrollBtn);
     scrollBtn = document.getElementById("scrollBottom");
     if (scrollBtn) { scrollBtn.addEventListener("click", scrollToBottom); }
-
-    // --- Lazy history rendering ---------------------------------------------
-    // Render the most recent messages first (so the session opens at the latest
-    // turn), keeping older messages pending. When the user scrolls to the top a
-    // "load older" sentinel renders the previous chunk and prepends it, keeping
-    // scroll position stable. This avoids building huge transcripts oldest-first.
-    const HISTORY_BATCH = 30;
-    let pendingHistory = [];      // older messages not yet rendered (chronological)
-    let historyCarried = false;
-    let loadOlderBtn = null;
-
-    function renderOneHistory(m) {
-        if (m.role === "user") { message("user", m.text, m.ts); }
-        else if (m.role === "tool") { renderTool(m.toolName || m.text, m.detail || "", { input: m.input, result: m.result, added: m.added, removed: m.removed, todos: m.todos, path: m.path, diff: m.diff }); }
-        else if (m.role === "error") { append("error", "\u2716 " + m.text); }
-        else { message("assistant", m.text, m.ts); }
-    }
-
-    // Move the last count freshly-appended nodes to the top of the log, before
-    // the load-older button. Used to prepend an older chunk in correct order.
-    function prependLastNodes(count) {
-        const kids = Array.prototype.slice.call(log.children);
-        const moved = [];
-        for (let i = kids.length - 1, n = 0; i >= 0 && n < count; i--) {
-            const el = kids[i];
-            if (el === loadOlderBtn) { continue; }
-            moved.unshift(el); n++;
-        }
-        const ref = loadOlderBtn ? loadOlderBtn.nextSibling : log.firstChild;
-        for (const el of moved) { log.insertBefore(el, ref); }
-    }
-
-    function ensureLoadOlderBtn() {
-        if (loadOlderBtn) { return; }
-        loadOlderBtn = document.createElement("button");
-        loadOlderBtn.className = "loadOlder";
-        loadOlderBtn.textContent = "Load older messages";
-        loadOlderBtn.addEventListener("click", loadOlderChunk);
-        log.insertBefore(loadOlderBtn, log.firstChild);
-    }
-    function removeLoadOlderBtn() {
-        if (loadOlderBtn && loadOlderBtn.parentNode) { loadOlderBtn.parentNode.removeChild(loadOlderBtn); }
-        loadOlderBtn = null;
-    }
-
-    function loadOlderChunk() {
-        if (!pendingHistory.length) { removeLoadOlderBtn(); return; }
-        const prevH = log.scrollHeight, prevTop = log.scrollTop;
-        const chunk = pendingHistory.splice(Math.max(0, pendingHistory.length - HISTORY_BATCH));
-        const before = log.children.length;
-        for (const m of chunk) { renderOneHistory(m); }
-        const added = log.children.length - before;
-        prependLastNodes(added);
-        if (pendingHistory.length) { ensureLoadOlderBtn(); } else { removeLoadOlderBtn(); }
-        // keep the viewport anchored on what the user was reading
-        log.scrollTop = prevTop + (log.scrollHeight - prevH);
-        updateScrollBtn();
-    }
-
-    function renderHistoryBatch(messages, carried) {
-        pendingHistory = [];
-        historyCarried = carried;
-        removeLoadOlderBtn();
-        const recent = messages.length > HISTORY_BATCH ? messages.slice(messages.length - HISTORY_BATCH) : messages;
-        pendingHistory = messages.length > HISTORY_BATCH ? messages.slice(0, messages.length - HISTORY_BATCH) : [];
-        for (const m of recent) { renderOneHistory(m); }
-        if (!carried) {
-            append("meta", messages.length ? "\u2014 end of stored transcript \u2014" : "(empty transcript)");
-        }
-        if (pendingHistory.length) { ensureLoadOlderBtn(); }
-        scrollToBottom();   // land at the latest message when a session opens
-    }
-
-    // Auto-load older when the user scrolls near the top.
-    log.addEventListener("scroll", () => {
-        if (loadOlderBtn && log.scrollTop < 40) { loadOlderChunk(); }
-    });
     // Show the empty-state placeholder when the log has no messages yet.
     function refreshEmpty() { root.classList.toggle("empty", log.childElementCount === 0); }
 
     // Error block with a Retry action (re-sends the last user message).
-    function renderError(message, retryable) {
+    function renderError(message) {
         const stick = nearBottom();
         endToolGroup(); endStream();
         const el = document.createElement("div"); el.className = "msg plain error";
         const txt = document.createElement("div"); txt.textContent = "✖ " + message; el.appendChild(txt);
-        if (retryable && lastSendPayload) {
-            // Transient/transport failure (e.g. "fetch failed"): the request was
-            // valid, just didn't reach the backend. Offer only a Retry that
-            // resends the exact same last submission unchanged — no editing.
-            // TODO(auto-retry): VS Code chat retries transient request failures
-            // automatically with exponential backoff before surfacing an error
-            // to the user (see vscode-copilot-chat: the request layer wraps the
-            // fetch in a retry loop keyed on transient HTTP/network errors —
-            // 429/5xx/ECONNRESET/fetch-failed — with a small bounded number of
-            // attempts and increasing delay, and only renders this error block
-            // once retries are exhausted). To replicate here: have the OpenAI
-            // adapter (src/adapters/openai.ts run()) catch retryable errors and
-            // re-issue the same request N times with backoff before emitting the
-            // error event, OR drive it from the controller using lastSendPayload.
-            // For now retry is manual (this button); auto-retry is intentionally
-            // deferred per user request.
+        // Retry is just "edit & resend the last user message": it loads that
+        // message back into the composer (so you can change the model, text, or
+        // mode) and resending rewinds the history to that point.
+        const lastUser = lastUserRow();
+        if (lastUser) {
             const bar = document.createElement("div"); bar.className = "errActions";
             const b = document.createElement("button"); b.className = "retryBtn";
-            b.appendChild(svgIcon("history")); b.appendChild(document.createTextNode(" Retry"));
-            b.addEventListener("click", () => { b.disabled = true; retryLast(); });
+            b.appendChild(svgIcon("history")); b.appendChild(document.createTextNode(" Edit & retry"));
+            b.addEventListener("click", () => beginEdit(lastUser.idx, lastUser.text));
             bar.appendChild(b); el.appendChild(bar);
-        } else {
-            // Non-transient error: "edit & resend the last user message" — loads
-            // that message back into the composer (so you can change the model,
-            // text, or mode); resending rewinds the history to that point.
-            const lastUser = lastUserRow();
-            if (lastUser) {
-                const bar = document.createElement("div"); bar.className = "errActions";
-                const b = document.createElement("button"); b.className = "retryBtn";
-                b.appendChild(svgIcon("history")); b.appendChild(document.createTextNode(" Edit & retry"));
-                b.addEventListener("click", () => beginEdit(lastUser.idx, lastUser.text));
-                bar.appendChild(b); el.appendChild(bar);
-            }
         }
         log.appendChild(el); refreshEmpty(); autoScroll(stick);
     }
@@ -1620,18 +1507,7 @@ export function renderHtml(): string {
     function endStream() { streamMsg = null; streamBody = null; streamText = ""; }
 
     // ---- minimal, safe markdown → DOM (no innerHTML of untrusted text) ----
-    // Strip memory-citation markup emitted by the Sufficit AI / responses
-    // backend (e.g. <oai-mem-citation ...>text</oai-mem-citation>). Keep any
-    // inner text, drop the tags. Template-safe (no single-backslash regex).
-    function stripCitations(s) {
-        if (s.indexOf("oai-mem-citation") < 0) return s;
-        const openRe = new RegExp("<oai-mem-citation[^>]*>", "gi");
-        const closeRe = new RegExp("</oai-mem-citation>", "gi");
-        return s.replace(openRe, "").replace(closeRe, "");
-    }
-
     function renderMarkdown(container, src) {
-        src = stripCitations(String(src));
         const lines = String(src).split("\\n");
         let i = 0; let list = null;
         const flushList = () => { list = null; };
@@ -1780,7 +1656,7 @@ export function renderHtml(): string {
 
     // inline: **bold**, *italic*, \`code\`, [text](url) — builds text nodes safely
     function inline(parent, text) {
-        const re = /(\`[^\`]+\`|\\*\\*[^*]+\\*\\*|\\*[^*]+\\*|\\[[^\\]]+\\]\\([^)]+\\))/g;
+        const re = /(\`[^\`]+\`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
         let last = 0; let m;
         while ((m = re.exec(text)) !== null) {
             if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
@@ -1788,7 +1664,7 @@ export function renderHtml(): string {
             if (tok.startsWith("\`")) { const e = document.createElement("code"); e.className = "inline"; e.textContent = tok.slice(1, -1); parent.appendChild(e); }
             else if (tok.startsWith("**")) { const e = document.createElement("strong"); e.textContent = tok.slice(2, -2); parent.appendChild(e); }
             else if (tok.startsWith("*")) { const e = document.createElement("em"); e.textContent = tok.slice(1, -1); parent.appendChild(e); }
-            else { const mm = tok.match(/^\\[([^\\]]+)\\]\\(([^)]+)\\)$/); const a = document.createElement("a"); a.textContent = mm[1]; a.href = mm[2]; a.title = mm[2]; parent.appendChild(a); }
+            else { const mm = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/); const a = document.createElement("a"); a.textContent = mm[1]; a.href = mm[2]; a.title = mm[2]; parent.appendChild(a); }
             last = re.lastIndex;
         }
         if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
@@ -1926,23 +1802,11 @@ export function renderHtml(): string {
     };
     // Live tool rows awaiting their result, keyed by tool id.
     const toolRows = {};
-    // Tools that change a file on disk → clicking the target opens a diff.
-    // Read-only tools (Read/read_file/Grep/...) just open the file.
-    const MUTATING_TOOLS = new Set(["Write","Edit","MultiEdit","NotebookEdit","write_file"]);
     const TAB = String.fromCharCode(9);
     function allDigits(s) { return s.length > 0 && [...s].every((ch) => ch >= "0" && ch <= "9"); }
-    // Pretty-print a string that is valid JSON (object/array) with 2-space
-    // indentation; returns the original string unchanged otherwise.
-    function beautifyJson(text) {
-        const t = String(text).trim();
-        if (!t || (t[0] !== "{" && t[0] !== "[")) { return text; }
-        try { return JSON.stringify(JSON.parse(t), null, 2); }
-        catch (_e) { return text; }
-    }
     // Tool output from Read comes as "  <n>\t<code>"; split the line number into
     // a non-selectable gutter so copying the result never includes the numbers.
     function toolSection(label, text) {
-        text = beautifyJson(text);
         const sec = document.createElement("div"); sec.className = "toolsec";
         const lab = document.createElement("div"); lab.className = "tlabel"; lab.textContent = label;
         const lines = String(text).split("\\n");
@@ -2039,9 +1903,8 @@ export function renderHtml(): string {
             // A file-referencing tool: make the target a link (click = diff,
             // right-click = open file / open diff menu).
             if (opts.path) {
-                const mut = MUTATING_TOOLS.has(name);
-                tg.classList.add("tLink"); tg.title = opts.path + (mut ? " — click for diff, right-click for more" : " — click to open, right-click for more");
-                tg.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: mut ? "file-diff" : "open-file", path: opts.path }); });
+                tg.classList.add("tLink"); tg.title = opts.path + " — click for diff, right-click for more";
+                tg.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "file-diff", path: opts.path }); });
                 tg.addEventListener("contextmenu", (e) => showFileMenu(e, opts.path));
             }
             head.appendChild(tg);
@@ -2494,7 +2357,7 @@ export function renderHtml(): string {
     }
     function renderSessionItem(s) {
             const el = document.createElement("div");
-            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "") + (s.deleting ? " deleting" : "");
+            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "");
             // Pinned items reorder by drag-and-drop (the up/down menu still works).
             if (s.pinned) {
                 el.draggable = true;
@@ -2508,9 +2371,7 @@ export function renderHtml(): string {
             // Live status indicator: spinner = working, green dot = idle/live.
             const statusDot = document.createElement("div");
             statusDot.className = "statusDot";
-            if (s.deleting) {
-                const w = document.createElement("span"); w.className = "spinner del"; w.title = "Deleting…"; statusDot.appendChild(w);
-            } else if (s.status === "working") {
+            if (s.status === "working") {
                 const w = document.createElement("span"); w.className = "work"; w.title = "Agent working…"; statusDot.appendChild(w);
             } else if (s.status === "idle") {
                 const d = document.createElement("span"); d.className = "idle"; d.title = "Running session (idle)"; statusDot.appendChild(d);
@@ -2528,7 +2389,7 @@ export function renderHtml(): string {
             ttl.title = s.title + "\\n" + s.sessionId;
             const sub = document.createElement("span");
             sub.className = "sub";
-            const statusText = s.deleting ? "deleting… · " : (s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : ""));
+            const statusText = s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : "");
             sub.textContent = statusText + s.backend + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
             sub.title = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "";
             body.appendChild(ttl);
@@ -2750,7 +2611,7 @@ export function renderHtml(): string {
         // A preview-tab file is only attached when the user pinned it (clicked the
         // suggestion); a really-open file auto-attaches as before.
         if (activeFile && !activeFileDismissed && (!activeFilePreview || activeFilePinned)) {
-            atts.unshift(activeFile + activeFileContextNote());
+            atts.unshift(activeFile + (activeFileRange ? " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")" : ""));
         }
         const editFrom = editAnchor;
         const payload = {
@@ -2868,51 +2729,6 @@ export function renderHtml(): string {
     // adding it to both the input and the document fired it twice.
     document.addEventListener("paste", handlePaste);
 
-    function uriListFromDrop(dt) {
-        const raw = dt.getData("text/uri-list") || "";
-        return raw.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-    }
-    function filePayload(file) {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const base64 = String(reader.result || "").split(",")[1] || "";
-                resolve({ name: file.name || "dropped-file", mime: file.type || "application/octet-stream", data: base64 });
-            };
-            reader.onerror = () => resolve(null);
-            reader.readAsDataURL(file);
-        });
-    }
-    async function handleDrop(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        composerEl.classList.remove("dragover");
-        const dt = e.dataTransfer;
-        if (!dt) return;
-        const uris = uriListFromDrop(dt);
-        if (uris.length) {
-            vscode.postMessage({ type: "drop-uris", uris });
-            return;
-        }
-        const files = Array.from(dt.files || []);
-        if (!files.length) return;
-        const payloads = (await Promise.all(files.map(filePayload))).filter(Boolean);
-        if (payloads.length) vscode.postMessage({ type: "drop-files", files: payloads });
-    }
-    if (composerEl) {
-        ["dragenter", "dragover"].forEach((type) => composerEl.addEventListener(type, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-            composerEl.classList.add("dragover");
-        }));
-        ["dragleave", "dragend"].forEach((type) => composerEl.addEventListener(type, (e) => {
-            if (type === "dragleave" && composerEl.contains(e.relatedTarget)) return;
-            composerEl.classList.remove("dragover");
-        }));
-        composerEl.addEventListener("drop", handleDrop);
-    }
-
     window.addEventListener("message", ({ data }) => {
         switch (data.type) {
             case "boot": {
@@ -2973,9 +2789,7 @@ export function renderHtml(): string {
                 renderSessions();
                 renderStatusbar(data);
                 activeFile = data.activeFile || null;
-                activeFileRange = (data.activeFileStart && data.activeFileEnd)
-                    ? { start: data.activeFileStart, end: data.activeFileEnd, startColumn: data.activeFileStartColumn, endColumn: data.activeFileEndColumn }
-                    : null;
+                activeFileRange = (data.activeFileStart && data.activeFileEnd) ? { start: data.activeFileStart, end: data.activeFileEnd } : null;
                 activeFilePreview = !!data.activeFilePreview; activeFilePinned = false;
                 activeFileDismissed = false; renderChips();
                 setLoading(false);   // session resolved — reveal the conversation
@@ -2987,9 +2801,7 @@ export function renderHtml(): string {
                 // Keep it dismissed only while the same file stays active.
                 if (data.path !== activeFile) { activeFileDismissed = false; activeFilePinned = false; }
                 activeFile = data.path || null;
-                activeFileRange = (data.start && data.end)
-                    ? { start: data.start, end: data.end, startColumn: data.startColumn, endColumn: data.endColumn }
-                    : null;
+                activeFileRange = (data.start && data.end) ? { start: data.start, end: data.end } : null;
                 activeFilePreview = !!data.preview;
                 renderChips();
                 break;
@@ -3071,15 +2883,21 @@ export function renderHtml(): string {
                 break;
             }
             case "history": {
-                clearTimeout(bootTimer); bootStep("host", null, "ok"); bootStep("session", "Sessão pronta", "ok"); bootComplete();
                 if (data.carried && data.branchLabel) {
                     branchBanner(data.branchLabel.title, data.branchLabel.detail);
                 }
-                // Lazy history: render only the most recent batch immediately and
-                // keep older messages pending, prepended on scroll-to-top. This
-                // lands the view on the latest message right away instead of
-                // building the whole transcript oldest-first.
-                renderHistoryBatch(data.messages || [], !!data.carried);
+                for (const m of data.messages) {
+                    if (m.role === "user") message("user", m.text, m.ts);
+                    else if (m.role === "tool") renderTool(m.toolName || m.text, m.detail || "", { input: m.input, result: m.result, added: m.added, removed: m.removed, todos: m.todos, path: m.path, diff: m.diff });
+                    else if (m.role === "error") append("error", "✖ " + m.text);
+                    else message("assistant", m.text, m.ts);
+                }
+                // carried history is a handoff replay shown inline as a
+                // continuous conversation — no "stored transcript" framing.
+                if (!data.carried) {
+                    append("meta", data.messages.length ? "— end of stored transcript —" : "(empty transcript)");
+                }
+                scrollToBottom();   // land at the latest message when a session opens
                 break;
             }
             case "backends": {
@@ -3143,7 +2961,7 @@ export function renderHtml(): string {
                         // strip any " (selected lines …)" suffix for the path to open
                         // NOTE: use [(] instead of \\( — this string is emitted inside a
                         // template literal, where \\( collapses to ( and breaks the regex.
-                        const cleanPath = String(p).replace(/ [(]selected line.*$/, "");
+                        const cleanPath = String(p).replace(/ [(]selected lines.*$/, "");
                         const lbl = document.createElement("span"); lbl.textContent = String(p).split("/").pop();
                         a.appendChild(lbl);
                         a.addEventListener("click", () => vscode.postMessage({ type: "open-file", path: cleanPath }));
@@ -3180,7 +2998,7 @@ export function renderHtml(): string {
                 else if (ev.kind === "error") {
                     // Defensive: an error must never leave the composer stuck busy.
                     busy = false; sendBtn.disabled = false; setStatus();
-                    renderError(ev.message, ev.retryable);
+                    renderError(ev.message);
                 }
                 else if (ev.kind === "session") {
                     if (ev.model) {
@@ -3208,10 +3026,7 @@ export function renderHtml(): string {
         }
     });
 
-    // ---- Boot/startup screen -------------------------------------------------
-    // Shown immediately on parse so the panel never looks frozen. Lists the boot
-    // steps with live status (pending/ok/fail) to aid diagnostics. The extension
-    // may push {type:"boot", id, label, status, detail} to add/update steps;
+    // Boot screen: shows immediately on parse, hides once a session resolves.
     // the first session meta/history marks boot complete and hides the overlay.
     const BOOT_ICONS = {
         ok: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 11.6 3.4 8.5l-1 1 4.1 4.1L14 6.1l-1-1Z"/></svg>',
@@ -3222,23 +3037,26 @@ export function renderHtml(): string {
     const bootSteps = new Map();
     let bootDone = false;
     function renderBootStep(id, label, status, detail) {
-        let row = bootSteps.get(id);
-        if (!row) {
-            row = document.createElement("div");
-            row.className = "bootStep";
-            const ic = document.createElement("span"); ic.className = "bsIcon";
-            const lb = document.createElement("span"); lb.className = "bsLabel";
-            const dt = document.createElement("span"); dt.className = "bsDetail";
-            row.appendChild(ic); row.appendChild(lb); row.appendChild(dt);
-            bootStepsEl.appendChild(row);
-            bootSteps.set(id, row);
-        }
-        if (label != null) { row.querySelector(".bsLabel").textContent = label; }
-        if (detail != null) { row.querySelector(".bsDetail").textContent = detail; }
-        const st = status || "pending";
-        row.className = "bootStep " + st;
-        const ic = row.querySelector(".bsIcon");
-        ic.innerHTML = st === "pending" ? '<span class="bsSpin"></span>' : (BOOT_ICONS[st] || "");
+        if (!bootStepsEl) { return; }
+        try {
+            let row = bootSteps.get(id);
+            if (!row) {
+                row = document.createElement("div");
+                row.className = "bootStep";
+                const ic = document.createElement("span"); ic.className = "bsIcon";
+                const lb = document.createElement("span"); lb.className = "bsLabel";
+                const dt = document.createElement("span"); dt.className = "bsDetail";
+                row.appendChild(ic); row.appendChild(lb); row.appendChild(dt);
+                bootStepsEl.appendChild(row);
+                bootSteps.set(id, row);
+            }
+            if (label != null) { row.querySelector(".bsLabel").textContent = label; }
+            if (detail != null) { row.querySelector(".bsDetail").textContent = detail; }
+            const st = status || "pending";
+            row.className = "bootStep " + st;
+            const ic = row.querySelector(".bsIcon");
+            ic.innerHTML = st === "pending" ? '<span class="bsSpin"></span>' : (BOOT_ICONS[st] || "");
+        } catch (e) { /* best-effort — never block script init */ }
     }
     function bootStep(id, label, status, detail) {
         if (bootDone && status === "ok") { return; }
@@ -3251,15 +3069,15 @@ export function renderHtml(): string {
         root.classList.add("booted");
     }
     // Seed the steps we know about up front (extension confirms/overrides them).
-    bootStep("host", "Conectando ao host da extensão", "pending");
-    bootStep("ui", "Carregando interface", "ok");
-    bootStep("session", "Preparando sessão", "pending");
+    try { bootStep("host", "Conectando ao host da extensão", "pending"); } catch (e) {}
+    try { bootStep("ui", "Carregando interface", "ok"); } catch (e) {}
+    try { bootStep("session", "Preparando sessão", "pending"); } catch (e) {}
     // Safety: never trap the user behind the boot screen. After a short grace
     // period surface a warning; shortly after, force-reveal the UI even if the
     // extension never resolved the session (e.g. a backend's discovery hung).
     const bootTimer = setTimeout(() => {
         if (bootDone) { return; }
-        bootHintEl.textContent = "Demorando mais que o esperado — veja Output › Symposium para diagnóstico.";
+        if (bootHintEl) { bootHintEl.textContent = "Demorando mais que o esperado — veja Output › Symposium para diagnóstico."; }
     }, 8000);
     const bootForce = setTimeout(() => {
         if (bootDone) { return; }

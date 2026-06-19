@@ -84,6 +84,12 @@ export interface OpenAIAdapterConfig {
     supportsDeveloperRole?: boolean;
     /** Max tool round-trips per turn before pausing (default 50). */
     maxToolHops?: number;
+    /**
+     * Sliding window: max conversation messages sent per request.
+     * System/developer prefix and the first user turn are always preserved.
+     * Default 40 (~20 turns). 0 = no trimming (old behaviour).
+     */
+    maxHistoryMessages?: number;
     /** How local shell tool execution is surfaced: silent, inline stream, or visible VS Code terminal. */
     shellExecution?: ShellExecutionMode;
     log?: (message: string) => void;
@@ -195,6 +201,34 @@ class OpenAISession extends EventEmitter implements AgentSession {
     private label(id: string): string {
         if (!id) { return ""; }
         return discoveredLabels.get(this.cfg.baseUrl)?.[id] ?? id;
+    }
+
+    /**
+     * Sliding-window view of this.messages for outbound requests.
+     *
+     * Always keeps:
+     *   1. The system/developer prefix (session init prompts + one-shot preambles).
+     *   2. The first user message (anchor that triggered those preambles).
+     *   3. Up to maxHistoryMessages of the most recent conversation tail.
+     *
+     * The full array is preserved in this.messages for persistence/ledger.
+     */
+    private windowedMessages(): ChatMessage[] {
+        const max = this.cfg.maxHistoryMessages ?? 40;
+        if (max === 0) { return this.messages; }
+
+        // Split into protected prefix (system/developer up to first user msg)
+        // and the conversation body (first user turn onwards).
+        let firstUserIdx = this.messages.findIndex((m) => m.role === "user");
+        if (firstUserIdx === -1) { return this.messages; }
+        // Include the first user message itself in the protected prefix.
+        firstUserIdx += 1;
+
+        const prefix = this.messages.slice(0, firstUserIdx);
+        const conv = this.messages.slice(firstUserIdx);
+
+        if (conv.length <= max) { return this.messages; }
+        return [...prefix, ...conv.slice(conv.length - max)];
     }
 
     private headers(loginToken?: string | null): Record<string, string> {
@@ -368,9 +402,10 @@ class OpenAISession extends EventEmitter implements AgentSession {
             // Tool-call loop: keep round-tripping while the model requests tools.
             for (let hop = 0; hop < maxHops; hop++) {
                 this.abort = new AbortController();
+                const windowed = this.windowedMessages();
                 const body: Record<string, unknown> = responses
-                    ? { model: this.model(), input: toResponsesInput(this.messages), stream: true }
-                    : { model: this.model(), messages: this.messages, stream: true };
+                    ? { model: this.model(), input: toResponsesInput(windowed), stream: true }
+                    : { model: this.model(), messages: windowed, stream: true };
                 // Gate by the bound agent-def's allowlist (options.aiTools); when
                 // unset, expose all; when set to [], expose none (tools off).
                 const allow = this.options.aiTools;
