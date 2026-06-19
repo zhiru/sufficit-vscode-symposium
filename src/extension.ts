@@ -87,6 +87,36 @@ async function resolveModelPin(adapter: AgentAdapter, pin: string): Promise<stri
 }
 import { snapshots } from "./snapshots";
 
+/** Install commands for known CLI backends (shown when the CLI is missing). */
+const CLI_INSTALL: Record<string, { cmd: string; label: string }> = {
+    codex: { cmd: "npm install -g @openai/codex", label: "Install Codex CLI" },
+    claude: { cmd: "npm install -g @anthropic-ai/claude-code", label: "Install Claude Code" },
+    copilot: { cmd: "npm install -g @github/copilot-cli", label: "Install Copilot CLI" },
+};
+
+/**
+ * Show a warning for an unavailable backend with an optional install shortcut.
+ * Opens a new terminal and runs the install command when the user accepts.
+ */
+async function promptInstallCli(backend: string, label: string, errorDesc: string): Promise<void> {
+    const install = CLI_INSTALL[backend];
+    const isEnoent = /ENOENT|not found|command not found/i.test(errorDesc);
+    if (install && isEnoent) {
+        const choice = await vscode.window.showWarningMessage(
+            `${label} CLI not found.`,
+            { modal: false },
+            install.label,
+        );
+        if (choice === install.label) {
+            const term = vscode.window.createTerminal({ name: `Install ${label}` });
+            term.show();
+            term.sendText(install.cmd);
+        }
+    } else {
+        void vscode.window.showWarningMessage(`${label} CLI unavailable: ${errorDesc}`);
+    }
+}
+
 function claudeConfig(): ClaudeAdapterConfig {
     const config = vscode.workspace.getConfiguration("symposium.claude");
     return {
@@ -485,9 +515,12 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         vscode.commands.registerCommand("symposium.newSession", async () => {
             const picks = await Promise.all(adapters.map(async (adapter) => {
                 const probe = await adapter.available();
+                const isEnoent = !probe.ok && /ENOENT|not found/i.test(probe.error ?? "");
+                const hasInstall = isEnoent && !!CLI_INSTALL[adapter.backend];
                 return {
                     label: (adapter as { displayName?: string }).displayName ?? adapter.backend,
                     description: probe.ok ? probe.version : `unavailable: ${probe.error}`,
+                    detail: hasInstall ? `$(cloud-download) Click to install via: ${CLI_INSTALL[adapter.backend].cmd}` : undefined,
                     adapter,
                     ok: probe.ok,
                 };
@@ -499,8 +532,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
                 return;
             }
             if (!choice.ok) {
-                void vscode.window.showWarningMessage(
-                    `${choice.label} CLI is not available: ${choice.description}`);
+                void promptInstallCli(choice.adapter.backend, choice.label, choice.description ?? "");
                 return;
             }
             const cwd = defaultCwd();
@@ -534,7 +566,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
                 return;
             }
             if (!choice.ok) {
-                void vscode.window.showWarningMessage(`${choice.label} indisponível: ${choice.description}`);
+                void promptInstallCli(choice.adapter.backend, choice.label, choice.description ?? "");
                 return;
             }
             const model = await resolveModelPin(choice.adapter, readAgentModel(agent.name));

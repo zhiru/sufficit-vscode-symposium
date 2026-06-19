@@ -1571,6 +1571,8 @@ export function renderHtml(): string {
             const name = document.createElement("span"); name.textContent = currentBackendName || BACKEND_NAMES[currentBackend] || "Agent";
             label.appendChild(av); label.appendChild(name);
         } else {
+            // Reset after user message so the next assistant reply always shows its label
+            if (role === "user") { lastMsgBackend = ""; lastMsgModel = ""; }
             const name = document.createElement("span"); name.textContent = "You";
             label.appendChild(name);
         }
