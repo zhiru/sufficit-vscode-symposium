@@ -24,8 +24,8 @@ function activeEditorFile(): string | undefined {
     return doc && doc.uri.scheme === "file" ? doc.uri.fsPath : undefined;
 }
 
-/** Active-file context including a non-empty line selection (1-based, inclusive). */
-function activeEditorContext(): { path?: string; start?: number; end?: number; preview?: boolean } {
+/** Active-file context including a non-empty selection (1-based lines/columns). */
+function activeEditorContext(): { path?: string; start?: number; end?: number; startColumn?: number; endColumn?: number; preview?: boolean } {
     const ed = vscode.window.activeTextEditor;
     const path = ed && ed.document.uri.scheme === "file" ? ed.document.uri.fsPath : undefined;
     if (!path || !ed) { return { path }; }
@@ -37,9 +37,11 @@ function activeEditorContext(): { path?: string; start?: number; end?: number; p
     if (tab?.isPreview && input?.uri?.fsPath === path) { preview = true; }
     const sel = ed.selection;
     if (sel.isEmpty) { return { path, preview }; }
-    // A selection that ends at column 0 of a line doesn't include that line.
-    const endLine = sel.end.character === 0 && sel.end.line > sel.start.line ? sel.end.line : sel.end.line + 1;
-    return { path, start: sel.start.line + 1, end: endLine, preview };
+    const start = sel.start.line + 1;
+    const end = sel.end.character === 0 && sel.end.line > sel.start.line ? sel.end.line : sel.end.line + 1;
+    const startColumn = sel.start.character + 1;
+    const endColumn = sel.end.character + 1;
+    return { path, start, end, startColumn, endColumn, preview };
 }
 
 const IMAGE_EXT: Record<string, string> = {
@@ -761,6 +763,8 @@ export class ChatSurface {
             activeFile: activeEditorContext().path,
             activeFileStart: activeEditorContext().start,
             activeFileEnd: activeEditorContext().end,
+            activeFileStartColumn: activeEditorContext().startColumn,
+            activeFileEndColumn: activeEditorContext().endColumn,
             activeFilePreview: activeEditorContext().preview,
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
         });
@@ -821,6 +825,8 @@ export class ChatSurface {
             activeFile: activeEditorContext().path,
             activeFileStart: activeEditorContext().start,
             activeFileEnd: activeEditorContext().end,
+            activeFileStartColumn: activeEditorContext().startColumn,
+            activeFileEndColumn: activeEditorContext().endColumn,
             activeFilePreview: activeEditorContext().preview,
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
         });

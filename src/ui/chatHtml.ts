@@ -941,11 +941,28 @@ export function renderHtml(): string {
 
     let attachments = [];   // [{path, name}]
     let activeFile = null;  // active editor path, offered as removable context
-    let activeFileRange = null;  // { start, end } when lines are selected
+    let activeFileRange = null;  // { start, end, startColumn?, endColumn? } when text is selected
     let activeFileDismissed = false;
     let activeFilePreview = false;  // VS Code preview tab (italic) → suggestion only
     let activeFilePinned = false;   // user clicked a preview suggestion to attach it
-    function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
+    function activeFileSuffix() {
+        if (!activeFileRange) { return ""; }
+        const sc = activeFileRange.startColumn, ec = activeFileRange.endColumn;
+        if (activeFileRange.start === activeFileRange.end) {
+            return sc && ec && sc !== ec ? ":" + activeFileRange.start + ":" + sc + "-" + ec : ":" + activeFileRange.start;
+        }
+        return ":" + activeFileRange.start + "-" + activeFileRange.end;
+    }
+    function activeFileContextNote() {
+        if (!activeFileRange) { return ""; }
+        const sc = activeFileRange.startColumn, ec = activeFileRange.endColumn;
+        if (activeFileRange.start === activeFileRange.end) {
+            return sc && ec && sc !== ec
+                ? " (selected line " + activeFileRange.start + ", columns " + sc + "-" + ec + ")"
+                : " (selected line " + activeFileRange.start + ")";
+        }
+        return " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")";
+    }
     let currentBackend = "", currentBackendName = "", agentLabels = null;
     let activeModel = "";
     let activeSessionId = "";
@@ -2600,7 +2617,7 @@ export function renderHtml(): string {
         // A preview-tab file is only attached when the user pinned it (clicked the
         // suggestion); a really-open file auto-attaches as before.
         if (activeFile && !activeFileDismissed && (!activeFilePreview || activeFilePinned)) {
-            atts.unshift(activeFile + (activeFileRange ? " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")" : ""));
+            atts.unshift(activeFile + activeFileContextNote());
         }
         const editFrom = editAnchor;
         const payload = {
@@ -2772,7 +2789,9 @@ export function renderHtml(): string {
                 renderSessions();
                 renderStatusbar(data);
                 activeFile = data.activeFile || null;
-                activeFileRange = (data.activeFileStart && data.activeFileEnd) ? { start: data.activeFileStart, end: data.activeFileEnd } : null;
+                activeFileRange = (data.activeFileStart && data.activeFileEnd)
+                    ? { start: data.activeFileStart, end: data.activeFileEnd, startColumn: data.activeFileStartColumn, endColumn: data.activeFileEndColumn }
+                    : null;
                 activeFilePreview = !!data.activeFilePreview; activeFilePinned = false;
                 activeFileDismissed = false; renderChips();
                 setLoading(false);   // session resolved — reveal the conversation
@@ -2784,7 +2803,9 @@ export function renderHtml(): string {
                 // Keep it dismissed only while the same file stays active.
                 if (data.path !== activeFile) { activeFileDismissed = false; activeFilePinned = false; }
                 activeFile = data.path || null;
-                activeFileRange = (data.start && data.end) ? { start: data.start, end: data.end } : null;
+                activeFileRange = (data.start && data.end)
+                    ? { start: data.start, end: data.end, startColumn: data.startColumn, endColumn: data.endColumn }
+                    : null;
                 activeFilePreview = !!data.preview;
                 renderChips();
                 break;
@@ -2944,7 +2965,7 @@ export function renderHtml(): string {
                         // strip any " (selected lines …)" suffix for the path to open
                         // NOTE: use [(] instead of \\( — this string is emitted inside a
                         // template literal, where \\( collapses to ( and breaks the regex.
-                        const cleanPath = String(p).replace(/ [(]selected lines.*$/, "");
+                        const cleanPath = String(p).replace(/ [(]selected line.*$/, "");
                         const lbl = document.createElement("span"); lbl.textContent = String(p).split("/").pop();
                         a.appendChild(lbl);
                         a.addEventListener("click", () => vscode.postMessage({ type: "open-file", path: cleanPath }));
