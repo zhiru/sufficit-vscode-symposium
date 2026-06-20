@@ -224,6 +224,10 @@ export const chatStyles = `    body {
     .sessionItem.pinned { cursor: grab; }
     .sessionItem.dragging { opacity: 0.5; }
     .sessionItem.dropTarget { box-shadow: inset 0 2px 0 var(--vscode-focusBorder); }
+    .sessionItem.deleting { opacity: 0.55; cursor: default; pointer-events: none; border-left-color: var(--vscode-errorForeground); }
+    .sessionItem.deleting .ttl { text-decoration: line-through; }
+    .sessionItem.deleting .sub { color: var(--vscode-errorForeground); }
+    .sessionItem.deleting .statusDot .spinner { width: 12px; height: 12px; border-width: 2px; }
     .sessionItem .statusDot .stored { width: 13px; height: 13px; opacity: 0.4; }
     .sessionItem.active .statusDot .stored { opacity: 0.7; }
     .sessionItem .ttl { line-height: 1.35; }

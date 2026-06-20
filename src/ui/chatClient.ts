@@ -1470,7 +1470,7 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     }
     function renderSessionItem(s) {
             const el = document.createElement("div");
-            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "");
+            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "") + (s.deleting ? " deleting" : "");
             el.tabIndex = 0;
             el.setAttribute("role", "option");
             el.setAttribute("aria-selected", s.sessionId === activeSessionId ? "true" : "false");
@@ -1492,7 +1492,9 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
             // Live status indicator: spinner = working, green dot = idle/live.
             const statusDot = document.createElement("div");
             statusDot.className = "statusDot";
-            if (s.status === "working") {
+            if (s.deleting) {
+                const sp = document.createElement("span"); sp.className = "spinner"; sp.title = "Excluindo…"; statusDot.appendChild(sp);
+            } else if (s.status === "working") {
                 const w = document.createElement("span"); w.className = "work"; w.title = "Agent working…"; statusDot.appendChild(w);
             } else if (s.status === "idle") {
                 const d = document.createElement("span"); d.className = "idle"; d.title = "Running session (idle)"; statusDot.appendChild(d);
@@ -1510,30 +1512,41 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
             ttl.title = s.title + "\\n" + s.sessionId;
             const sub = document.createElement("span");
             sub.className = "sub";
-            const statusText = s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : "");
-            sub.textContent = statusText + s.backend + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
+            if (s.deleting) {
+                sub.textContent = "excluindo…";
+            } else {
+                const statusText = s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : "");
+                sub.textContent = statusText + s.backend + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
+            }
             sub.title = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "";
             body.appendChild(ttl);
             body.appendChild(sub);
-            body.addEventListener("click", () => {
-                root.classList.remove("listOpen");
-                activeSessionId = s.sessionId; renderSessions();
-                setLoading(true, "Loading session…");
-                vscode.postMessage({ type: "open-session", sessionId: s.sessionId, backend: s.backend });
-            });
+            // While a delete scrub is in flight the row is inert (no open / no menu).
+            if (!s.deleting) {
+                body.addEventListener("click", () => {
+                    root.classList.remove("listOpen");
+                    activeSessionId = s.sessionId; renderSessions();
+                    setLoading(true, "Loading session…");
+                    vscode.postMessage({ type: "open-session", sessionId: s.sessionId, backend: s.backend });
+                });
+            }
 
             // One "more" button opens the same menu as right-click.
             const acts = document.createElement("div");
             acts.className = "acts";
-            const more = document.createElement("button");
-            more.appendChild(svgIcon("more")); more.title = "Actions";
-            more.addEventListener("click", (ev) => { ev.stopPropagation(); showCtx(ev, s); });
-            acts.appendChild(more);
+            if (!s.deleting) {
+                const more = document.createElement("button");
+                more.appendChild(svgIcon("more")); more.title = "Actions"; more.setAttribute("aria-label", "Actions");
+                more.addEventListener("click", (ev) => { ev.stopPropagation(); showCtx(ev, s); });
+                acts.appendChild(more);
+            }
 
             el.appendChild(statusDot);
             el.appendChild(body);
             el.appendChild(acts);
-            el.addEventListener("contextmenu", (ev) => { ev.preventDefault(); showCtx(ev, s); });
+            if (!s.deleting) {
+                el.addEventListener("contextmenu", (ev) => { ev.preventDefault(); showCtx(ev, s); });
+            }
             return el;
     }
 
