@@ -1389,6 +1389,11 @@ export const chatClientJs = `
             return;
         }
         hideCtx();
+        if (action === "delete") {
+            // Immediate visual feedback before the backend confirms
+            const el = document.querySelector(".sessionItem[data-session-id='" + s.sessionId + "']");
+            if (el) { el.classList.add("deleting"); }
+        }
         vscode.postMessage({ type: "session-action", action, sessionId: s.sessionId, backend: s.backend });
     }
 
@@ -1504,7 +1509,8 @@ export const chatClientJs = `
     }
     function renderSessionItem(s) {
             const el = document.createElement("div");
-            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "");
+            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "") + (s.deleting ? " deleting" : "");
+            el.dataset.sessionId = s.sessionId;
             el.tabIndex = 0;
             el.setAttribute("role", "option");
             el.setAttribute("aria-selected", s.sessionId === activeSessionId ? "true" : "false");

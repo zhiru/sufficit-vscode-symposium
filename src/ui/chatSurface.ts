@@ -889,6 +889,14 @@ export class ChatSurface {
         this.detachActive();
         this.post({ type: "clear" });
 
+        // Inject language preference hint for new (non-resumed) sessions.
+        if (!options.resumeSessionId) {
+            const langHint = this.buildLangHint();
+            if (langHint) {
+                options = { ...options, systemPrompt: options.systemPrompt ? options.systemPrompt + "\n\n" + langHint : langHint };
+            }
+        }
+
         // Reuse a still-running controller for this session; else create one.
         const existing = options.resumeSessionId
             ? this.deps.runtime.findBySessionId(options.resumeSessionId)
@@ -1018,6 +1026,16 @@ export class ChatSurface {
      * return). The terminal/follow mirrors are surface-bound and torn down
      * (the terminal panel itself stays open).
      */
+    private buildLangHint(): string {
+        const cfg = vscode.workspace.getConfiguration("symposium.chat");
+        const setting = cfg.get<string>("preferredLanguage", "").trim();
+        const lang = setting || vscode.env.language || "";
+        if (!lang || /^en(-|$)/i.test(lang)) {
+            return "";
+        }
+        return `The user prefers responses in "${lang}". This is a preference, not a strict requirement — use your best judgment.`;
+    }
+
     private detachActive(): void {
         this.controller?.detach();
         this.controller = undefined;

@@ -224,6 +224,9 @@ export const chatStyles = `
     }
     .sessionItem.pinned { cursor: grab; }
     .sessionItem.dragging { opacity: 0.5; }
+    .sessionItem.deleting { opacity: 0.45; pointer-events: none; }
+    .sessionItem.deleting .ttl { text-decoration: line-through; }
+    .sessionItem.deleting .sub::before { content: "⏳ "; }
     .sessionItem.dropTarget { box-shadow: inset 0 2px 0 var(--vscode-focusBorder); }
     .sessionItem .statusDot .stored { width: 13px; height: 13px; opacity: 0.4; }
     .sessionItem.active .statusDot .stored { opacity: 0.7; }
