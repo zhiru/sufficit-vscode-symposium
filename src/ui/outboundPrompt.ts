@@ -18,6 +18,12 @@ export interface BuildOutboundPromptOptions extends OutboundPromptState {
     seedHistory?: string;
     /** Per-workspace bootstrap context, injected once before the first message. */
     bootstrap?: string;
+    /**
+     * Latest session checkpoint, prepended for a continuity (resume) message so
+     * the agent recovers its own anchor deterministically (host-injected, not via
+     * an LLM memory search). Per-message; the caller de-dupes repeats.
+     */
+    resumeCheckpoint?: string;
     autonomy?: string;
     /** True when the backend can execute shell commands where rtk is useful. */
     rtk?: boolean;
@@ -100,6 +106,10 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
     if (options.checkpoints && !state.checkpointInjected) {
         prefixes.push(CHECKPOINT_PREAMBLE);
         state.checkpointInjected = true;
+    }
+    // Resume context for a continuity message (host-injected, per-message).
+    if (options.resumeCheckpoint) {
+        prefixes.push(options.resumeCheckpoint);
     }
     if (!state.sessionIdInjected && options.sessionId) {
         prefixes.push(sessionIdNote(options.sessionId));

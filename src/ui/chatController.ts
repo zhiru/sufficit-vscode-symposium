@@ -3,6 +3,8 @@ import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOption
 import { parseTodoFence } from "../adapters/todos";
 import { buildOutboundPrompt } from "./outboundPrompt";
 import { probeRtk, rtkCached } from "../adapters/rtk";
+import { HubClient } from "../sync/hubClient";
+import { fetchLatestCheckpoint } from "../sync/tasks";
 import { WebviewToHost } from "./protocol";
 
 type SendMode = "send" | "queue" | "steer";
@@ -16,6 +18,10 @@ interface PendingMessage {
     permission?: string;
     autonomy?: string;
     execDisplay?: "silent" | "inline" | "terminal";
+    /** How this message was sent; "steer" suppresses the resume-checkpoint inject. */
+    mode?: SendMode;
+    /** One-shot resume context (latest session checkpoint) prepended for continuity. */
+    resumeCheckpoint?: string;
 }
 
 /**
@@ -41,6 +47,10 @@ export class ChatController {
     private sessionIdInjected = false;
     private bootstrapInjected = false;
     private checkpointInjected = false;
+    private readonly hub = new HubClient();
+    // Id of the session checkpoint already injected as resume context, so the
+    // same one isn't re-prepended every continuity turn.
+    private injectedCheckpointId: string | undefined;
     private queueSeq = 0;
     // Files this session edited and their net +/- — owned here so it survives
     // view switches (the runtime keeps the controller alive) and approval state
@@ -103,7 +113,7 @@ export class ChatController {
         this.emit({ type: "event", event: { kind: "error", message: "Turn ended automatically: no activity from the agent for 5 minutes (likely a stalled tool or dropped connection)." } });
         this.emit({ type: "event", event: { kind: "turn-end" } });
         const next = this.queue.shift();
-        if (next) { this.emitQueue(); this.dispatch(next); }
+        if (next) { this.emitQueue(); void this.dispatch(next); }
     }
 
     get backend(): string { return this.adapter.backend; }
@@ -311,7 +321,7 @@ export class ChatController {
                     this.session?.cancel();
                 } else {
                     this.emitQueue();
-                    this.dispatch(m);
+                    void this.dispatch(m);
                 }
                 return true;
             }
@@ -338,6 +348,7 @@ export class ChatController {
     }
 
     private onSend(msg: PendingMessage, mode: SendMode): void {
+        msg.mode = mode;
         if (mode === "steer" && this.busy) {
             this.queue.length = 0;
             this.queue.push(msg);
@@ -350,7 +361,7 @@ export class ChatController {
             this.emitQueue();
             return;
         }
-        this.dispatch(msg);
+        void this.dispatch(msg);
     }
 
     /** Full queue state (editable until dispatched), reflected in the webview. */
@@ -358,7 +369,20 @@ export class ChatController {
         this.emit({ type: "queue", items: this.queue.map((m) => ({ id: m.id, text: m.text, attachments: m.attachments })) });
     }
 
-    private dispatch(msg: PendingMessage): void {
+    private async dispatch(msg: PendingMessage): Promise<void> {
+        // Resume hook (deterministic, no LLM): on a CONTINUITY message — the agent
+        // was idle or queued, NOT steered — prepend this session's latest
+        // checkpoint so it resumes from its own anchor without having to search.
+        // Looked up by session id; de-duped so the same checkpoint isn't repeated.
+        if (msg.mode !== "steer" && this.adapter.roleAware?.() === true && this.sessionId && this.hub.configured()) {
+            try {
+                const cp = await fetchLatestCheckpoint(this.hub, this.sessionId);
+                if (cp && cp.id !== this.injectedCheckpointId) {
+                    msg.resumeCheckpoint = `[Resume — latest checkpoint for this session]\n${cp.title}\n${cp.summary}`;
+                    this.injectedCheckpointId = cp.id;
+                }
+            } catch { /* best-effort; resume still proceeds without it */ }
+        }
         // Apply per-message model/reasoning to the live options BEFORE (re)starting
         // or sending. Stateless backends (OpenAI HTTP) read options.model on each
         // request, so this lets the user switch model between messages. A running
@@ -409,6 +433,7 @@ export class ChatController {
             todoInjection: this.adapter.hasNativeTodo?.() === false ? this.adapter.todoInjection?.() : undefined,
             seedHistory: this.options.seedHistory,
             bootstrap: this.options.bootstrap,
+            resumeCheckpoint: msg.resumeCheckpoint,
             autonomy: msg.autonomy,
             asRoles: roleAware,
         });
@@ -438,7 +463,7 @@ export class ChatController {
             const next = this.queue.shift();
             if (next) {
                 this.emitQueue();
-                this.dispatch(next);
+                void this.dispatch(next);
             }
         }
     }
@@ -469,7 +494,7 @@ export class ChatController {
             const next = this.queue.shift();
             if (next) {
                 this.emitQueue();
-                this.dispatch(next);
+                void this.dispatch(next);
             }
         }
     }

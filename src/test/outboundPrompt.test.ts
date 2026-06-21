@@ -70,6 +70,21 @@ test("buildOutboundPrompt injects checkpoint discipline once when enabled", () =
     assert.equal(off.text.includes("[Context window & checkpoints"), false);
 });
 
+test("buildOutboundPrompt prepends resume checkpoint when provided", () => {
+    const out = buildOutboundPrompt({
+        text: "continue", fileAttachments: [],
+        policyInjected: true, todoInjected: false, seedInjected: false, autonomyInjected: false,
+        resumeCheckpoint: "[Resume] latest checkpoint: did X, next Y",
+    });
+    assert.ok(out.text.includes("[Resume] latest checkpoint: did X, next Y"));
+    // None provided → not present.
+    const none = buildOutboundPrompt({
+        text: "continue", fileAttachments: [],
+        policyInjected: true, todoInjected: false, seedInjected: false, autonomyInjected: false,
+    });
+    assert.equal(none.text.includes("[Resume]"), false);
+});
+
 test("buildOutboundPrompt classifies autonomy and attachments", () => {
     const out = buildOutboundPrompt({
         text: "Investigate",

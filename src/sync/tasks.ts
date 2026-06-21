@@ -39,6 +39,12 @@ export async function fetchSessionTasks(hub: HubClient, sessionId: string): Prom
         .map((r) => ({ id: r.id, type: r.type, title: r.title, summary: r.summary, ts: r.createdAtUtc, tags: r.tags }));
 }
 
+/** The latest task-checkpoint bound to a session (falls back to the latest task). */
+export async function fetchLatestCheckpoint(hub: HubClient, sessionId: string): Promise<TaskItem | undefined> {
+    const tasks = await fetchSessionTasks(hub, sessionId);
+    return tasks.find((t) => t.type === "task-checkpoint") ?? tasks[0];
+}
+
 /** Expires (soft-deletes) every task observation bound to a session. Returns count. */
 export async function expireSessionTasks(hub: HubClient, sessionId: string): Promise<number> {
     if (!hub.configured() || !sessionId) { return 0; }
