@@ -305,6 +305,15 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     // ---- tools & configuration menu (sliders) ----
     const configBtn = document.getElementById("configBtn");
     let permissionModes = [], permissionValue = "default", permissionDefault = "default";
+    // Per-session tool gating (native AI backend). available = all tools the
+    // backend can expose; enabled = the subset active for this session.
+    let aiToolsAvailable = [], aiToolsEnabled = [];
+    const TOOL_LABELS = {
+        memory_search: "Buscar memória", memory_get_observations: "Ler memória", memory_save: "Salvar memória",
+        web_search: "Busca web", fetch_url: "Buscar URL", open_url: "Abrir URL (browser)",
+        shell: "Shell / comandos", read_file: "Ler arquivo", write_file: "Escrever arquivo",
+        list_dir: "Listar diretório", read_session: "Reler histórico da sessão",
+    };
     const PERM_DESC = {
         "default": "Ask for permission as needed",
         "acceptEdits": "Auto-accept file edits",
@@ -332,6 +341,30 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
                 list.appendChild(mi);
             }
             const sep = document.createElement("div"); sep.className = "sep"; list.appendChild(sep);
+        }
+        // Per-session tools: checkbox list (like VS Code chat's tool picker).
+        if (aiToolsAvailable.length) {
+            const gh = document.createElement("div"); gh.className = "menuGroup"; gh.textContent = "Ferramentas ativas"; list.appendChild(gh);
+            for (const name of aiToolsAvailable) {
+                const on = aiToolsEnabled.includes(name);
+                const mi = document.createElement("div"); mi.className = "mi" + (on ? " active" : "");
+                const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = on ? "✓" : "";
+                const l = document.createElement("span"); l.className = "milbl";
+                const lt2 = document.createElement("span"); lt2.className = "milbl-text"; lt2.textContent = TOOL_LABELS[name] || name;
+                const ld = document.createElement("span"); ld.className = "milbl-desc"; ld.textContent = name;
+                l.appendChild(lt2); l.appendChild(ld);
+                mi.appendChild(tick); mi.appendChild(l);
+                mi.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    if (aiToolsEnabled.includes(name)) { aiToolsEnabled = aiToolsEnabled.filter((n) => n !== name); }
+                    else { aiToolsEnabled = [...aiToolsEnabled, name]; }
+                    vscode.postMessage({ type: "set-tools", tools: aiToolsEnabled });
+                    tick.textContent = aiToolsEnabled.includes(name) ? "✓" : "";
+                    mi.classList.toggle("active", aiToolsEnabled.includes(name));
+                });
+                list.appendChild(mi);
+            }
+            const sep2 = document.createElement("div"); sep2.className = "sep"; list.appendChild(sep2);
         }
         const open = document.createElement("div"); open.className = "mi";
         const t = document.createElement("span"); t.className = "tick";
@@ -1907,6 +1940,8 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
                 agentLabels = data.agentLabels || null;
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + (data.backendName || data.backend);
                 setBrowserOpen(!!data.browserOpen);
+                aiToolsAvailable = (data.aiTools && data.aiTools.available) || [];
+                aiToolsEnabled = (data.aiTools && data.aiTools.enabled) || [];
                 modelDefault = data.modelDefault || "";
                 modelLabels = data.modelLabels || {};
                 reasoningDefault = data.reasoningDefault || "";

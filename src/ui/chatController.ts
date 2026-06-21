@@ -205,6 +205,15 @@ export class ChatController {
         this.session?.cancel();
     }
 
+    /** Per-session tool gating (native AI backend only; undefined elsewhere). */
+    aiToolsInfo(): { available: string[]; enabled: string[] } | undefined {
+        return this.session?.aiTools?.();
+    }
+
+    setAiTools(names: string[]): void {
+        this.session?.setAiTools?.(names);
+    }
+
     async loadHistory(info: SessionInfo): Promise<void> {
         if (!this.adapter.history) {
             return;

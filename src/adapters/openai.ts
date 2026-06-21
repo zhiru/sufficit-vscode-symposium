@@ -12,7 +12,7 @@ import {
 } from "./types";
 import { TODO_INJECTION } from "./todos";
 import { HubClient } from "../sync/hubClient";
-import { AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES, filterTools, runAiTool, ShellExecutionMode } from "./aiTools";
+import { AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES, ALL_AI_TOOL_NAMES, filterTools, runAiTool, ShellExecutionMode } from "./aiTools";
 import { lmToolDefs, lmToolDefsResponses, isLmTool, invokeLmTool } from "./lmTools";
 import { buildOpenAIModelList } from "./openaiModels";
 import * as ledger from "../ledger";
@@ -343,6 +343,20 @@ class OpenAISession extends EventEmitter implements AgentSession {
 
     dispose(): void {
         this.abort?.abort();
+    }
+
+    aiTools(): { available: string[]; enabled: string[] } {
+        const available = [...ALL_AI_TOOL_NAMES];
+        // options.aiTools: undefined = all available; [] = none; else the subset.
+        const enabled = this.options.aiTools === undefined ? [...available] : [...this.options.aiTools];
+        return { available, enabled };
+    }
+
+    setAiTools(names: string[]): void {
+        // Keep only known tool names; takes effect on the next turn (run() reads
+        // this.options.aiTools live).
+        const known = new Set(ALL_AI_TOOL_NAMES);
+        this.options.aiTools = names.filter((n) => known.has(n));
     }
 
     private async run(): Promise<void> {

@@ -281,6 +281,12 @@ export class ChatSurface {
                     symposiumLog(`[webview] ERROR: ${message.message}`);
                     return;
                 }
+                case "set-tools": {
+                    if (Array.isArray(message.tools)) {
+                        this.controller?.setAiTools(message.tools.map((t: unknown) => String(t)));
+                    }
+                    return;
+                }
                 case "attach-browser-page": {
                     await this.attachBrowserPage();
                     return;
@@ -941,6 +947,8 @@ export class ChatSurface {
             sessionModel: info?.model ?? "",
             // Attach-browser-page button only shows when a Simple Browser is open.
             browserOpen: isSimpleBrowserOpen(),
+            // Per-session tool gating for the native AI backend (undefined for CLIs).
+            aiTools: controller.aiToolsInfo?.(),
             permissionModes: adapter.permissionModes?.() ?? [],
             permission: adapter.defaultPermission?.() ?? "default",
             sessionId: options.resumeSessionId ?? "",

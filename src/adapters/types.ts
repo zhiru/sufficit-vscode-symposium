@@ -151,6 +151,14 @@ export interface AgentSession extends EventEmitter {
     /** Interrupt the current turn if the backend supports it. */
     cancel(): void;
     dispose(): void;
+    /**
+     * Per-session tool gating (native AI backend only). `aiTools()` reports the
+     * full available tool set and the currently-enabled subset; `setAiTools`
+     * replaces the enabled set live (applies to the next turn). Backends without
+     * a runtime tool concept (CLIs) omit both.
+     */
+    aiTools?(): { available: string[]; enabled: string[] };
+    setAiTools?(names: string[]): void;
 }
 
 /** Factory + discovery surface for one backend CLI. */
