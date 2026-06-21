@@ -3,7 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import * as crypto from "crypto";
 import * as vscode from "vscode";
-import { AgentAdapter, HistoryMessage, SessionInfo, SessionStartOptions } from "../adapters/types";
+import { AgentAdapter, FollowHandle, HistoryMessage, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatController } from "./chatController";
 import { WebviewToHost } from "./protocol";
 import { renderHtml } from "./chatHtml";
@@ -144,7 +144,8 @@ export interface ChatSurfaceDeps {
 export class ChatSurface {
     private controller: ChatController | undefined;
     private terminalSession: TerminalSession | undefined;
-    private followHandle: { dispose(): void } | undefined;
+    private followHandle: FollowHandle | undefined;
+    private followedSessionId: string | undefined;
     private ready = false;
     private loggedIn = false;   // cached Sufficit login state (for system hints)
     private queue: unknown[] = [];
@@ -858,6 +859,13 @@ export class ChatSurface {
         this.followHandle = adapter.follow(info, (message) => {
             this.post({ type: "append", message });
         });
+        // The followed process has no local controller, so its working/idle is
+        // inferred from the transcript and published to the runtime, which the
+        // sessions list reads via statusFor — same indicator as live sessions.
+        this.followedSessionId = info.sessionId;
+        this.followHandle.onStatus?.((status) => {
+            this.deps.runtime.setFollowStatus(info.sessionId, status);
+        });
         this.onTitleChange?.(`👁 ${info.title} · ${adapter.backend}`);
     }
 
@@ -1104,13 +1112,22 @@ export class ChatSurface {
         return hints.join("\n\n");
     }
 
+    /** Tears down an active transcript follow and drops its inferred status. */
+    private detachFollow(): void {
+        this.followHandle?.dispose();
+        this.followHandle = undefined;
+        if (this.followedSessionId) {
+            this.deps.runtime.clearFollowStatus(this.followedSessionId);
+            this.followedSessionId = undefined;
+        }
+    }
+
     private detachActive(): void {
         this.controller?.detach();
         this.controller = undefined;
         this.terminalSession?.dispose();
         this.terminalSession = undefined;
-        this.followHandle?.dispose();
-        this.followHandle = undefined;
+        this.detachFollow();
     }
 
     /**
@@ -1124,8 +1141,7 @@ export class ChatSurface {
         this.controller = undefined;
         this.terminalSession?.dispose();
         this.terminalSession = undefined;
-        this.followHandle?.dispose();
-        this.followHandle = undefined;
+        this.detachFollow();
         // Clear the pane to the empty state — do NOT auto-start a new dialogue
         // (that spawned a stray live "New session" on every delete). The next
         // send (or picking a session) starts one.

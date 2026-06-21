@@ -75,6 +75,12 @@ export interface HistoryMessage {
 /** Stops a live transcript follow. */
 export interface FollowHandle {
     dispose(): void;
+    /**
+     * Optional: subscribe to a working/idle signal inferred from the followed
+     * transcript (no local process to query). Fires only on a state transition.
+     * Adapters that can't infer a turn boundary omit it (no regression).
+     */
+    onStatus?(cb: (status: "working" | "idle") => void): void;
 }
 
 /** A slash command / skill offered by a backend for composer autocomplete. */

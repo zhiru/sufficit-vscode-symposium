@@ -543,6 +543,33 @@ export class ClaudeAdapter implements AgentAdapter {
         let reading = false;
         let watcher: fs.FSWatcher | undefined;
 
+        // Inferred turn state for a session running in another process: there is
+        // no local AgentSession to ask `isBusy`, so we read it off the JSONL we
+        // already tail. Claude Code writes a `type:"result"` line at the end of
+        // every turn (the same signal ClaudeSession clears `turnActive` on), so:
+        //   user/assistant line → working;  result line → idle.
+        // A debounced fallback forces idle if `result` never arrives (crash/kill).
+        const IDLE_FALLBACK_MS = 9000;
+        let statusCb: ((status: "working" | "idle") => void) | undefined;
+        let lastStatus: "working" | "idle" | undefined;
+        let idleTimer: ReturnType<typeof setTimeout> | undefined;
+        const emitStatus = (s: "working" | "idle") => {
+            if (s === lastStatus) { return; }     // only on transition
+            lastStatus = s;
+            statusCb?.(s);
+        };
+        const clearIdleTimer = () => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = undefined; } };
+        const setStatus = (s: "working" | "idle") => {
+            if (s === "working") {
+                emitStatus("working");
+                clearIdleTimer();
+                idleTimer = setTimeout(() => emitStatus("idle"), IDLE_FALLBACK_MS);
+            } else {
+                clearIdleTimer();
+                emitStatus("idle");
+            }
+        };
+
         const drain = async () => {
             if (closed || reading || !file) {
                 return;
@@ -562,6 +589,9 @@ export class ClaudeAdapter implements AgentAdapter {
                         const lines = carry.split("\n");
                         carry = lines.pop() ?? "";
                         for (const line of lines) {
+                            const t = rawLineType(line);
+                            if (t === "result") { setStatus("idle"); }
+                            else if (t === "user" || t === "assistant") { setStatus("working"); }
                             for (const message of parseTranscriptLine(line)) {
                                 onMessage(message);
                             }
@@ -601,8 +631,10 @@ export class ClaudeAdapter implements AgentAdapter {
         void begin();
 
         return {
+            onStatus: (cb) => { statusCb = cb; },
             dispose: () => {
                 closed = true;
+                clearIdleTimer();
                 watcher?.close();
                 this._followStops.get(info.sessionId)?.();
                 this._followStops.delete(info.sessionId);
@@ -653,6 +685,17 @@ function cleanUserText(raw: string): string {
         return "";
     }
     return text.trim();
+}
+
+/** Defensive read of a transcript line's raw top-level `type` (for status inference). */
+function rawLineType(line: string): string | undefined {
+    if (!line.trim()) { return undefined; }
+    try {
+        const entry = JSON.parse(line) as { type?: unknown };
+        return typeof entry.type === "string" ? entry.type : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 /** Parses one transcript JSONL line into chat messages (text + tool calls). */
