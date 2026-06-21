@@ -228,6 +228,10 @@ export const ALL_AI_TOOL_NAMES = [...AI_TOOLS, ...LOCAL_TOOLS].map((t) => t.func
 export function aiToolsForAgent(declared: string[]): string[] {
     const has = (re: RegExp) => declared.some((d) => re.test(d));
     const names = new Set<string>();
+    // Always available: re-reading the conversation by GUID is a safe, read-only
+    // recall primitive (no side effects). Every agent gets it so it can recover
+    // earlier/compacted context when the user says "reread the history".
+    names.add("read_session");
     if (has(/^sufficit-ai\b|^sufficit-ai\/|^memory\b/i)) {
         names.add("memory_search"); names.add("memory_get_observations"); names.add("memory_save");
     }
