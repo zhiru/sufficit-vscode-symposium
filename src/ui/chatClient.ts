@@ -1917,6 +1917,12 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     const statusbar = document.getElementById("statusbar");
     let lastUsage = null, lastStatusData = {};
     function fmtTokens(n) { return n >= 1000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + "K" : String(n); }
+    // Meter color tracks fullness like Copilot: normal < 75%, amber 75–90%, red ≥ 90%.
+    function usageColor(pct) {
+        if (pct >= 90) { return "var(--vscode-editorError-foreground, #f14c4c)"; }
+        if (pct >= 75) { return "var(--vscode-editorWarning-foreground, #cca700)"; }
+        return "var(--vscode-progressBar-background, #3794ff)";
+    }
     function renderStatusbar(data) {
         lastStatusData = data || lastStatusData;
         data = lastStatusData;
@@ -1935,9 +1941,11 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
         if (data.reasoning && data.reasoning !== "default") statusbar.appendChild(seg(null, "effort: " + data.reasoning));
         if (lastUsage && lastUsage.contextWindow) {
             const pct = Math.min(100, Math.round((lastUsage.inputTokens || 0) / lastUsage.contextWindow * 100));
+            const col = usageColor(pct);
             const m = document.createElement("button"); m.className = "tokenMeter"; m.title = "Context window — click for details";
+            m.setAttribute("aria-label", "Context window " + pct + "% used — click for details");
             const ring = document.createElement("span"); ring.className = "tmRing"; ring.style.background =
-                "conic-gradient(var(--vscode-progressBar-background, #3794ff) " + pct + "%, var(--vscode-input-background, rgba(128,128,128,0.3)) 0)";
+                "conic-gradient(" + col + " " + pct + "%, var(--vscode-input-background, rgba(128,128,128,0.3)) 0)";
             m.appendChild(ring);
             m.appendChild(document.createTextNode(pct + "%"));
             m.addEventListener("click", (e) => { e.stopPropagation(); openUsagePopover(m); });
@@ -1953,14 +1961,20 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
         const box = document.createElement("div"); box.className = "usagePop";
         const row = (a, b, cls) => { const r = document.createElement("div"); r.className = "uRow " + (cls || ""); const x = document.createElement("span"); x.textContent = a; const y = document.createElement("span"); y.textContent = b; r.appendChild(x); r.appendChild(y); return r; };
         const h = document.createElement("div"); h.className = "uHead"; h.textContent = "Context Window"; box.appendChild(h);
+        if (activeModel) { const sm = document.createElement("div"); sm.className = "uModel"; sm.textContent = modelLabel(activeModel); box.appendChild(sm); }
         box.appendChild(row(fmtTokens(used) + " / " + fmtTokens(win) + " tokens", pct + "%", "uMain"));
-        const bar = document.createElement("div"); bar.className = "uBar"; const fill = document.createElement("div"); fill.className = "uFill"; fill.style.width = pct + "%"; bar.appendChild(fill); box.appendChild(bar);
+        const bar = document.createElement("div"); bar.className = "uBar"; const fill = document.createElement("div"); fill.className = "uFill"; fill.style.width = pct + "%"; fill.style.background = usageColor(pct); bar.appendChild(fill); box.appendChild(bar);
         const sub = document.createElement("div"); sub.className = "uGroup"; sub.textContent = "This turn"; box.appendChild(sub);
         box.appendChild(row("Output", fmtTokens(u.outputTokens || 0)));
         if (u.cacheRead) { box.appendChild(row("Cache read", fmtTokens(u.cacheRead))); }
-        const btn = document.createElement("button"); btn.className = "uCompact"; btn.textContent = "Compact Conversation";
-        btn.addEventListener("click", () => { hideCtx(); input.value = "/compact"; send(); });
-        box.appendChild(btn);
+        // Only offer Compact when the active backend advertises it (claude/codex/
+        // copilot). The native API backends have no /compact — they auto-window
+        // history — so the button would otherwise send a literal "/compact" text.
+        if (commands.some((c) => c.name === "compact")) {
+            const btn = document.createElement("button"); btn.className = "uCompact"; btn.textContent = "Compact Conversation";
+            btn.addEventListener("click", () => { hideCtx(); input.value = "/compact"; send(); });
+            box.appendChild(btn);
+        }
         ctxMenu.appendChild(box);
         ctxMenu.style.display = "block";
         const r = anchor.getBoundingClientRect(); const w = ctxMenu.offsetWidth, ht = ctxMenu.offsetHeight;

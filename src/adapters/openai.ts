@@ -11,7 +11,7 @@ import {
     SessionStartOptions,
 } from "./types";
 import { TODO_INJECTION } from "./todos";
-import { diffCounts, editDiff, mimeTypeFor, prettyJson } from "./parse";
+import { contextWindowFor, diffCounts, editDiff, mimeTypeFor, prettyJson } from "./parse";
 import { snapshots } from "../snapshots";
 import { HubClient } from "../sync/hubClient";
 import { AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES, ALL_AI_TOOL_NAMES, filterTools, runAiTool, ShellExecutionMode } from "./aiTools";
@@ -117,6 +117,28 @@ export interface OpenAIAdapterConfig {
 // Discovered model ids and id→friendly-name per base URL (GET /models cache).
 const discoveredModels = new Map<string, string[]>();
 const discoveredLabels = new Map<string, Record<string, string>>();
+// Discovered per-model context window (tokens), when the gateway's /models
+// catalog reports one — drives the context monitor's "used / total" ratio.
+const discoveredContext = new Map<string, Record<string, number>>();
+
+/** Context window (tokens) a /models entry advertises, across common shapes. */
+function modelContextLength(m: unknown): number | undefined {
+    if (!m || typeof m !== "object") { return undefined; }
+    const o = m as Record<string, any>;
+    const n = Number(
+        o.context_length ?? o.context_window ?? o.max_context_window_tokens ??
+        o.max_context_length ?? o.max_input_tokens ?? o.context?.total ??
+        o.limits?.context_window ?? o.limits?.max_context_window_tokens ?? 0,
+    );
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** Token usage parsed from an OpenAI-compatible response (chat or responses). */
+interface ApiUsage {
+    inputTokens: number;
+    outputTokens: number;
+    cacheRead: number;
+}
 
 /**
  * Optional Sufficit login access-token provider. When set (at activation) and an
@@ -223,6 +245,17 @@ class OpenAISession extends EventEmitter implements AgentSession {
     }
 
     /**
+     * Context window (tokens) for the active model, feeding the context monitor.
+     * Prefers the value the gateway's /models catalog advertised; falls back to
+     * the model-name heuristic (200k default, 1m variants) so the meter shows
+     * even before discovery resolves.
+     */
+    private contextWindow(): number {
+        const id = this.model();
+        return discoveredContext.get(this.cfg.baseUrl)?.[id] || contextWindowFor(id);
+    }
+
+    /**
      * Sliding-window view of this.messages for outbound requests.
      *
      * Always keeps:
@@ -307,16 +340,20 @@ class OpenAISession extends EventEmitter implements AgentSession {
         const raw: any[] = json?.data ?? json?.models ?? [];
         const list: string[] = [];
         const labels: Record<string, string> = {};
+        const context: Record<string, number> = {};
         for (const m of raw) {
             const id = typeof m === "string" ? m : m?.id ?? m?.name;
             if (typeof id !== "string") { continue; }
             list.push(id);
             const name = typeof m === "object" ? (m?.name ?? m?.title) : undefined;
             if (typeof name === "string" && name && name !== id) { labels[id] = name; }
+            const ctx = modelContextLength(m);
+            if (ctx) { context[id] = ctx; }
         }
         if (list.length) {
             discoveredModels.set(this.cfg.baseUrl, list);
             discoveredLabels.set(this.cfg.baseUrl, labels);
+            discoveredContext.set(this.cfg.baseUrl, context);
             this.cfg.log?.(`[${this.backend}] discovered ${list.length} models from ${url}`);
         }
     }
@@ -471,7 +508,7 @@ class OpenAISession extends EventEmitter implements AgentSession {
                 const windowed = this.windowedMessages();
                 const body: Record<string, unknown> = responses
                     ? { model: this.model(), input: toResponsesInput(windowed), stream: true }
-                    : { model: this.model(), messages: windowed, stream: true };
+                    : { model: this.model(), messages: windowed, stream: true, stream_options: { include_usage: true } };
                 // Gate by the bound agent-def's allowlist (options.aiTools); when
                 // unset, expose all; when set to [], expose none (tools off).
                 const allow = this.options.aiTools;
@@ -496,7 +533,20 @@ class OpenAISession extends EventEmitter implements AgentSession {
                     hitCap = false;
                     break;
                 }
-                const { text, toolCalls, aborted } = await this.consume(res.body, this.model());
+                const { text, toolCalls, aborted, usage } = await this.consume(res.body, this.model());
+
+                // Context monitor: report token usage for this request. inputTokens
+                // is the prompt size = the live context the model just saw, so the
+                // meter tracks "context used / window" like the CLI backends.
+                if (usage && (usage.inputTokens || usage.outputTokens)) {
+                    this.emit("event", {
+                        kind: "usage",
+                        inputTokens: usage.inputTokens,
+                        outputTokens: usage.outputTokens,
+                        cacheRead: usage.cacheRead,
+                        contextWindow: this.contextWindow(),
+                    });
+                }
 
                 // Stream paused/interrupted mid-turn: keep the partial assistant
                 // reply (and any partial tool calls) in history so context is not
@@ -615,15 +665,16 @@ class OpenAISession extends EventEmitter implements AgentSession {
      * Reads an SSE stream, emitting text deltas. Also accumulates streamed
      * tool_calls (chat completions) so the caller can run them and continue.
      */
-    private async consume(stream: ReadableStream<Uint8Array>, m: string): Promise<{ text: string; toolCalls: ToolCall[]; aborted: boolean }> {
+    private async consume(stream: ReadableStream<Uint8Array>, m: string): Promise<{ text: string; toolCalls: ToolCall[]; aborted: boolean; usage?: ApiUsage }> {
         const responses = this.cfg.api === "responses";
         const reader = stream.getReader();
         const decoder = new TextDecoder();
         let buf = "";
         let assistant = "";
+        let usage: ApiUsage | undefined;  // final token counts, when the API reports them
         const calls: ToolCall[] = []; // indexed by streamed tool_call index
         let lastFnIndex = 0;          // responses API: index of the most recent function_call
-        const done = () => ({ text: assistant, toolCalls: calls.filter((c) => c && c.function.name), aborted: false });
+        const done = () => ({ text: assistant, toolCalls: calls.filter((c) => c && c.function.name), aborted: false, usage });
         try {
         for (; ;) {
             const r = await reader.read();
@@ -656,8 +707,25 @@ class OpenAISession extends EventEmitter implements AgentSession {
                             if (calls[i]) { calls[i].function.arguments = json.arguments; }
                         } else if (ty === "response.error") {
                             this.emit("event", { kind: "error", message: String(json?.error?.message ?? "response error") });
+                        } else if ((ty === "response.completed" || ty === "response.incomplete") && json?.response?.usage) {
+                            const u = json.response.usage;
+                            usage = {
+                                inputTokens: Number(u.input_tokens ?? 0),
+                                outputTokens: Number(u.output_tokens ?? 0),
+                                cacheRead: Number(u.input_tokens_details?.cached_tokens ?? 0),
+                            };
                         }
                         continue;
+                    }
+                    // Final usage chunk (stream_options.include_usage): choices is
+                    // empty and `usage` carries the turn's token totals.
+                    if (json?.usage) {
+                        const u = json.usage;
+                        usage = {
+                            inputTokens: Number(u.prompt_tokens ?? 0),
+                            outputTokens: Number(u.completion_tokens ?? 0),
+                            cacheRead: Number(u.prompt_tokens_details?.cached_tokens ?? 0),
+                        };
                     }
                     const delta = json?.choices?.[0]?.delta;
                     if (typeof delta?.content === "string" && delta.content) {
@@ -871,16 +939,20 @@ export class OpenAIAdapter implements AgentAdapter {
         const raw: any[] = json?.data ?? json?.models ?? [];
         const list: string[] = [];
         const labels: Record<string, string> = {};
+        const context: Record<string, number> = {};
         for (const m of raw) {
             const id = typeof m === "string" ? m : m?.id ?? m?.name;
             if (typeof id !== "string") { continue; }
             list.push(id);
             const name = typeof m === "object" ? (m?.name ?? m?.title) : undefined;
             if (typeof name === "string" && name && name !== id) { labels[id] = name; }
+            const ctx = modelContextLength(m);
+            if (ctx) { context[id] = ctx; }
         }
         if (list.length) {
             discoveredModels.set(cfg.baseUrl, list);
             discoveredLabels.set(cfg.baseUrl, labels);
+            discoveredContext.set(cfg.baseUrl, context);
             const cacheKey = `openai:${cfg.baseUrl}`;
             setCached(cacheKey, { models: list, labels, lastUpdate: new Date().toISOString() });
         }

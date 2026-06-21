@@ -1072,7 +1072,8 @@ export const chatStyles = `    body {
     .tokenMeter:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .tokenMeter .tmRing { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; -webkit-mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); }
     .usagePop { min-width: 230px; padding: 10px 12px; }
-    .usagePop .uHead { font-weight: 600; margin-bottom: 6px; }
+    .usagePop .uHead { font-weight: 600; margin-bottom: 2px; }
+    .usagePop .uModel { font-size: 0.8em; opacity: 0.6; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .usagePop .uGroup { font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.55; font-weight: 600; margin: 10px 0 3px; }
     .usagePop .uRow { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9em; padding: 2px 0; }
     .usagePop .uRow.uMain { opacity: 0.85; }
