@@ -33,7 +33,10 @@ const TERMINAL_MATCH = /terminal|task|test|exec|browser|playwright|navigate/i;
 // with the same purpose through confuses the model and routes reads/writes to
 // the wrong provider/store. Keep the bridge focused on UI-integrated actions
 // (terminal/tasks/tests/browser) and never on files or memory.
-const DEFAULT_TOOL_BLOCKLIST = /copilot_memory|^memory$|_memory|memory_|read[_-]?file|write[_-]?file|list[_-]?dir|find[_-]?file|search[_-]?file|grep|glob|workspace[_-]?symbol|text[_-]?search/i;
+// Also block image/vision tools (e.g. Copilot's copilot_viewImage): Symposium
+// already inlines pasted/attached images as native model vision, so bridging
+// Copilot's image reader is redundant and adds a Copilot dependency.
+const DEFAULT_TOOL_BLOCKLIST = /copilot_memory|^memory$|_memory|memory_|read[_-]?file|write[_-]?file|list[_-]?dir|find[_-]?file|search[_-]?file|grep|glob|workspace[_-]?symbol|text[_-]?search|view[_-]?image|read[_-]?image|copilot_\w*image/i;
 
 function isBlocked(name: string): boolean {
     if (DEFAULT_TOOL_BLOCKLIST.test(name)) { return true; }
