@@ -1830,7 +1830,11 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     sendBtn.addEventListener("click", () => { send(); });
     addContext.addEventListener("click", () => vscode.postMessage({ type: "pick-attachments" }));
     const addBrowserPage = document.getElementById("addBrowserPage");
-    if (addBrowserPage) { addBrowserPage.addEventListener("click", () => vscode.postMessage({ type: "attach-browser-page" })); }
+    if (addBrowserPage) {
+        addBrowserPage.style.display = "none";   // shown only while a Simple Browser is open
+        addBrowserPage.addEventListener("click", () => vscode.postMessage({ type: "attach-browser-page" }));
+    }
+    function setBrowserOpen(open) { if (addBrowserPage) { addBrowserPage.style.display = open ? "" : "none"; } }
     input.addEventListener("keydown", (e) => {
         if (slashActive()) {
             if (e.key === "ArrowDown") { e.preventDefault(); slashSel = (slashSel + 1) % slashMatches.length; renderSlash(); return; }
@@ -1902,6 +1906,7 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
                 currentBackendName = data.backendName || "";
                 agentLabels = data.agentLabels || null;
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + (data.backendName || data.backend);
+                setBrowserOpen(!!data.browserOpen);
                 modelDefault = data.modelDefault || "";
                 modelLabels = data.modelLabels || {};
                 reasoningDefault = data.reasoningDefault || "";
@@ -1956,6 +1961,10 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
                 activeFileDismissed = false; renderChips();
                 setLoading(false);   // session resolved — reveal the conversation
                 scrollToBottom();    // start at the latest message
+                break;
+            }
+            case "browser-state": {
+                setBrowserOpen(!!data.open);
                 break;
             }
             case "active-file": {

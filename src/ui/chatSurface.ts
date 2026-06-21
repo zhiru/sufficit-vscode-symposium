@@ -24,6 +24,19 @@ function activeEditorFile(): string | undefined {
     return doc && doc.uri.scheme === "file" ? doc.uri.fsPath : undefined;
 }
 
+/** True when a VS Code Simple Browser tab is open in any tab group. */
+function isSimpleBrowserOpen(): boolean {
+    for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+            const input = tab.input as { viewType?: string } | undefined;
+            if (input && typeof input.viewType === "string" && /simplebrowser/i.test(input.viewType)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /** Active-file context including a non-empty selection (1-based lines/columns). */
 function activeEditorContext(): { path?: string; start?: number; end?: number; startColumn?: number; endColumn?: number; preview?: boolean } {
     const ed = vscode.window.activeTextEditor;
@@ -150,6 +163,10 @@ export class ChatSurface {
         const pushActiveFile = () => this.post({ type: "active-file", ...activeEditorContext() });
         this.disposables.push(vscode.window.onDidChangeActiveTextEditor(pushActiveFile));
         this.disposables.push(vscode.window.onDidChangeTextEditorSelection(pushActiveFile));
+        // The "attach browser page" button only makes sense while a Simple
+        // Browser tab is open; toggle it as tabs come and go.
+        this.disposables.push(vscode.window.tabGroups.onDidChangeTabs(
+            () => this.post({ type: "browser-state", open: isSimpleBrowserOpen() })));
         if (this.deps.account) {
             this.disposables.push(this.deps.account.onDidChange(() => void this.pushAccount()));
         }
@@ -922,6 +939,8 @@ export class ChatSurface {
             // Last model used in this session (resume), so the picker restores it
             // instead of defaulting to the first discovered model.
             sessionModel: info?.model ?? "",
+            // Attach-browser-page button only shows when a Simple Browser is open.
+            browserOpen: isSimpleBrowserOpen(),
             permissionModes: adapter.permissionModes?.() ?? [],
             permission: adapter.defaultPermission?.() ?? "default",
             sessionId: options.resumeSessionId ?? "",
