@@ -45,6 +45,12 @@ export class ChatController {
     private readonly queue: PendingMessage[] = [];
     private readonly log: unknown[] = [];   // replayable render messages
     private sink: ((message: unknown) => void) | null = null;
+    // Watchdog: force-ends a turn that goes silent (no events) for too long, so a
+    // stalled tool call or dropped backend connection can't pin the session as
+    // "working" forever (it survives reloads since the controller outlives them).
+    // Reset by every event, so long but active tools/streams are unaffected.
+    private watchdog: ReturnType<typeof setTimeout> | undefined;
+    private static readonly TURN_SILENCE_MS = 5 * 60 * 1000;
     // Read-only followers (public API / remote bridge) that observe the same
     // render stream as the active webview without stealing it. The webview uses
     // attach()/sink; observers use subscribe().
@@ -66,6 +72,30 @@ export class ChatController {
     /** True while a turn is running (agent working). */
     get isBusy(): boolean {
         return this.busy;
+    }
+
+    /** (Re)arms the silence watchdog while busy; no-op when idle. */
+    private armWatchdog(): void {
+        if (this.watchdog) { clearTimeout(this.watchdog); this.watchdog = undefined; }
+        if (!this.busy) { return; }
+        this.watchdog = setTimeout(() => this.forceEndStalledTurn(), ChatController.TURN_SILENCE_MS);
+    }
+
+    private clearWatchdog(): void {
+        if (this.watchdog) { clearTimeout(this.watchdog); this.watchdog = undefined; }
+    }
+
+    /** Recovers a turn that produced no events for TURN_SILENCE_MS. */
+    private forceEndStalledTurn(): void {
+        if (!this.busy) { return; }
+        this.busy = false;
+        this.clearWatchdog();
+        this.session?.cancel();
+        this.onStatusChange?.();
+        this.emit({ type: "event", event: { kind: "error", message: "Turn ended automatically: no activity from the agent for 5 minutes (likely a stalled tool or dropped connection)." } });
+        this.emit({ type: "event", event: { kind: "turn-end" } });
+        const next = this.queue.shift();
+        if (next) { this.emitQueue(); this.dispatch(next); }
     }
 
     get backend(): string { return this.adapter.backend; }
@@ -157,6 +187,10 @@ export class ChatController {
      */
     attach(sink: (message: unknown) => void): void {
         this.sink = sink;
+        // A controller that was already busy before this attach (e.g. survived a
+        // reload) may have no watchdog armed — re-arm so a stalled turn still
+        // self-heals instead of showing "working" forever.
+        if (this.busy && !this.watchdog) { this.armWatchdog(); }
         for (const message of this.log) {
             sink(message);
         }
@@ -372,6 +406,7 @@ export class ChatController {
         this.sessionIdInjected = !!outbound.state.sessionIdInjected;
         if (!this.firstTitle && msg.text.trim()) { this.firstTitle = msg.text.trim().slice(0, 60); }
         this.busy = true;
+        this.armWatchdog();
         this.onStatusChange?.();
         this.emit({ type: "user", text: msg.text, attachments: msg.attachments });
         try {
@@ -381,6 +416,7 @@ export class ChatController {
             // process spawn setup) must never leave the controller permanently
             // busy. Surface the error and continue draining queued messages.
             this.busy = false;
+            this.clearWatchdog();
             this.onStatusChange?.();
             this.emit({ type: "event", event: { kind: "error", message: error instanceof Error ? error.message : String(error) } });
             const next = this.queue.shift();
@@ -392,6 +428,8 @@ export class ChatController {
     }
 
     private onEvent(event: AgentEvent): void {
+        // Any backend activity proves the turn is alive — push the watchdog out.
+        if (this.busy) { this.armWatchdog(); }
         this.emit({ type: "event", event });
         // Track edited files here (authoritative, survives view switches).
         if (event.kind === "tool-start" && event.path && (event.added != null || event.removed != null)) {
@@ -410,6 +448,7 @@ export class ChatController {
         }
         if (event.kind === "turn-end") {
             this.busy = false;
+            this.clearWatchdog();
             this.onStatusChange?.();
             const next = this.queue.shift();
             if (next) {
@@ -440,6 +479,7 @@ export class ChatController {
     }
 
     dispose(): void {
+        this.clearWatchdog();
         this.session?.dispose();
         this.session = undefined;
         this.queue.length = 0;
