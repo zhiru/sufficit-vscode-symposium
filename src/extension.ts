@@ -363,12 +363,19 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
                 .map((s) => {
                     let status = runtime.statusFor(s.sessionId);
                     if (!status) {
+                        // Bridge only a BRAND-NEW controller (id not yet assigned,
+                        // keyed "new-N") to its freshly-written disk row by cwd.
+                        // Previously this also matched any controller-less disk
+                        // session to ANY live controller in the same cwd, so a real
+                        // working session lit up a sibling session as "working"
+                        // (phantom activity). A controller with a real id is already
+                        // shown on its own row via statusFor — no cwd guess needed.
                         const byCwd = liveInfos.find((l) =>
                             !reconciledLive.has(l.sessionId)
                             && l.backend === s.backend
                             && !!l.cwd
                             && l.cwd === s.cwd
-                            && (l.sessionId.startsWith("new-") || !runtime.findBySessionId(s.sessionId))
+                            && l.sessionId.startsWith("new-")
                         );
                         if (byCwd) {
                             status = byCwd.status;
