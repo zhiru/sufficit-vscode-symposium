@@ -58,6 +58,7 @@ ${chatStyles}
                 <div class="esTitle">Symposium</div>
                 <div class="esHint">Type below to start a conversation.</div>
                 <button class="esCta" id="emptyNewSession"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.5.5 0 0 1 .5.5V7.5h6a.5.5 0 0 1 0 1h-6v6a.5.5 0 0 1-1 0v-6h-6a.5.5 0 0 1 0-1h6V1.5A.5.5 0 0 1 8 1Z"/></svg>New conversation</button>
+                <button class="esBootstrap" id="bootstrapLink" style="display:none" title="Open the workspace bootstrap file"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5L9.5 1ZM9 5V2l3 3H9Z"/></svg><span class="lbl"></span></button>
             </div>
             <div id="loadingState">
                 <div class="ldLogo"><svg viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="15" height="10" rx="3" fill="white" fill-opacity="0.3"/><path d="M4 11 L2 15 L8 11 Z" fill="white" fill-opacity="0.3"/><rect x="8" y="11" width="15" height="10" rx="3" fill="white" fill-opacity="0.92"/><path d="M20 21 L22 24 L17 21 Z" fill="white" fill-opacity="0.92"/><circle cx="12" cy="16" r="1.3" fill="#7C3AED"/><circle cx="15.5" cy="16" r="1.3" fill="#4F46E5"/><circle cx="19" cy="16" r="1.3" fill="#3B82F6"/></svg></div>

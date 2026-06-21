@@ -24,12 +24,14 @@ const TYPE_OF: Record<ResourceKind, string> = {
     skill: "agent-skill",
     tool: "agent-tool",
     instruction: "agent-instruction",
+    bootstrap: "agent-bootstrap",
 };
 const KIND_OF: Record<string, ResourceKind> = {
     "agent-def": "agent",
     "agent-skill": "skill",
     "agent-tool": "tool",
     "agent-instruction": "instruction",
+    "agent-bootstrap": "bootstrap",
 };
 
 interface MapEntry { id: string; hash: string; }

@@ -27,6 +27,29 @@ test("buildOutboundPrompt injects canceled policy once", () => {
     assert.equal(second.text.includes(CANCELED_RETRY_PREAMBLE), false);
 });
 
+test("buildOutboundPrompt injects workspace bootstrap once, before the first message", () => {
+    const first = buildOutboundPrompt({
+        text: "Start work",
+        fileAttachments: [],
+        policyInjected: true,
+        todoInjected: false,
+        seedInjected: false,
+        autonomyInjected: false,
+        bootstrap: "Workspace facts: uses .NET 8 and Galera.",
+    });
+    assert.ok(first.text.includes("[Workspace bootstrap]"));
+    assert.ok(first.text.includes("uses .NET 8 and Galera"));
+    assert.equal(first.state.bootstrapInjected, true);
+
+    const second = buildOutboundPrompt({
+        text: "Next message",
+        fileAttachments: [],
+        bootstrap: "Workspace facts: uses .NET 8 and Galera.",
+        ...first.state,
+    });
+    assert.equal(second.text.includes("[Workspace bootstrap]"), false);
+});
+
 test("buildOutboundPrompt classifies autonomy and attachments", () => {
     const out = buildOutboundPrompt({
         text: "Investigate",

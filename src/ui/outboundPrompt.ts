@@ -7,6 +7,7 @@ export interface OutboundPromptState {
     autonomyInjected: boolean;
     rtkInjected?: boolean;
     sessionIdInjected?: boolean;
+    bootstrapInjected?: boolean;
 }
 
 export interface BuildOutboundPromptOptions extends OutboundPromptState {
@@ -14,6 +15,8 @@ export interface BuildOutboundPromptOptions extends OutboundPromptState {
     fileAttachments: string[];
     todoInjection?: string;
     seedHistory?: string;
+    /** Per-workspace bootstrap context, injected once before the first message. */
+    bootstrap?: string;
     autonomy?: string;
     /** True when the backend can execute shell commands where rtk is useful. */
     rtk?: boolean;
@@ -72,6 +75,7 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
         autonomyInjected: options.autonomyInjected,
         rtkInjected: options.rtkInjected ?? false,
         sessionIdInjected: options.sessionIdInjected ?? false,
+        bootstrapInjected: options.bootstrapInjected ?? false,
     };
 
     if (!state.policyInjected) {
@@ -96,6 +100,10 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
     if (!state.todoInjected && options.todoInjection) {
         prefixes.push(options.todoInjection);
         state.todoInjected = true;
+    }
+    if (!state.bootstrapInjected && options.bootstrap) {
+        prefixes.push(`[Workspace bootstrap] Standing context for this workspace:\n\n${options.bootstrap}`);
+        state.bootstrapInjected = true;
     }
     if (!state.seedInjected && options.seedHistory) {
         prefixes.push(options.seedHistory);

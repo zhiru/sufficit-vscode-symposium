@@ -41,6 +41,8 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
 
     document.getElementById("newSessionBtn").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
     document.getElementById("emptyNewSession").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
+    let bootstrapPath = "";
+    document.getElementById("bootstrapLink").addEventListener("click", () => { if (bootstrapPath) { vscode.postMessage({ type: "open-file", path: bootstrapPath }); } });
     document.getElementById("archToggle").addEventListener("click", () => { showArchived = !showArchived; renderSessions(); });
 
     // Persisted UI state (send mode + sessions pane width).
@@ -1977,6 +1979,16 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
                 currentBackend = data.backend || "";
                 currentBackendName = data.backendName || "";
                 agentLabels = data.agentLabels || null;
+                // Per-workspace bootstrap link on the empty screen (read-only ref).
+                const bootEl = document.getElementById("bootstrapLink");
+                if (data.bootstrapLink && data.bootstrapLink.path) {
+                    bootstrapPath = data.bootstrapLink.path;
+                    bootEl.querySelector(".lbl").textContent = "Workspace bootstrap: " + (data.bootstrapLink.name || "open");
+                    bootEl.style.display = "inline-flex";
+                } else {
+                    bootstrapPath = "";
+                    bootEl.style.display = "none";
+                }
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + (data.backendName || data.backend);
                 setBrowserOpen(!!data.browserOpen);
                 aiToolsAvailable = (data.aiTools && data.aiTools.available) || [];

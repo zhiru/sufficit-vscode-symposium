@@ -13,6 +13,7 @@ import { symposiumLog } from "../extension";
 import { approveChange, dirtyFiles, gitRoot, headContent, pendingChanges, rejectChange } from "../git";
 import { snapshots } from "../snapshots";
 import { HubClient } from "../sync/hubClient";
+import { readWorkspaceBootstrap } from "../config/root";
 import { fetchSessionTasks, TaskItem } from "../sync/tasks";
 
 /** Directory to run git in for a file — git discovers the enclosing repo upward. */
@@ -934,11 +935,20 @@ export class ChatSurface {
         this.detachActive();
         this.post({ type: "clear" });
 
-        // Inject language preference hint for new (non-resumed) sessions.
+        // New (non-resumed) sessions: inject the language hint and the
+        // per-workspace bootstrap (standing Sufficit context) before the first
+        // message. The bootstrap link is surfaced on the empty screen so the user
+        // can read its source file. Resumed sessions already carry their context.
+        let bootstrapLink: { path: string; name: string } | undefined;
         if (!options.resumeSessionId) {
             const langHint = this.buildLangHint();
             if (langHint) {
                 options = { ...options, systemPrompt: options.systemPrompt ? options.systemPrompt + "\n\n" + langHint : langHint };
+            }
+            const boot = readWorkspaceBootstrap(options.cwd);
+            if (boot) {
+                options = { ...options, bootstrap: boot.text };
+                bootstrapLink = { path: boot.path, name: boot.name };
             }
         }
 
@@ -961,6 +971,8 @@ export class ChatSurface {
             agentLabels: options.agentName
                 ? { agent: options.agentName, toolsDeclared: options.toolsDeclared ?? [], toolsAllowed: options.toolsAllowed ?? [] }
                 : null,
+            // Per-workspace bootstrap link for the empty screen (null = none).
+            bootstrapLink: bootstrapLink ?? null,
             resumed: !!options.resumeSessionId,
             models: adapter.models?.() ?? [],
             reasoningLevels: adapter.reasoningLevels?.() ?? [],

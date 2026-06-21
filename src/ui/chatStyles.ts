@@ -157,6 +157,14 @@ export const chatStyles = `    body {
     }
     #emptyState .esCta:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
     #emptyState .esCta svg { width: 13px; height: 13px; }
+    #emptyState .esBootstrap {
+        margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 10px; border-radius: 5px; cursor: pointer; font: inherit; font-size: 0.85em;
+        background: transparent; color: var(--vscode-textLink-foreground);
+        border: 1px solid var(--vscode-panel-border, transparent); transition: background-color 150ms ease;
+    }
+    #emptyState .esBootstrap:hover { background: var(--vscode-toolbar-hoverBackground, transparent); }
+    #emptyState .esBootstrap svg { width: 13px; height: 13px; opacity: 0.85; }
     @media (prefers-reduced-motion: reduce) {
         #progress::before, .spinner { animation: none; }
         #progress.on { opacity: 1; }

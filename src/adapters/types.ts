@@ -145,6 +145,13 @@ export interface SessionStartOptions {
     toolsDeclared?: string[];
     /** Subset of AI tools actually exposed after gating (memory/web). */
     toolsAllowed?: string[];
+    /**
+     * Per-workspace bootstrap context (curated Sufficit knowledge), injected once
+     * before the user's first message on a new session. Plain text, prepended
+     * like seedHistory so every backend consumes it. Resolved by the surface from
+     * `repo/bootstrap/<workspaceKey>.md`.
+     */
+    bootstrap?: string;
 }
 
 /**

@@ -18,7 +18,7 @@ import * as vscode from "vscode";
  * works offline. The memory REST API only distributes them between machines.
  */
 
-export type ResourceKind = "agent" | "skill" | "tool" | "instruction";
+export type ResourceKind = "agent" | "skill" | "tool" | "instruction" | "bootstrap";
 
 export interface ResourceEntry {
     kind: ResourceKind;
@@ -47,6 +47,9 @@ const KIND_DIR: Record<ResourceKind, string> = {
     skill: "skills",
     tool: "tools",
     instruction: "instructions",
+    // Per-workspace bootstrap docs (one .md per workspace key); synced like the
+    // other kinds and injected on session start. See readWorkspaceBootstrap.
+    bootstrap: "bootstrap",
 };
 
 /** Resolves the configured root, defaulting to ~/.symposium. */
@@ -174,6 +177,7 @@ export function scanAll(): Record<ResourceKind, ResourceEntry[]> {
         skill: scanKind("skill"),
         tool: scanKind("tool"),
         instruction: scanKind("instruction"),
+        bootstrap: scanKind("bootstrap"),
     };
 }
 
@@ -197,6 +201,34 @@ export function resourceContentPath(kind: ResourceKind, name: string): string {
 /** Strips path separators and unsafe chars from a resource name. */
 export function sanitize(name: string): string {
     return name.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
+/** The bootstrap key for a working directory: the workspace folder basename. */
+export function workspaceKey(cwd: string): string {
+    return sanitize(path.basename(cwd.replace(/[/\\]+$/, "")) || "default");
+}
+
+/**
+ * Per-workspace bootstrap injected on session start: looks up
+ * `repo/bootstrap/<workspaceKey>.md`, falling back to `repo/bootstrap/default.md`.
+ * Returns the text + source path (for the "click to read" link), or undefined
+ * when neither exists. Curated in Sufficit memory and synced down as a
+ * `bootstrap` resource.
+ */
+export function readWorkspaceBootstrap(cwd: string): { text: string; path: string; name: string } | undefined {
+    const candidates = [workspaceKey(cwd), "default"];
+    for (const name of candidates) {
+        const file = resourceContentPath("bootstrap", name);
+        try {
+            const text = fs.readFileSync(file, "utf8").trim();
+            if (text) {
+                return { text, path: file, name };
+            }
+        } catch {
+            // not present for this key; try the next candidate
+        }
+    }
+    return undefined;
 }
 
 /** Builds a minimal canonical frontmatter body for a new single-file resource. */
