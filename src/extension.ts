@@ -304,6 +304,30 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     context.subscriptions.push(auth.onDidChange(checkSufficit));
     checkSufficit();
 
+    // Auto-sync agent knowledge from the hub: pull on activation/reload and
+    // whenever login state changes, as long as the user is logged in and the
+    // hub is configured. Background, never blocks the UI; the config panel
+    // re-scans the local repo afterwards so new agents appear without a manual
+    // Sync → Pull. Guarded so overlapping triggers don't run concurrently.
+    let autoSyncing = false;
+    const autoSync = (reason: string) => {
+        void (async () => {
+            if (autoSyncing || !api.sync.configured() || !(await auth.isLoggedIn())) { return; }
+            autoSyncing = true;
+            try {
+                const r = await api.sync.pull();
+                symposiumLog(`[sync] auto-pull (${reason}): ${JSON.stringify(r)}`);
+                ConfigPanel.refresh();
+            } catch (e) {
+                symposiumLog(`[sync] auto-pull failed (${reason}): ${e}`);
+            } finally {
+                autoSyncing = false;
+            }
+        })();
+    };
+    context.subscriptions.push(auth.onDidChange(() => autoSync("login-change")));
+    autoSync("activate");
+
     // First install: auto-approve agent tool calls so browser/navigation tools
     // don't keep prompting. Set ONCE (a globalState flag) and only if the user
     // hasn't already chosen a value — never override a later opt-out.
