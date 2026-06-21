@@ -11,7 +11,7 @@ import {
     SessionStartOptions,
 } from "./types";
 import { TODO_INJECTION } from "./todos";
-import { diffCounts, editDiff, mimeTypeFor } from "./parse";
+import { diffCounts, editDiff, mimeTypeFor, prettyJson } from "./parse";
 import { snapshots } from "../snapshots";
 import { HubClient } from "../sync/hubClient";
 import { AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES, ALL_AI_TOOL_NAMES, filterTools, runAiTool, ShellExecutionMode } from "./aiTools";
@@ -519,12 +519,17 @@ class OpenAISession extends EventEmitter implements AgentSession {
 
                 // Record the assistant turn that requested tools, then run each.
                 this.messages.push({ role: "assistant", content: text || null, tool_calls: toolCalls });
+                // Persist mid-turn: a window reload restarts the extension host
+                // and wipes the in-memory render log, so only what's on disk
+                // survives. Without this, reloading while tools run loses the
+                // whole in-progress turn back to the last user message.
+                this.safePersist();
                 // Loop guard: detect the model spinning on the same call(s).
                 const sig = toolCalls.map((tc) => `${tc.function.name}:${tc.function.arguments}`).join("|");
                 recentCalls.push(sig);
                 if (recentCalls.length > REPEAT_LIMIT) { recentCalls.shift(); }
                 if (recentCalls.length === REPEAT_LIMIT && recentCalls.every((c) => c === sig)) {
-                    this.emit("event", { kind: "text", text: `\n\n_(interrompi: o modelo repetiu a mesma chamada de ferramenta ${REPEAT_LIMIT}x sem progresso)_` });
+                    this.emit("event", { kind: "text", text: `\n\n_(stopped: the model repeated the same tool call ${REPEAT_LIMIT}x without progress)_` });
                     hitCap = false;
                     break;
                 }
@@ -562,6 +567,7 @@ class OpenAISession extends EventEmitter implements AgentSession {
                         : await runAiTool(tc.function.name, args, { hub: this.hub, cwd: this.options.cwd, permission: this.options.permission, sessionId: this.sessionId, shellExecution: shellMode, progress });
                     this.emit("event", { kind: "tool-end", toolName: tc.function.name, toolId: tc.id, result });
                     this.messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: result });
+                    this.safePersist();   // each completed tool round is durable immediately
                 }
                 // loop again so the model can use the tool results
             }
@@ -759,14 +765,44 @@ export class OpenAIAdapter implements AgentAdapter {
     async history(info: SessionInfo): Promise<HistoryMessage[]> {
         const s = readStored(this.backend, info.sessionId);
         if (!s) { return []; }
-        return s.messages
-            .filter((m) => (m.role === "user" || m.role === "assistant") && contentText(m.content).length > 0)
-            .map((m) => ({
-                role: m.role as "user" | "assistant",
-                text: contentText(m.content),
-                model: m.role === "assistant" ? m.model : undefined,
-                modelLabel: m.role === "assistant" && m.model ? (discoveredLabels.get(this.getConfig().baseUrl)?.[m.model] ?? m.model) : undefined,
-            }));
+        const labels = discoveredLabels.get(this.getConfig().baseUrl) ?? {};
+        // Pair each tool result back to the call that produced it.
+        const results = new Map<string, string>();
+        for (const m of s.messages) {
+            if (m.role === "tool" && m.tool_call_id) { results.set(m.tool_call_id, contentText(m.content)); }
+        }
+        const out: HistoryMessage[] = [];
+        for (const m of s.messages) {
+            if (m.role === "user") {
+                const t = contentText(m.content);
+                if (t) { out.push({ role: "user", text: t }); }
+            } else if (m.role === "assistant") {
+                const t = contentText(m.content);
+                if (t) {
+                    out.push({ role: "assistant", text: t, model: m.model, modelLabel: m.model ? (labels[m.model] ?? m.model) : undefined });
+                }
+                // Reconstruct tool rows so a resumed (or reloaded mid-turn)
+                // session shows the same icon+target+diff it had live.
+                for (const tc of m.tool_calls ?? []) {
+                    let args: Record<string, unknown> = {};
+                    try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* leave empty */ }
+                    const counts = diffCounts(tc.function.name, args);
+                    const ap = typeof args.path === "string" && args.path
+                        ? (path.isAbsolute(args.path) ? args.path : path.resolve(s.cwd, args.path))
+                        : undefined;
+                    out.push({
+                        role: "tool", text: tc.function.name, toolName: tc.function.name,
+                        detail: friendlyToolDetail(tc.function.name, args),
+                        input: prettyJson(args),
+                        result: results.get(tc.id),
+                        added: counts?.added, removed: counts?.removed,
+                        path: ap ?? toolPath(tc.function.name, args),
+                        diff: editDiff(tc.function.name, args),
+                    });
+                }
+            }
+        }
+        return out;
     }
 
     async deleteSession(info: SessionInfo): Promise<void> {
