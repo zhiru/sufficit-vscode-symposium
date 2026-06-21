@@ -912,17 +912,16 @@ export const chatStyles = `    body {
     }
     .iconBtn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     /* Send = primary filled split button (send + mode caret) */
+    #sendGroup { display: inline-flex; height: 26px; border-radius: 5px; overflow: hidden; }
+    /* Stop sits attached as the first segment of the send pill while busy. */
     #stopBtn {
-        height: 26px; width: 26px; margin-right: 4px; padding: 0; flex: 0 0 auto;
-        border: none; border-radius: 5px; cursor: pointer;
-        display: inline-flex; align-items: center; justify-content: center;
-        background: var(--vscode-statusBarItem-errorBackground, var(--vscode-inputValidation-errorBackground));
-        color: var(--vscode-statusBarItem-errorForeground, #fff);
-        transition: background-color 200ms ease, opacity 150ms ease;
+        padding: 0 8px; flex: 0 0 auto;
+        background: var(--vscode-statusBarItem-errorBackground, var(--vscode-inputValidation-errorBackground)) !important;
+        color: var(--vscode-statusBarItem-errorForeground, #fff) !important;
+        border-right: 1px solid color-mix(in srgb, #000 25%, transparent);
     }
     #stopBtn:hover { opacity: 0.85; }
-    #stopBtn svg { width: 13px; height: 13px; }
-    #sendGroup { display: inline-flex; height: 26px; border-radius: 5px; overflow: hidden; }
+    #stopBtn svg { width: 12px; height: 12px; }
     #sendGroup button {
         border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
         background: var(--vscode-button-background); color: var(--vscode-button-foreground);
