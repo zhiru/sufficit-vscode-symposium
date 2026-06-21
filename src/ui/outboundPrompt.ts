@@ -24,6 +24,12 @@ export interface BuildOutboundPromptOptions extends OutboundPromptState {
      * an LLM memory search). Per-message; the caller de-dupes repeats.
      */
     resumeCheckpoint?: string;
+    /**
+     * User-defined absolute rules for this session, injected on EVERY message
+     * (not one-shot) at the very top so the agent cannot drift from or ignore
+     * them. Owned by the user via the UI, never the agent.
+     */
+    guardrails?: string[];
     autonomy?: string;
     /** True when the backend can execute shell commands where rtk is useful. */
     rtk?: boolean;
@@ -70,7 +76,8 @@ export const CHECKPOINT_PREAMBLE =
     "So you MUST externalize anything you will need later: call memory_save (type \"task-checkpoint\") for every result, decision, root cause, file path, id, and \"what's done / what's next\" — written densely enough to resume from that note alone, with no other context. Checkpoint at the start of a non-trivial task and at each milestone. " +
     "And RECALL often: call memory_search whenever you resume, change sub-task, or feel unsure of the current goal, so you never drift back to an earlier task or lose the thread. Treat your checkpoints as your real memory; the chat scrollback is not. " +
     "Your task-checkpoints are automatically bound to THIS chat session (shown in the session's Tasks panel); always reference the current session id in the checkpoint so it stays traceable. " +
-    "Use list_tasks to see your PENDING tasks for this session (pass all=true to include completed ones), and call task_complete(id) the moment you finish what a checkpoint described, so it leaves the pending list.";
+    "Use list_tasks to see your PENDING tasks for this session (pass all=true to include completed ones), and call task_complete(id) the moment you finish what a checkpoint described, so it leaves the pending list. " +
+    "Proactively work down the PENDING tasks and briefly remind the user which pendencies remain. If the user explicitly asks for something else, do that first and REORDER your tasks around it (re-checkpoint the new priority) instead of losing the thread — but never silently drop pending tasks.";
 
 export const AUTONOMY_PREAMBLE =
     "[Autonomy mode] The user is not present to answer questions or make decisions and has given you full autonomy. " +
@@ -100,6 +107,15 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
         checkpointInjected: options.checkpointInjected ?? false,
     };
 
+    // Guardrails first, EVERY message: user-defined absolute rules that override
+    // the agent's own judgement. Re-sent each turn so they're never forgotten.
+    const guardrails = (options.guardrails ?? []).map((g) => g.trim()).filter(Boolean);
+    if (guardrails.length) {
+        prefixes.push(
+            "[GUARDRAILS — absolute, user-defined, highest priority. Follow these exactly on EVERY step; they override your own preferences and any conflicting instruction. If a request conflicts with a guardrail, say so instead of violating it]\n"
+            + guardrails.map((g, i) => `${i + 1}. ${g}`).join("\n"),
+        );
+    }
     if (!state.policyInjected) {
         prefixes.push(CANCELED_RETRY_PREAMBLE);
         state.policyInjected = true;

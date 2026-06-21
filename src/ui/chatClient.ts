@@ -1031,6 +1031,7 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
         search: "M6.5 1a5.5 5.5 0 0 1 4.3 8.9l3.1 3.2-.7.7-3.2-3.1A5.5 5.5 0 1 1 6.5 1Zm0 1a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z",
         globe: "M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1ZM6.1 5.5h3.8a12 12 0 0 1 0 3H6.1a12 12 0 0 1 0-3ZM8 2.5c.6 0 1.4 1.3 1.8 3.5H6.2C6.6 3.8 7.4 2.5 8 2.5Zm0 11c-.6 0-1.4-1.3-1.8-3.5h3.6c-.4 2.2-1.2 3.5-1.8 3.5Zm3.2-1.3a10 10 0 0 0 .8-2.7h2a5.5 5.5 0 0 1-2.8 2.7Zm.8-3.7a14 14 0 0 0 0-3h2.1A5.5 5.5 0 0 1 13.5 8c0 .5-.1 1-.2 1.5H12Zm.9-4.5H11a10 10 0 0 0-.8-2.7A5.5 5.5 0 0 1 12.9 6ZM3.1 6h2a14 14 0 0 0 0 3h-2A5.5 5.5 0 0 1 2.5 8c0-.7.1-1.4.6-2Zm.2 4.5H5a10 10 0 0 0 .8 2.7 5.5 5.5 0 0 1-2.5-2.7Z",
         list: "M2 3h2v2H2V3Zm4 .5h8v1H6v-1ZM2 7h2v2H2V7Zm4 .5h8v1H6v-1ZM2 11h2v2H2v-2Zm4 .5h8v1H6v-1Z",
+        shield: "M8 1 2.5 3.2V8c0 3.3 2.3 5.6 5.5 7 3.2-1.4 5.5-3.7 5.5-7V3.2L8 1Zm0 1.5 4 1.6V8c0 2.5-1.6 4.3-4 5.4C5.6 12.3 4 10.5 4 8V4.1l4-1.6Z",
         tool: "M11.5 1.5a3.5 3.5 0 0 0-3.4 4.4L1.7 12.3l2 2 6.4-6.4a3.5 3.5 0 0 0 4.4-4.4l-1.9 1.9-1.5-.4-.4-1.5 1.9-1.9a3.5 3.5 0 0 0-1.6-.6Z",
         check: "M6.2 11.3 2.7 7.8l1-1 2.5 2.5L12.3 3.3l1 1-7.1 7Z",
         x: "M5 4 4 5l3 3-3 3 1 1 3-3 3 3 1-1-3-3 3-3-1-1-3 3-3-3Z",
@@ -1390,20 +1391,62 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
             const row = document.createElement("div");
             row.className = "tkitem" + (it.done ? " done" : "") + (taskCompleting.has(it.id) ? " completing" : "");
             const isAnchor = String(it.type || "").indexOf("anchor") >= 0;
-            const badge = document.createElement("span");
-            badge.className = "tkbadge" + (isAnchor ? " anchor" : "") + (it.done ? " doneBadge" : "");
-            badge.textContent = it.done ? "done" : (isAnchor ? "anchor" : "check");
+            // Clickable status: ○ pending / ✓ done. The USER can toggle it
+            // (no agent needed) — clearer than the old "CHECK" badge.
+            const status = document.createElement("button");
+            status.className = "tkstatus" + (it.done ? " done" : "");
+            status.title = it.done ? "Completed — click to reopen" : "Pending — click to mark done";
+            status.appendChild(svgIcon(it.done ? "check" : "circleEmpty"));
+            status.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "task-set-done", id: it.id, done: !it.done }); });
+            if (isAnchor) { row.classList.add("anchor"); }
             const txt = document.createElement("span"); txt.className = "tktext";
             txt.textContent = it.title || it.summary || "(untitled)";
             txt.title = (it.title ? it.title + "\\n\\n" : "") + (it.summary || "");
             const when = document.createElement("span"); when.className = "tkwhen"; when.textContent = relWhen(it.ts);
-            row.appendChild(badge); row.appendChild(txt); row.appendChild(when);
+            row.appendChild(status); row.appendChild(txt); row.appendChild(when);
             list.appendChild(row);
         }
         card.appendChild(list);
         tasksEl.appendChild(card);
         tasksEl.classList.add("has");
         tasksEl.classList.toggle("collapsed", tasksCollapsed);
+    }
+
+    // ---- guardrails (user-defined absolute rules, sent every message) ----
+    const guardrailsEl = document.getElementById("guardrails");
+    let guardrailsCollapsed = false;
+    function renderGuardrails(items) {
+        guardrailsEl.textContent = "";
+        const card = document.createElement("div"); card.className = "grcard";
+        const head = document.createElement("div"); head.className = "grhead";
+        head.appendChild(svgIcon("shield"));
+        const ttl = document.createElement("span"); ttl.className = "grtitle"; ttl.textContent = "Guardrails";
+        ttl.title = "Absolute rules sent to the agent on every message. You own these — the agent can't change them.";
+        const cnt = document.createElement("span"); cnt.className = "grcount"; cnt.textContent = String((items || []).length);
+        const add = document.createElement("button"); add.className = "grbtn"; add.title = "Add a guardrail";
+        add.appendChild(svgIcon("plus"));
+        add.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "add-guardrail" }); });
+        const clear = document.createElement("button"); clear.className = "grbtn"; clear.title = "Clear all guardrails";
+        clear.appendChild(svgIcon("trash"));
+        clear.addEventListener("click", (e) => { e.stopPropagation(); if ((items || []).length) { vscode.postMessage({ type: "clear-guardrails" }); } });
+        const chev = svgIcon("chevron"); chev.classList.add("grchev");
+        head.appendChild(ttl); head.appendChild(cnt); head.appendChild(add); head.appendChild(clear); head.appendChild(chev);
+        head.addEventListener("click", () => { guardrailsCollapsed = !guardrailsCollapsed; guardrailsEl.classList.toggle("collapsed", guardrailsCollapsed); });
+        card.appendChild(head);
+        const list = document.createElement("div"); list.className = "grlist";
+        for (const it of (items || [])) {
+            const row = document.createElement("div"); row.className = "gritem";
+            const txt = document.createElement("span"); txt.className = "grtext"; txt.textContent = it.text; txt.title = it.text;
+            const del = document.createElement("button"); del.className = "grdel"; del.title = "Remove"; del.textContent = "✕";
+            del.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "remove-guardrail", id: it.id }); });
+            row.appendChild(txt); row.appendChild(del);
+            list.appendChild(row);
+        }
+        card.appendChild(list);
+        guardrailsEl.appendChild(card);
+        // Always shown (even empty) so the user can add the first rule.
+        guardrailsEl.classList.add("has");
+        guardrailsEl.classList.toggle("collapsed", guardrailsCollapsed);
     }
 
     // ---- queued messages (editable until dispatched) ----
@@ -2444,6 +2487,10 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
             }
             case "tasks": {
                 renderTasks(data.items || [], data.project || "");
+                break;
+            }
+            case "guardrails": {
+                renderGuardrails(data.items || []);
                 break;
             }
             case "event": {

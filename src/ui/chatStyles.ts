@@ -679,6 +679,34 @@ export const chatStyles = `    body {
     #tasks.collapsed .tkhead svg.tkchev { transform: rotate(-90deg); }
     #tasks .tklist { max-height: 180px; overflow-y: auto; padding: 2px 8px 8px 8px; border-top: 1px solid var(--vscode-chat-requestBorder, var(--vscode-input-border, rgba(128,128,128,0.18))); }
     #tasks.collapsed .tklist { display: none; }
+    /* Clickable task status (user can toggle done): ○ pending / ✓ done. */
+    .tkitem .tkstatus { flex-shrink: 0; background: none; border: none; cursor: pointer; padding: 0; display: inline-flex; align-items: center; color: var(--vscode-descriptionForeground, var(--vscode-foreground)); opacity: 0.75; align-self: center; }
+    .tkitem .tkstatus:hover { opacity: 1; }
+    .tkitem .tkstatus svg { width: 14px; height: 14px; }
+    .tkitem.done .tkstatus { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fb950)); opacity: 1; }
+    /* ---- guardrails panel ---- */
+    #guardrails { margin-bottom: 6px; }
+    #guardrails .grcard {
+        border: 1px solid color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 40%, var(--vscode-input-border, rgba(128,128,128,0.25)));
+        border-radius: 6px; background: var(--vscode-chat-requestBackground, var(--vscode-input-background, transparent)); overflow: hidden;
+    }
+    #guardrails .grhead { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.9em; user-select: none; }
+    #guardrails .grhead:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.08)); }
+    #guardrails .grhead .grtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    #guardrails .grhead .grtitle ~ svg { color: var(--vscode-focusBorder, #0078d4); }
+    #guardrails .grhead svg:first-child { width: 14px; height: 14px; flex-shrink: 0; color: var(--vscode-focusBorder, #0078d4); opacity: 0.9; }
+    #guardrails .grhead .grcount { flex-shrink: 0; opacity: 0.75; font-size: 0.92em; font-variant-numeric: tabular-nums; }
+    #guardrails .grhead .grbtn { flex-shrink: 0; background: none; border: none; cursor: pointer; padding: 2px; opacity: 0.7; color: var(--vscode-foreground); display: inline-flex; }
+    #guardrails .grhead .grbtn:hover { opacity: 1; }
+    #guardrails .grhead .grbtn svg { width: 13px; height: 13px; }
+    #guardrails .grhead svg.grchev { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.8; transition: transform 150ms ease; }
+    #guardrails.collapsed .grchev { transform: rotate(-90deg); }
+    #guardrails .grlist { max-height: 160px; overflow-y: auto; padding: 2px 8px 8px 8px; border-top: 1px solid var(--vscode-input-border, rgba(128,128,128,0.18)); }
+    #guardrails.collapsed .grlist { display: none; }
+    #guardrails .gritem { display: flex; align-items: baseline; gap: 8px; padding: 3px 2px; line-height: 1.45; font-size: 0.9em; }
+    #guardrails .gritem .grtext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #guardrails .gritem .grdel { flex-shrink: 0; background: none; border: none; cursor: pointer; opacity: 0.5; color: var(--vscode-foreground); font-size: 0.85em; padding: 0 2px; }
+    #guardrails .gritem .grdel:hover { opacity: 1; color: var(--vscode-errorForeground, #f14c4c); }
     .tkitem { display: flex; align-items: baseline; gap: 8px; padding: 3px 2px; line-height: 1.5; font-size: 0.9em; }
     .tkitem .tkbadge { flex-shrink: 0; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 4px; background: var(--vscode-badge-background, rgba(128,128,128,0.25)); color: var(--vscode-badge-foreground, var(--vscode-foreground)); }
     .tkitem .tkbadge.anchor { background: color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 35%, transparent); }

@@ -43,6 +43,17 @@ export async function fetchSessionTasks(hub: HubClient, sessionId: string): Prom
         .map((r) => ({ id: r.id, type: r.type, title: r.title, summary: r.summary, ts: r.createdAtUtc, tags: r.tags, done: hasTag(r.tags, DONE_TAG) }));
 }
 
+/** Sets/clears a task's completed state (DONE_TAG). User- or agent-driven. */
+export async function setTaskDone(hub: HubClient, id: string, done: boolean): Promise<boolean> {
+    if (!hub.configured() || !id) { return false; }
+    const [obs] = await hub.getByIds([id]);
+    if (!obs) { return false; }
+    const tags = String(obs.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean).filter((t) => t !== DONE_TAG);
+    if (done) { tags.push(DONE_TAG); }
+    await hub.save({ ...obs, tags: tags.join(",") });
+    return true;
+}
+
 /** Marks a task observation completed by adding the DONE_TAG (idempotent). */
 export async function markTaskDone(hub: HubClient, id: string): Promise<boolean> {
     if (!hub.configured() || !id) { return false; }

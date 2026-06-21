@@ -15,7 +15,8 @@ import { snapshots } from "../snapshots";
 import { HubClient } from "../sync/hubClient";
 import { readWorkspaceBootstrap } from "../config/root";
 import { probeRtk } from "../adapters/rtk";
-import { fetchSessionTasks, TaskItem } from "../sync/tasks";
+import { fetchSessionTasks, setTaskDone, TaskItem } from "../sync/tasks";
+import { fetchSessionGuardrails, saveGuardrail, removeGuardrail, clearSessionGuardrails } from "../sync/guardrails";
 
 /** Directory to run git in for a file — git discovers the enclosing repo upward. */
 function repoCwd(file: string): string {
@@ -233,6 +234,18 @@ export class ChatSurface {
         this.post({ type: "tasks", items, project: sessionId });
     }
 
+    /** Pushes the session's user guardrails to the panel. */
+    private async refreshGuardrails(): Promise<void> {
+        const sessionId = this.controller?.sessionId ?? "";
+        let items: { id: string; text: string }[] = [];
+        try {
+            if (this.hub.configured() && sessionId) {
+                items = (await fetchSessionGuardrails(this.hub, sessionId)).map((g) => ({ id: g.id, text: g.text }));
+            }
+        } catch { items = []; }
+        this.post({ type: "guardrails", items });
+    }
+
     /**
      * Attaches the content of a VS Code integrated-browser page as a context
      * file. Invokes the built-in open_browser_page tool (prompts the user to
@@ -279,6 +292,7 @@ export class ChatSurface {
                     void this.refreshSessions();
                     void this.pushAccount();
                     void this.refreshTasks();
+                    void this.refreshGuardrails();
                     // Nothing bound yet (view just opened): restore the last
                     // active session if we have one, else start a fresh dialogue.
                     if (!this.controller && !this.followHandle && !this.terminalSession) {
@@ -353,6 +367,50 @@ export class ChatSurface {
                 }
                 case "refresh-tasks": {
                     void this.refreshTasks();
+                    return;
+                }
+                case "task-set-done": {
+                    if (typeof message.id === "string" && this.hub.configured()) {
+                        await setTaskDone(this.hub, message.id, message.done === true);
+                        void this.refreshTasks();
+                    }
+                    return;
+                }
+                case "add-guardrail": {
+                    const sid = this.controller?.sessionId;
+                    if (!sid || !this.hub.configured()) {
+                        void vscode.window.showWarningMessage("Open a session (with the hub configured) to add guardrails.");
+                        return;
+                    }
+                    const text = await vscode.window.showInputBox({
+                        prompt: "New guardrail — an absolute rule the agent must follow on every message",
+                        placeHolder: "e.g. Edit the backend model, never the Razor markup",
+                    });
+                    if (text && text.trim()) {
+                        await saveGuardrail(this.hub, sid, text.trim());
+                        await this.controller?.reloadGuardrails();
+                        void this.refreshGuardrails();
+                    }
+                    return;
+                }
+                case "remove-guardrail": {
+                    if (typeof message.id === "string" && this.hub.configured()) {
+                        await removeGuardrail(this.hub, message.id);
+                        await this.controller?.reloadGuardrails();
+                        void this.refreshGuardrails();
+                    }
+                    return;
+                }
+                case "clear-guardrails": {
+                    const sid = this.controller?.sessionId;
+                    if (sid && this.hub.configured()) {
+                        const ok = await vscode.window.showWarningMessage("Clear all guardrails for this session?", { modal: true }, "Clear");
+                        if (ok === "Clear") {
+                            await clearSessionGuardrails(this.hub, sid);
+                            await this.controller?.reloadGuardrails();
+                            void this.refreshGuardrails();
+                        }
+                    }
                     return;
                 }
                 case "recheck-shell-tools": {
@@ -969,6 +1027,7 @@ export class ChatSurface {
         const controller = existing ?? this.deps.runtime.create(adapter, options);
         this.controller = controller;
         void this.refreshTasks();   // load this session's tasks into the panel
+        void this.refreshGuardrails();
 
         const sessionsSide = vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto");
         this.post({

@@ -61,6 +61,10 @@ export type WebviewToHost =
     | { type: "refresh-tasks" }
     | { type: "refresh-models" }
     | { type: "recheck-shell-tools" }
+    | { type: "task-set-done"; id: string; done: boolean }
+    | { type: "add-guardrail" }
+    | { type: "remove-guardrail"; id: string }
+    | { type: "clear-guardrails" }
     | { type: "pin-model"; model: string }
     | { type: "set-model-default"; model: string }
     | { type: "new-session" }

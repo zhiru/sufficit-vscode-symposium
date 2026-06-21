@@ -71,6 +71,7 @@ ${chatStyles}
             <button id="scrollBottom" title="Go to the bottom" aria-label="Go to the bottom"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 13.5 13 8.5h-3v-6H6v6H3L8 13.5Z"/></svg></button>
         </div>
         <div id="queued"></div>
+        <div id="guardrails"></div>
         <div id="tasks"></div>
         <div id="plan"></div>
         <div id="changedFiles"></div>

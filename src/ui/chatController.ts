@@ -5,6 +5,7 @@ import { buildOutboundPrompt } from "./outboundPrompt";
 import { probeRtk, rtkCached } from "../adapters/rtk";
 import { HubClient } from "../sync/hubClient";
 import { fetchLatestCheckpoint } from "../sync/tasks";
+import { fetchSessionGuardrails } from "../sync/guardrails";
 import { WebviewToHost } from "./protocol";
 
 type SendMode = "send" | "queue" | "steer";
@@ -51,6 +52,10 @@ export class ChatController {
     // Id of the session checkpoint already injected as resume context, so the
     // same one isn't re-prepended every continuity turn.
     private injectedCheckpointId: string | undefined;
+    // User-defined guardrails, cached and injected on every message. Reloaded
+    // lazily and whenever the user edits them in the UI.
+    private guardrails: string[] = [];
+    private guardrailsLoaded = false;
     private queueSeq = 0;
     // Files this session edited and their net +/- — owned here so it survives
     // view switches (the runtime keeps the controller alive) and approval state
@@ -369,7 +374,19 @@ export class ChatController {
         this.emit({ type: "queue", items: this.queue.map((m) => ({ id: m.id, text: m.text, attachments: m.attachments })) });
     }
 
+    /** (Re)loads the session's user guardrails into the per-message cache. */
+    async reloadGuardrails(): Promise<void> {
+        this.guardrailsLoaded = true;
+        if (!this.sessionId || !this.hub.configured()) { this.guardrails = []; return; }
+        try { this.guardrails = (await fetchSessionGuardrails(this.hub, this.sessionId)).map((g) => g.text).filter(Boolean); }
+        catch { /* keep the prior cache */ }
+    }
+
     private async dispatch(msg: PendingMessage): Promise<void> {
+        // Guardrails: load once (cached), then inject on every message below.
+        if (!this.guardrailsLoaded && this.adapter.roleAware?.() === true && this.sessionId && this.hub.configured()) {
+            await this.reloadGuardrails();
+        }
         // Resume hook (deterministic, no LLM): on a CONTINUITY message — the agent
         // was idle or queued, NOT steered — prepend this session's latest
         // checkpoint so it resumes from its own anchor without having to search.
@@ -434,6 +451,7 @@ export class ChatController {
             seedHistory: this.options.seedHistory,
             bootstrap: this.options.bootstrap,
             resumeCheckpoint: msg.resumeCheckpoint,
+            guardrails: this.guardrails,
             autonomy: msg.autonomy,
             asRoles: roleAware,
         });
