@@ -289,17 +289,36 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     }
 
     // Copy the active session's "id title" to the clipboard, with a toast.
-    const copySessionBtn = document.getElementById("copySessionBtn");
-    copySessionBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
+    // Wired to BOTH the header copy icon AND clicking the title text itself.
+    function copySession(ev) {
+        if (ev) { ev.stopPropagation(); }
         const title = (chatTitle.textContent || "").trim();
         const text = [activeSessionId, title].filter(Boolean).join(" ");
         if (!text) { return; }
+        let ok = false;
         try {
-            if (navigator.clipboard) { navigator.clipboard.writeText(text); }
-        } catch (_) { /* clipboard unavailable */ }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text); ok = true;
+            }
+        } catch (_) { ok = false; }
+        if (!ok) {
+            // Fallback for webview contexts where navigator.clipboard is blocked:
+            // a hidden textarea + execCommand("copy") works on a user gesture.
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+                document.body.appendChild(ta); ta.select();
+                document.execCommand("copy"); document.body.removeChild(ta);
+            } catch (_) { /* give up silently */ }
+        }
         showToast("Copied session id + title");
-    });
+    }
+    const copySessionBtn = document.getElementById("copySessionBtn");
+    copySessionBtn.addEventListener("click", copySession);
+    // Clicking the title text also copies (more discoverable than the icon).
+    chatTitle.style.cursor = "pointer";
+    chatTitle.title = "Click to copy session id + title";
+    chatTitle.addEventListener("click", copySession);
 
     // Presence / autonomy — quick toggle in the composer, changeable any time
     // (NOT locked while busy); the value is read on every send.
