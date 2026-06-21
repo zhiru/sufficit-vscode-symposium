@@ -1026,6 +1026,12 @@ export class ChatSurface {
             if (ev?.kind === "session" && ev.sessionId) {
                 this.deps.lastActive.set({ backend, sessionId: ev.sessionId });
             }
+            // Refresh the Tasks panel when a turn ends: the agent may have saved
+            // task-checkpoints mid-turn (bound to this session), which the panel
+            // otherwise wouldn't pick up until reopen/manual refresh.
+            if (ev?.kind === "turn-end") {
+                void this.refreshTasks();
+            }
             this.post(message);
         });
         if (!existing && info) {
