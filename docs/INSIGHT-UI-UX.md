@@ -1,5 +1,13 @@
 # INSIGHT — UI/UX Audit (Symposium)
 
+> **Status: COMPLETED / ARCHIVED (2026-06-21).** Findings #1–#5 verified resolved
+> in v0.79.133. The durable part (the pre-delivery checklist + principles) was
+> promoted to `docs/UI-GUIDELINES.md`. The one still-open item (Rec #4: bundle +
+> type the webview) is tracked as architecture-plan #2/#3 under
+> `docs/activities/`. Re-eval notes: the section-1 size table is a pre-split
+> snapshot (chatHtml is now ~113 lines, not 3281); Rec #6's `min-height: 26px` is
+> the `#chatHeader` bar, not a clickable target (non-issue).
+>
 > Generated 2026-06-19 · extension v0.79.104 · source-grounded (no guesses)
 > Surface under review: VS Code activity-bar webviews — chat panel + config panel.
 
