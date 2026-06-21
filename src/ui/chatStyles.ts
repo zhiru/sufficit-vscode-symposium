@@ -273,6 +273,17 @@ export const chatStyles = `    body {
     .ttlIcon { width: 12px; height: 12px; vertical-align: -1px; margin-right: 4px; opacity: 0.7; }
     #ctxMenu .miIcon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 8px; opacity: 0.85; }
     #ctxMenu .mi { display: flex; align-items: center; }
+    #toast {
+        position: fixed; z-index: 60; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(8px);
+        max-width: 80%; padding: 7px 14px; border-radius: 6px; font-size: 0.85em;
+        background: var(--vscode-notifications-background, var(--vscode-editor-background));
+        color: var(--vscode-notifications-foreground, var(--vscode-foreground));
+        border: 1px solid var(--vscode-notifications-border, var(--vscode-panel-border, transparent));
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        opacity: 0; pointer-events: none; transition: opacity 150ms ease, transform 150ms ease;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
     #ctxMenu {
         position: fixed; z-index: 50; display: none; min-width: 220px; max-width: 340px;
         background: var(--vscode-menu-background, var(--vscode-editor-background));

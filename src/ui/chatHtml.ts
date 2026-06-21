@@ -50,6 +50,9 @@ ${chatStyles}
             <button id="switchAgentBtn" class="iconBtn" title="Switch to another model" aria-label="Switch to another model" style="display:none">
                 <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.5 1 6l3.5 3.5V7H10V5H4.5V2.5Zm7 4L15 10l-3.5 3.5V11H6V9h5.5V6.5Z"/></svg>
             </button>
+            <button id="copySessionBtn" class="iconBtn" title="Copy session id + title" aria-label="Copy session id and title" style="display:none">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 2h6a1 1 0 0 1 1 1v8h-1V3H5V2ZM3 4h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm0 1v8h6V5H3Z"/></svg>
+            </button>
         </div>
         <div id="logWrap">
             <div id="log"></div>
@@ -106,6 +109,7 @@ ${chatStyles}
     </main>
 </div>
 <div id="ctxMenu"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 <script nonce="${nonce}">
 ${chatClientJs}
 </script>

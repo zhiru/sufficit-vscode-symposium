@@ -277,6 +277,30 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
         vscode.postMessage({ type: "list-backends" });
     });
 
+    // Transient toast (bottom-center, auto-dismiss). Reused for copy feedback.
+    let toastTimer = null;
+    function showToast(message) {
+        const el = document.getElementById("toast");
+        if (!el) { return; }
+        el.textContent = message;
+        el.classList.add("show");
+        if (toastTimer) { clearTimeout(toastTimer); }
+        toastTimer = setTimeout(() => el.classList.remove("show"), 2000);
+    }
+
+    // Copy the active session's "id title" to the clipboard, with a toast.
+    const copySessionBtn = document.getElementById("copySessionBtn");
+    copySessionBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const title = (chatTitle.textContent || "").trim();
+        const text = [activeSessionId, title].filter(Boolean).join(" ");
+        if (!text) { return; }
+        try {
+            if (navigator.clipboard) { navigator.clipboard.writeText(text); }
+        } catch (_) { /* clipboard unavailable */ }
+        showToast("Copied session id + title");
+    });
+
     // Presence / autonomy — quick toggle in the composer, changeable any time
     // (NOT locked while busy); the value is read on every send.
     let autonomyValue = (saved && saved.autonomy) || "present";
@@ -1974,6 +1998,7 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
                 layout();   // apply the sessions-side now (meta sets sideMode)
                 layout();
                 activeSessionId = data.sessionId || "";
+                copySessionBtn.style.display = "inline-flex";   // a session surface is open
                 clearTimeout(bootTimer); bootStep("host", null, "ok"); bootStep("session", "Session ready", "ok"); bootComplete();
                 startWorkingSet(activeSessionId);   // bind edited-files set to this session
                 currentBackend = data.backend || "";
@@ -2071,6 +2096,7 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
             case "clear": {
                 conversationRows = [];
                 log.textContent = "";
+                copySessionBtn.style.display = "none";
                 activeModel = ""; busy = false; queued = 0;
                 resetWorkingState();
                 refreshEmpty();
