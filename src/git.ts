@@ -75,6 +75,52 @@ export async function dirtyFiles(cwd: string): Promise<string[]> {
     return [...parsePorcelainDirty(r.stdout, root, path)];
 }
 
+/** One pending file with its real line delta vs the index/HEAD. */
+export interface FileDelta { path: string; added: number; removed: number; }
+
+/**
+ * Faithful mirror of the working tree for the repo containing `cwd`: every
+ * PENDING (unstaged or untracked) file with its REAL +/- line counts from git —
+ * so any edit shows correctly regardless of which tool made it (write/edit tool,
+ * `sed`, a terminal, or an external editor). Staged files drop out (mirrors
+ * approve = `git add`), matching `parsePorcelainDirty`'s pending definition.
+ *
+ *   - tracked & modified: `git diff --numstat` (working tree vs index, unstaged)
+ *   - untracked new file: counted as all-added (text line count; binary → 0)
+ */
+export async function changedFilesWithCounts(cwd: string): Promise<FileDelta[]> {
+    const root = await gitRoot(cwd);
+    if (!root) { return []; }
+    const out: FileDelta[] = [];
+    const seen = new Set<string>();
+    const diff = await git(root, ["diff", "--numstat", "--no-renames"]);
+    if (diff.code === 0) {
+        for (const line of diff.stdout.split("\n")) {
+            const cols = line.split("\t");
+            if (cols.length < 3) { continue; }
+            const rel = cols[2].trim();
+            if (!rel) { continue; }
+            const abs = path.resolve(root, rel);
+            // numstat reports "-" for binary files; treat those as 0/0.
+            const added = cols[0] === "-" ? 0 : Number(cols[0]) || 0;
+            const removed = cols[1] === "-" ? 0 : Number(cols[1]) || 0;
+            out.push({ path: abs, added, removed });
+            seen.add(abs);
+        }
+    }
+    const untracked = await git(root, ["ls-files", "--others", "--exclude-standard"]);
+    if (untracked.code === 0) {
+        for (const rel of untracked.stdout.split("\n").map((l) => l.trim()).filter(Boolean)) {
+            const abs = path.resolve(root, rel);
+            if (seen.has(abs)) { continue; }
+            let added = 0;
+            try { const t = fs.readFileSync(abs, "utf8"); added = t ? t.split("\n").length : 0; } catch { /* binary/unreadable → all-added 0 */ }
+            out.push({ path: abs, added, removed: 0 });
+        }
+    }
+    return out;
+}
+
 export async function pendingChanges(absPaths: string[]): Promise<Set<string>> {
     const pending = new Set<string>();
     // Group paths by their repo root (or "" when not in a repo).

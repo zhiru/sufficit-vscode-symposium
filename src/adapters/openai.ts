@@ -166,6 +166,12 @@ class OpenAISession extends EventEmitter implements AgentSession {
     private title = "";
     private readonly hub = new HubClient();
     private turnNo = 0;
+    // Continuous follow-up anchor (small-context guardrail). `objective` is the
+    // current task (north star), updated on each substantive user turn; `progress`
+    // is a rolling digest of tool steps taken on it. Re-injected fresh into every
+    // windowed request so the model can't lose the thread mid tool-loop.
+    private objective = "";
+    private progress: string[] = [];
 
     constructor(
         readonly backend: string,
@@ -285,6 +291,38 @@ class OpenAISession extends EventEmitter implements AgentSession {
         return [...prefix, ...conv.slice(conv.length - max)];
     }
 
+    /** True when the sliding window is dropping older turns (so the raw task /
+     *  earlier steps are no longer in the request — when the anchor matters). */
+    private windowTruncated(): boolean {
+        const max = this.cfg.maxHistoryMessages ?? 40;
+        if (max === 0) { return false; }
+        const firstUserIdx = this.messages.findIndex((m) => m.role === "user");
+        if (firstUserIdx === -1) { return false; }
+        return (this.messages.length - firstUserIdx) > max;
+    }
+
+    /**
+     * Continuous follow-up: a compact OBJECTIVE + PROGRESS + convergence block,
+     * appended to the TAIL of a windowed request (highest-attention position) so a
+     * small-context model keeps the thread across a long tool-loop. Request-only —
+     * never pushed into this.messages, so it stays fresh and doesn't bloat history.
+     */
+    private followupAnchor(): ChatMessage | undefined {
+        if (!this.objective) { return undefined; }
+        const lines: string[] = [
+            "[Continuous focus — your context window is small, so treat THIS as the source of truth for the current task]",
+            "OBJECTIVE: " + this.objective,
+        ];
+        if (this.progress.length) {
+            const recent = this.progress.slice(-6);
+            lines.push(`PROGRESS so far (${this.progress.length} steps; last ${recent.length}):`);
+            for (const p of recent) { lines.push("  • " + p); }
+        }
+        lines.push("GUIDANCE: Every tool call must move the OBJECTIVE forward — if a step doesn't, stop and reconsider. The moment the objective is met, STOP calling tools and reply to the user. If you've taken several steps without replying, lead your next message with a one-line status.");
+        const role = this.cfg.supportsDeveloperRole !== false ? "developer" : "system";
+        return { role, content: lines.join("\n") };
+    }
+
     private headers(loginToken?: string | null): Record<string, string> {
         const h: Record<string, string> = { "content-type": "application/json", ...this.cfg.headers };
         if (this.cfg.clientInfo) {
@@ -394,6 +432,15 @@ class OpenAISession extends EventEmitter implements AgentSession {
             ? [{ type: "text", text }, ...imageParts]
             : text;
         this.messages.push({ role: "user", content: userContent });
+        // Refresh the continuous-follow-up north star. A substantive user turn is
+        // a NEW task → adopt it as the objective and reset the progress digest. A
+        // short continuation ("continue", "ok", "segue") keeps the prior objective
+        // and its progress so the anchor stays meaningful across nudges.
+        const taskText = text.trim();
+        if (taskText.length >= 8 && !/^(continue|continuar|segue|prossiga|go on|keep going|ok|sim|yes|y)\b/i.test(taskText)) {
+            this.objective = taskText.slice(0, 600);
+            this.progress = [];
+        }
         // Ledger/persistence stays text-based (no base64 bloat in the recall log).
         ledger.appendMessage(this.sessionId, {
             role: "user",
@@ -506,9 +553,14 @@ class OpenAISession extends EventEmitter implements AgentSession {
             for (let hop = 0; hop < maxHops; hop++) {
                 this.abort = new AbortController();
                 const windowed = this.windowedMessages();
+                // Continuous follow-up: once history is being windowed out (or after
+                // a few hops into the tool-loop), append a fresh objective+progress
+                // anchor at the tail so a small-context model keeps the thread.
+                const anchor = (this.windowTruncated() || hop >= 3) ? this.followupAnchor() : undefined;
+                const outMessages = anchor ? [...windowed, anchor] : windowed;
                 const body: Record<string, unknown> = responses
-                    ? { model: this.model(), input: toResponsesInput(windowed), stream: true }
-                    : { model: this.model(), messages: windowed, stream: true, stream_options: { include_usage: true } };
+                    ? { model: this.model(), input: toResponsesInput(outMessages), stream: true }
+                    : { model: this.model(), messages: outMessages, stream: true, stream_options: { include_usage: true } };
                 // Gate by the bound agent-def's allowlist (options.aiTools); when
                 // unset, expose all; when set to [], expose none (tools off).
                 const allow = this.options.aiTools;
@@ -640,6 +692,10 @@ class OpenAISession extends EventEmitter implements AgentSession {
                         : await runAiTool(tc.function.name, args, { hub: this.hub, cwd: this.options.cwd, permission: this.options.permission, sessionId: this.sessionId, shellExecution: shellMode, progress });
                     this.emit("event", { kind: "tool-end", toolName: tc.function.name, toolId: tc.id, result });
                     this.messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: result });
+                    // Feed the continuous-follow-up digest (one compact line per step).
+                    const step = friendlyToolDetail(tc.function.name, args);
+                    this.progress.push((tc.function.name + (step ? " — " + step : "")).slice(0, 110));
+                    if (this.progress.length > 60) { this.progress.shift(); }
                     this.safePersist();   // each completed tool round is durable immediately
                 }
                 // loop again so the model can use the tool results

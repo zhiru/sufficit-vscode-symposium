@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import { readSession, dumpToText } from "../sessionReader";
 import { mimeTypeFor } from "./parse";
 import { fetchSessionTasks, markTaskDone } from "../sync/tasks";
+import { saveGuardrail } from "../sync/guardrails";
+import { workspaceKey, resourceContentPath, ensureScaffold, readWorkspaceBootstrap } from "../config/root";
 
 /**
  * Sufficit memory + web tools exposed to OpenAI-compatible models as function
@@ -95,6 +97,20 @@ export const AI_TOOLS: OpenAITool[] = [
                     id: { type: "string", description: "The task observation id (from list_tasks / memory)." },
                 },
                 required: ["id"],
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "add_guardrail",
+            description: "Add an absolute rule (guardrail) for THIS chat session — a hard constraint you must honor on every message for the rest of the session (e.g. 'only edit the backend, never the Razor markup'). Use it to lock in a constraint the user gave you, or a commitment you make, so it can't drift across turns. Guardrails are injected into every later message. You can only ADD; the user reviews and can remove or clear them. Keep each one short and imperative.",
+            parameters: {
+                type: "object",
+                properties: {
+                    text: { type: "string", description: "The rule, short and imperative (one sentence)." },
+                },
+                required: ["text"],
             },
         },
     },
@@ -245,6 +261,26 @@ export const LOCAL_TOOLS: OpenAITool[] = [
             },
         },
     },
+    {
+        type: "function",
+        function: {
+            name: "get_workspace_bootstrap",
+            description: "Read THIS workspace's session bootstrap — the standing context (markdown) that Symposium injects once at the start of every NEW session opened in this workspace folder. Returns the current text (empty if none set). This is NOT shared memory; it is a per-workspace file resolved from the folder name.",
+            parameters: { type: "object", properties: {}, required: [] },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "set_workspace_bootstrap",
+            description: "Set (replace) THIS workspace's session bootstrap: the standing context injected once at the start of every NEW session opened in this workspace folder — e.g. a project's copilot-instructions / conventions. Use when the user asks to 'add X as the session/workspace bootstrap'. Persists to ~/.symposium/repo/bootstrap/<workspace>.md; the user can open it from the new-session screen. NOT the shared Sufficit memory.",
+            parameters: {
+                type: "object",
+                properties: { text: { type: "string", description: "Full bootstrap content (markdown). Replaces any existing bootstrap for this workspace." } },
+                required: ["text"],
+            },
+        },
+    },
 ];
 
 /** Names of the local workspace tools (shell/fs). */
@@ -281,6 +317,11 @@ export function aiToolsForAgent(declared: string[]): string[] {
     names.add("read_session");
     // Session task tools are always safe (scoped to this session, no secrets).
     names.add("list_tasks"); names.add("task_complete");
+    // Guardrails are session-scoped self-constraints: always available so any
+    // agent can lock in a hard rule the user gave it (the user can still remove).
+    names.add("add_guardrail");
+    // Workspace bootstrap is a per-folder config file (read/replace), always safe.
+    names.add("get_workspace_bootstrap"); names.add("set_workspace_bootstrap");
     if (has(/^sufficit-ai\b|^sufficit-ai\/|^memory\b/i)) {
         names.add("memory_search"); names.add("memory_get_observations"); names.add("memory_save");
     }
@@ -538,6 +579,23 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
             const maxChars = typeof args.max_chars === "number" ? args.max_chars : undefined;
             return dumpToText(dump, { tail, maxChars });
         }
+        // ---- per-workspace session bootstrap (a local config file, NOT memory) ----
+        if (name === "get_workspace_bootstrap") {
+            const bs = readWorkspaceBootstrap(ctx.cwd);
+            return JSON.stringify(bs
+                ? { key: bs.name, path: bs.path, text: bs.text }
+                : { key: workspaceKey(ctx.cwd), text: "", note: "no bootstrap set for this workspace" });
+        }
+        if (name === "set_workspace_bootstrap") {
+            const text = String(args.text ?? "").trim();
+            if (!text) { return JSON.stringify({ error: "text is required" }); }
+            ensureScaffold();
+            const key = workspaceKey(ctx.cwd);
+            const file = resourceContentPath("bootstrap", key);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, text.endsWith("\n") ? text : text + "\n", "utf8");
+            return JSON.stringify({ ok: true, key, path: file, bytes: Buffer.byteLength(text) });
+        }
         // ---- local workspace tools (shell / filesystem) ----
         if (name === "shell") {
             if (planMode) { return JSON.stringify({ error: "plan mode: command execution is disabled" }); }
@@ -680,6 +738,14 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 if (!id) { return JSON.stringify({ error: "id is required" }); }
                 const ok = await markTaskDone(hub, id);
                 return JSON.stringify({ ok });
+            }
+            case "add_guardrail": {
+                const text = String(args.text ?? "").trim();
+                if (!text) { return JSON.stringify({ error: "text is required" }); }
+                if (!ctx.sessionId) { return JSON.stringify({ error: "no current session" }); }
+                if (!hub.configured()) { return JSON.stringify({ error: "memory hub not configured — guardrails unavailable" }); }
+                const id = await saveGuardrail(hub, ctx.sessionId, text);
+                return JSON.stringify({ id, added: text });
             }
             case "web_search": {
                 const r = await hub.webSearch(String(args.query ?? ""), typeof args.limit === "number" ? args.limit : 8);

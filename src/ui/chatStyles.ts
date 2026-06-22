@@ -1071,17 +1071,25 @@ export const chatStyles = `    body {
     }
     .tokenMeter:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .tokenMeter .tmRing { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; -webkit-mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); }
-    .usagePop { min-width: 230px; padding: 10px 12px; }
-    .usagePop .uHead { font-weight: 600; margin-bottom: 2px; }
-    .usagePop .uModel { font-size: 0.8em; opacity: 0.6; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .usagePop .uGroup { font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.55; font-weight: 600; margin: 10px 0 3px; }
-    .usagePop .uRow { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9em; padding: 2px 0; }
-    .usagePop .uRow.uMain { opacity: 0.85; }
-    .usagePop .uBar { height: 5px; border-radius: 3px; background: var(--vscode-input-background, rgba(128,128,128,0.3)); overflow: hidden; margin: 4px 0 2px; }
-    .usagePop .uFill { height: 100%; background: var(--vscode-progressBar-background, #3794ff); }
+    .usagePop { min-width: 268px; max-width: 320px; padding: 13px 15px 12px; }
+    .usagePop .uHeadRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+    .usagePop .uHeadTxt { min-width: 0; }
+    .usagePop .uHead { font-weight: 600; font-size: 0.96em; }
+    .usagePop .uModel { font-size: 0.78em; opacity: 0.55; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+    .usagePop .uPct { font-size: 1.55em; font-weight: 700; line-height: 0.9; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+    .usagePop .uBar { height: 7px; border-radius: 4px; background: var(--vscode-input-background, rgba(128,128,128,0.25)); overflow: hidden; margin: 0 0 2px; box-shadow: inset 0 0 0 1px rgba(128,128,128,0.12); }
+    .usagePop .uFill { height: 100%; border-radius: 4px; transition: width 220ms ease; }
+    .usagePop .uGroup { font-size: 0.69em; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.5; font-weight: 700; margin: 13px 0 5px; }
+    .usagePop .uRow { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 0.88em; padding: 3px 0; }
+    .usagePop .uRow.uSub { padding: 1.5px 0 1.5px 14px; font-size: 0.83em; opacity: 0.82; }
+    .usagePop .uLbl { display: inline-flex; align-items: center; gap: 7px; opacity: 0.82; min-width: 0; }
+    .usagePop .uDot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; box-shadow: inset 0 0 0 1px rgba(128,128,128,0.2); }
+    .usagePop .uVal { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; display: inline-flex; align-items: baseline; gap: 7px; flex: 0 0 auto; font-weight: 500; }
+    .usagePop .uNote { font-size: 0.82em; opacity: 0.5; font-weight: 400; }
     .usagePop .uCompact {
-        display: block; width: 100%; margin-top: 12px; padding: 6px; cursor: pointer; border-radius: 5px;
+        display: block; width: 100%; margin-top: 14px; padding: 7px; cursor: pointer; border-radius: 5px; font-size: 0.88em;
         background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2)); color: var(--vscode-button-secondaryForeground, inherit); border: none;
+        transition: background 150ms ease;
     }
     .usagePop .uCompact:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.3)); }
 

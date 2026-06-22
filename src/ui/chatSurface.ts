@@ -10,13 +10,13 @@ import { renderHtml } from "./chatHtml";
 import { TerminalSession } from "./terminalSession";
 import { LiveSessions } from "../sessions/runtime";
 import { symposiumLog } from "../extension";
-import { approveChange, dirtyFiles, gitRoot, headContent, pendingChanges, rejectChange } from "../git";
+import { approveChange, changedFilesWithCounts, gitRoot, headContent, rejectChange } from "../git";
 import { snapshots } from "../snapshots";
 import { HubClient } from "../sync/hubClient";
 import { readWorkspaceBootstrap } from "../config/root";
 import { probeRtk } from "../adapters/rtk";
 import { fetchSessionTasks, setTaskDone, TaskItem } from "../sync/tasks";
-import { fetchSessionGuardrails, saveGuardrail, removeGuardrail, clearSessionGuardrails } from "../sync/guardrails";
+import { fetchSessionGuardrails, removeGuardrail, clearSessionGuardrails } from "../sync/guardrails";
 
 /** Directory to run git in for a file — git discovers the enclosing repo upward. */
 function repoCwd(file: string): string {
@@ -373,23 +373,6 @@ export class ChatSurface {
                     if (typeof message.id === "string" && this.hub.configured()) {
                         await setTaskDone(this.hub, message.id, message.done === true);
                         void this.refreshTasks();
-                    }
-                    return;
-                }
-                case "add-guardrail": {
-                    const sid = this.controller?.sessionId;
-                    if (!sid || !this.hub.configured()) {
-                        void vscode.window.showWarningMessage("Open a session (with the hub configured) to add guardrails.");
-                        return;
-                    }
-                    const text = await vscode.window.showInputBox({
-                        prompt: "New guardrail — an absolute rule the agent must follow on every message",
-                        placeHolder: "e.g. Edit the backend model, never the Razor markup",
-                    });
-                    if (text && text.trim()) {
-                        await saveGuardrail(this.hub, sid, text.trim());
-                        await this.controller?.reloadGuardrails();
-                        void this.refreshGuardrails();
                     }
                     return;
                 }
@@ -1090,6 +1073,13 @@ export class ChatSurface {
             // otherwise wouldn't pick up until reopen/manual refresh.
             if (ev?.kind === "turn-end") {
                 void this.refreshTasks();
+                // The agent may have added a guardrail mid-turn (add_guardrail tool):
+                // reload the controller's injection cache and repaint the panel.
+                void this.controller?.reloadGuardrails().then(() => this.refreshGuardrails());
+                // Re-mirror the working tree from git: a turn may have edited files
+                // via shell/sed (no tool event, no index change) that the live
+                // changed-files signal and the .git/index watcher both miss.
+                this.refreshChangedNow();
             }
             this.post(message);
         });
@@ -1277,16 +1267,23 @@ export class ChatSurface {
      * index so staging/unstaging in git or the SCM view syncs back here.
      */
     private async refreshChanged(rawItems: { path: string; added: number; removed: number }[]): Promise<void> {
-        if (rawItems.length > 0) {
-            // Precise: only files this live session's tools touched AND still dirty.
-            const pending = await pendingChanges(rawItems.map((i) => i.path));
-            this.post({ type: "changed-files", items: rawItems.filter((i) => pending.has(i.path)) });
-        } else {
-            // No in-session record (e.g. a resumed/reattached session): fall back to
-            // the repo's dirty files in the session cwd so edits are still visible.
-            const dirty = await dirtyFiles(this.cwd()).catch(() => [] as string[]);
-            this.post({ type: "changed-files", items: dirty.map((path) => ({ path, added: 0, removed: 0 })) });
+        // Faithful git mirror: every PENDING file in the session repo with its REAL
+        // +/- counts, so any edit shows correctly regardless of the tool that made
+        // it (write/edit tool, sed, terminal, external). This replaces the old
+        // "tool-tracked ∩ dirty" set, whose counts came from tool args and missed
+        // shell/sed/external edits entirely.
+        const gitItems = await changedFilesWithCounts(this.cwd()).catch(() => [] as { path: string; added: number; removed: number }[]);
+        const seen = new Set(gitItems.map((i) => i.path));
+        const items = [...gitItems];
+        // Tool-tracked files OUTSIDE any git repo (snapshot-resolved, e.g. a file
+        // the agent wrote outside the workspace): git can't see them, so keep them
+        // with the tool's own counts.
+        for (const it of rawItems) {
+            if (seen.has(it.path)) { continue; }
+            const root = await gitRoot(path.dirname(it.path)).catch(() => undefined);
+            if (!root) { items.push(it); seen.add(it.path); }
         }
+        this.post({ type: "changed-files", items });
         this.ensureGitWatcher();
     }
 

@@ -1371,7 +1371,9 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
         const ttl = document.createElement("span"); ttl.className = "tktitle";
         ttl.textContent = "Tasks";
         ttl.title = "Sufficit memory tasks for this session" + (project ? " — session " + project : "");
-        const cnt = document.createElement("span"); cnt.className = "tkcount"; cnt.textContent = String(pending.length);
+        const cnt = document.createElement("span"); cnt.className = "tkcount";
+        cnt.textContent = pending.length + "/" + items.length;
+        cnt.title = pending.length + " pending of " + items.length + " total";
         const filterBtn = document.createElement("button"); filterBtn.className = "tkbtn tkfilter";
         filterBtn.textContent = tasksShowAll ? "All" : "Pending";
         filterBtn.title = "Show all tasks or only pending";
@@ -1417,20 +1419,21 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     let guardrailsCollapsed = false;
     function renderGuardrails(items) {
         guardrailsEl.textContent = "";
+        // Hidden when empty (like the tasks/changed-files panels). Only the agent
+        // adds guardrails (via the add_guardrail tool); the user can remove/clear.
+        if (!(items || []).length) { guardrailsEl.classList.remove("has"); return; }
         const card = document.createElement("div"); card.className = "grcard";
         const head = document.createElement("div"); head.className = "grhead";
         head.appendChild(svgIcon("shield"));
         const ttl = document.createElement("span"); ttl.className = "grtitle"; ttl.textContent = "Guardrails";
-        ttl.title = "Absolute rules sent to the agent on every message. You own these — the agent can't change them.";
+        ttl.title = "Absolute rules the agent set for this session, sent on every message. The agent adds them; you can remove or clear them.";
         const cnt = document.createElement("span"); cnt.className = "grcount"; cnt.textContent = String((items || []).length);
-        const add = document.createElement("button"); add.className = "grbtn"; add.title = "Add a guardrail";
-        add.appendChild(svgIcon("plus"));
-        add.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "add-guardrail" }); });
         const clear = document.createElement("button"); clear.className = "grbtn"; clear.title = "Clear all guardrails";
+        clear.setAttribute("aria-label", "Clear all guardrails");
         clear.appendChild(svgIcon("trash"));
         clear.addEventListener("click", (e) => { e.stopPropagation(); if ((items || []).length) { vscode.postMessage({ type: "clear-guardrails" }); } });
         const chev = svgIcon("chevron"); chev.classList.add("grchev");
-        head.appendChild(ttl); head.appendChild(cnt); head.appendChild(add); head.appendChild(clear); head.appendChild(chev);
+        head.appendChild(ttl); head.appendChild(cnt); head.appendChild(clear); head.appendChild(chev);
         head.addEventListener("click", () => { guardrailsCollapsed = !guardrailsCollapsed; guardrailsEl.classList.toggle("collapsed", guardrailsCollapsed); });
         card.appendChild(head);
         const list = document.createElement("div"); list.className = "grlist";
@@ -1444,7 +1447,6 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
         }
         card.appendChild(list);
         guardrailsEl.appendChild(card);
-        // Always shown (even empty) so the user can add the first rule.
         guardrailsEl.classList.add("has");
         guardrailsEl.classList.toggle("collapsed", guardrailsCollapsed);
     }
@@ -1916,6 +1918,8 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     // Footer status bar: cwd · backend · permission/mode (like the native bar).
     const statusbar = document.getElementById("statusbar");
     let lastUsage = null, lastStatusData = {};
+    let lastTurn = {};            // { costUsd, durationMs } from the last turn-end
+    let sessionCostUsd = 0;       // accumulated cost across the session (when reported)
     function fmtTokens(n) { return n >= 1000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + "K" : String(n); }
     // Meter color tracks fullness like Copilot: normal < 75%, amber 75–90%, red ≥ 90%.
     function usageColor(pct) {
@@ -1955,18 +1959,61 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
     }
     function openUsagePopover(anchor) {
         const u = lastUsage; if (!u) { return; }
-        const win = u.contextWindow || 0, used = u.inputTokens || 0;
+        const win = u.contextWindow || 0, used = u.inputTokens || 0, out = u.outputTokens || 0, cache = u.cacheRead || 0;
+        const fresh = Math.max(0, used - cache);
+        const free = Math.max(0, win - used);
         const pct = win ? Math.round(used / win * 100) : 0;
+        const cachePct = used ? Math.round(cache / used * 100) : 0;
+        const col = usageColor(pct);
         ctxMenu.textContent = "";
         const box = document.createElement("div"); box.className = "usagePop";
-        const row = (a, b, cls) => { const r = document.createElement("div"); r.className = "uRow " + (cls || ""); const x = document.createElement("span"); x.textContent = a; const y = document.createElement("span"); y.textContent = b; r.appendChild(x); r.appendChild(y); return r; };
-        const h = document.createElement("div"); h.className = "uHead"; h.textContent = "Context Window"; box.appendChild(h);
-        if (activeModel) { const sm = document.createElement("div"); sm.className = "uModel"; sm.textContent = modelLabel(activeModel); box.appendChild(sm); }
-        box.appendChild(row(fmtTokens(used) + " / " + fmtTokens(win) + " tokens", pct + "%", "uMain"));
-        const bar = document.createElement("div"); bar.className = "uBar"; const fill = document.createElement("div"); fill.className = "uFill"; fill.style.width = pct + "%"; fill.style.background = usageColor(pct); bar.appendChild(fill); box.appendChild(bar);
-        const sub = document.createElement("div"); sub.className = "uGroup"; sub.textContent = "This turn"; box.appendChild(sub);
-        box.appendChild(row("Output", fmtTokens(u.outputTokens || 0)));
-        if (u.cacheRead) { box.appendChild(row("Cache read", fmtTokens(u.cacheRead))); }
+        // One key/value line. opts: { sub, dot, note } — dot draws a legend swatch,
+        // note is a dim suffix (e.g. a percentage), sub indents a breakdown row.
+        const row = (label, value, opts) => {
+            const o = opts || {};
+            const r = document.createElement("div"); r.className = "uRow" + (o.sub ? " uSub" : "");
+            const a = document.createElement("span"); a.className = "uLbl";
+            if (o.dot) { const d = document.createElement("span"); d.className = "uDot"; d.style.background = o.dot; a.appendChild(d); }
+            a.appendChild(document.createTextNode(label));
+            const b = document.createElement("span"); b.className = "uVal"; b.textContent = value;
+            if (o.note != null) { const n = document.createElement("span"); n.className = "uNote"; n.textContent = o.note; b.appendChild(n); }
+            r.appendChild(a); r.appendChild(b); return r;
+        };
+        const group = (t) => { const g = document.createElement("div"); g.className = "uGroup"; g.textContent = t; box.appendChild(g); };
+
+        // Header: title + model on the left, big colored % on the right.
+        const headRow = document.createElement("div"); headRow.className = "uHeadRow";
+        const htx = document.createElement("div"); htx.className = "uHeadTxt";
+        const h = document.createElement("div"); h.className = "uHead"; h.textContent = "Context Window"; htx.appendChild(h);
+        if (activeModel) { const sm = document.createElement("div"); sm.className = "uModel"; sm.textContent = modelLabel(activeModel); htx.appendChild(sm); }
+        const big = document.createElement("div"); big.className = "uPct"; big.textContent = pct + "%"; big.style.color = col;
+        headRow.appendChild(htx); headRow.appendChild(big); box.appendChild(headRow);
+
+        // Bar: within the used portion, cache is a translucent sub-segment and
+        // fresh tokens the solid one; the remainder is the free track.
+        const bar = document.createElement("div"); bar.className = "uBar";
+        const fill = document.createElement("div"); fill.className = "uFill"; fill.style.width = pct + "%";
+        const cfrac = used ? (cache / used * 100) : 0;
+        fill.style.background = "linear-gradient(90deg, color-mix(in srgb, " + col + " 42%, transparent) 0 " + cfrac + "%, " + col + " " + cfrac + "% 100%)";
+        bar.appendChild(fill); box.appendChild(bar);
+
+        group("Context");
+        box.appendChild(row("Used", fmtTokens(used), { dot: col, note: pct + "%" }));
+        box.appendChild(row("Free", fmtTokens(free), { dot: "var(--vscode-input-background, rgba(128,128,128,0.3))", note: (100 - pct) + "%" }));
+        box.appendChild(row("Window", fmtTokens(win)));
+
+        group("Last turn");
+        box.appendChild(row("Input (prompt)", fmtTokens(used)));
+        if (cache) {
+            box.appendChild(row("Cached", fmtTokens(cache), { sub: true, note: cachePct + "% hit" }));
+            box.appendChild(row("Fresh", fmtTokens(fresh), { sub: true }));
+        }
+        box.appendChild(row("Output", fmtTokens(out)));
+        box.appendChild(row("Total tokens", fmtTokens(used + out)));
+        if (lastTurn.costUsd) { box.appendChild(row("Cost", "$" + lastTurn.costUsd.toFixed(4))); }
+        if (lastTurn.durationMs) { box.appendChild(row("Time", (lastTurn.durationMs / 1000).toFixed(1) + "s")); }
+        if (sessionCostUsd > 0) { box.appendChild(row("Session cost", "$" + sessionCostUsd.toFixed(4))); }
+
         // Only offer Compact when the active backend advertises it (claude/codex/
         // copilot). The native API backends have no /compact — they auto-window
         // history — so the button would otherwise send a literal "/compact" text.
@@ -2547,6 +2594,8 @@ export const chatClientJs = `    window.addEventListener("error", (e) => {
                 }
                 else if (ev.kind === "turn-end") {
                     busy = false; sendBtn.disabled = false; setStatus();
+                    lastTurn = { costUsd: ev.costUsd, durationMs: ev.durationMs };
+                    if (ev.costUsd) { sessionCostUsd += ev.costUsd; }
                     append("meta", "—" + (ev.costUsd ? " $" + ev.costUsd.toFixed(4) : "") + (ev.durationMs ? " " + (ev.durationMs/1000).toFixed(1) + "s" : "") + " —");
                 }
                 break;

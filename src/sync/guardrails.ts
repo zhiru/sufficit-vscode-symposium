@@ -2,11 +2,15 @@ import { HubClient } from "./hubClient";
 import { sessionTag } from "./tasks";
 
 /**
- * Guardrails are user-defined "absolute rules" for a Symposium chat session,
- * stored as Sufficit-memory observations (type "guardrail") bound to the session
- * via the same symposium-session:<id> tag as tasks. They are owned by the USER
- * (added/cleared from the UI, never by the agent) and injected into EVERY
- * outbound message so the agent cannot drift from or ignore them.
+ * Guardrails are "absolute rules" for a Symposium chat session, stored as
+ * Sufficit-memory observations (type "guardrail") bound to the session via the
+ * same symposium-session:<id> tag as tasks, and injected into EVERY outbound
+ * message so the agent cannot drift from or ignore them.
+ *
+ * Ownership: the AGENT adds them (via the `add_guardrail` tool) to lock in a
+ * hard constraint the user gave it or a commitment it makes. The USER reviews
+ * and can remove or clear them from the UI, but never adds — so the panel only
+ * appears once the agent has set at least one rule.
  */
 
 export const GUARDRAIL_TYPE = "guardrail";
