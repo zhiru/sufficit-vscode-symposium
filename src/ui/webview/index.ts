@@ -1,3 +1,13 @@
+import { vscode, saved, saveState } from "./vscode";
+import { bootStep, bootComplete, renderBootStep, bootTimer } from "./boot";
+import { renderSessions, renderAccount, renderSessionItem, groupHeader, toggleCollapsed, dropPinnedOn } from "./sessions";
+import { isMac, MOD, ALT, MODE_LABELS, MODE_KBD, MODE_ICONS, MODE_DESC, STOP_ICON, updateSendTitle, setStatus, syncProgress, setLoading } from "./status";
+import { modelValue, reasoningValue, modelList, reasoningList, reasoningDefault, modelDefault, modelLabels, pinnedModels, modelLabel, defLabel, setModelLabel, setReasoningLabel, buildModelMenuOpts, setModelValue, setModelList, setReasoningValue, setReasoningList, setReasoningDefault, setModelDefault, setModelLabels, setPinnedModels } from "./models";
+import { openChoiceMenu, showToast, showCtx, showFileMenu, showTip, hideTip, hideCtx, placeTip, actionsFor, runAction } from "./menus";
+import { attachments, activeFile, activeFileRange, activeFileDismissed, activeFilePreview, activeFilePinned, currentBackend, currentBackendName, agentLabels, activeModel, activeSessionId, busy, queued, loading, sessions, showArchived, bootstrapPath, setAttachments, setActiveFile, setActiveFileRange, setActiveFileDismissed, setActiveFilePreview, setActiveFilePinned, setCurrentBackend, setCurrentBackendName, setAgentLabels, setActiveModel, setActiveSessionId, setBusy, setQueued, setLoadingFlag, setSessions, setShowArchived, setBootstrapPath, setSideMode, pendingSessionSwitch, setPendingSessionSwitch } from "./state";
+import { allDigits, middleEllipsisPath, relWhen, relTime, bucket, fmtTokens, usageColor } from "./format";
+import { layout, nearBottom, autoScroll, scrollToBottom, updateScrollBtn, refreshEmpty, sideIsRight, lastAutoScroll } from "./scroll";
+import { root, log, input, chips, addContext, modelPicker, reasoningPicker, sendMode, sendBtn, status, sessionsList, chatTitle, listToggle, sendCaret, sendIcon, sendGroup, stopBtn, switchAgentBtn, tipEl, copySessionBtn, presencePicker, configBtn, sessionsPane, resizer, progress, composerEl, planEl, tasksEl, guardrailsEl, queuedEl, changedFiles, panelBody, panelTabs, attachedPanel, ctxMenu, statusbar, slash, addBrowserPage, bootStepsEl, bootHintEl } from "./dom";
 import { renderMarkdown, inline } from "./markdown";
 import { ICONS, svgIcon, fileIcon } from "./icons";
     window.addEventListener("error", (e) => {
@@ -5,107 +15,24 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
         if (bh) { bh.textContent = "❌ " + (e.message || "JS error") + " @" + (e.lineno || "?"); bh.style.color = "var(--vscode-errorForeground, #f14c4c)"; bh.style.opacity = "1"; }
         try { if (typeof vscode !== "undefined") { vscode.postMessage({ type: "webview-error", message: (e.message || "error") + " @" + (e.lineno || "?") }); } } catch(_) {}
     });
-    const vscode = acquireVsCodeApi();
-    const root = document.getElementById("root");
-    const log = document.getElementById("log");
-    const input = document.getElementById("input");
-    const chips = document.getElementById("chips");
-    const addContext = document.getElementById("addContext");
-    const modelPicker = document.getElementById("modelPicker");
-    const reasoningPicker = document.getElementById("reasoningPicker");
-    const sendMode = document.getElementById("sendMode");
-    const sendBtn = document.getElementById("send");
-    const status = document.getElementById("status");
-    const sessionsList = document.getElementById("sessionsList");
-    const chatTitle = document.getElementById("chatTitle");
-    const listToggle = document.getElementById("listToggle");
 
-    let attachments = [];   // [{path, name}]
-    let activeFile = null;  // active editor path, offered as removable context
-    let activeFileRange = null;  // { start, end } when lines are selected
-    let activeFileDismissed = false;
-    let activeFilePreview = false;  // VS Code preview tab (italic) → suggestion only
-    let activeFilePinned = false;   // user clicked a preview suggestion to attach it
     function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
-    let currentBackend = "", currentBackendName = "", agentLabels = null;
-    let activeModel = "";
-    let activeSessionId = "";
-    let busy = false;
-    let queued = 0;
-    let loading = false;
-    let sessions = [];
-    let showArchived = false;
 
     document.getElementById("newSessionBtn").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
     document.getElementById("emptyNewSession").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
-    let bootstrapPath = "";
     document.getElementById("bootstrapLink").addEventListener("click", () => { if (bootstrapPath) { vscode.postMessage({ type: "open-file", path: bootstrapPath }); } });
-    document.getElementById("archToggle").addEventListener("click", () => { showArchived = !showArchived; renderSessions(); });
+    document.getElementById("archToggle").addEventListener("click", () => { setShowArchived(!showArchived); renderSessions(); });
 
     // Persisted UI state (send mode + sessions pane width).
-    const saved = (vscode.getState && vscode.getState()) || {};
-    function saveState(patch) { vscode.setState && vscode.setState(Object.assign({}, saved, patch)); Object.assign(saved, patch); }
     if (saved.sendMode) { sendMode.value = saved.sendMode; }
     sendMode.addEventListener("change", () => saveState({ sendMode: sendMode.value }));
 
     // Parent session ids whose subagent children are collapsed in the list.
-    const collapsedParents = new Set(saved.collapsedSubagents || []);
-    function toggleCollapsed(id) {
-        if (collapsedParents.has(id)) { collapsedParents.delete(id); } else { collapsedParents.add(id); }
-        saveState({ collapsedSubagents: [...collapsedParents] });
-        renderSessions();
-    }
 
     // Split send-button: caret opens a small menu to choose Send/Queue/Steer.
     // Each mode has its own icon and its own keyboard shortcut (like the
     // native chat): Enter sends with the selected default mode, while the
     // modifier shortcuts force a specific mode regardless of the default.
-    const sendCaret = document.getElementById("sendCaret");
-    const sendIcon = document.getElementById("sendIcon");
-    const sendGroup = document.getElementById("sendGroup");
-    const stopBtn = document.getElementById("stopBtn");
-    const isMac = navigator.platform.indexOf("Mac") === 0;
-    const MOD = isMac ? "⌘" : "Ctrl";
-    const ALT = isMac ? "⌥" : "Alt";
-    const MODE_LABELS = { send: "Send", queue: "Queue", steer: "Steer" };
-    const MODE_KBD = { send: "Enter", queue: ALT + "+Enter", steer: MOD + "+Enter" };
-    const MODE_ICONS = {
-        // paper plane
-        send: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.2 2.8 3 8 1.2 13.2a.5.5 0 0 0 .7.6l13-5.5a.5.5 0 0 0 0-.9l-13-5.5a.5.5 0 0 0-.7.6Z"/></svg>',
-        // clock (wait, then send)
-        queue: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 12.5A5.5 5.5 0 1 1 8 2.5a5.5 5.5 0 0 1 0 11Z"/><path d="M7.25 4h1.5v4.1l2.9 1.7-.75 1.3-3.65-2.15V4Z"/></svg>',
-        // lightning bolt (interrupt and send now)
-        steer: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.4 1 3 9h3.6l-1.3 6 7.7-9.2H9.2L10.5 1H9.4Z"/></svg>',
-    };
-    const MODE_DESC = {
-        send: "Send now; queued while a turn runs",
-        queue: "Always wait for the current turn (FIFO)",
-        steer: "Interrupt the running turn and send now",
-    };
-    const STOP_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg>';
-    function updateSendTitle() {
-        // Idle: plain Send (paper plane). While a turn runs, the button reflects
-        // what the NEXT message will do — queue (clock) or steer (lightning) —
-        // per the selected mode, so the icon previews the action. Clicking sends
-        // in that mode; Stop the running turn with Esc (or the caret menu).
-        if (busy) {
-            const mode = (sendMode.value === "steer") ? "steer" : "queue";
-            sendGroup.classList.add("busy");
-            sendGroup.classList.toggle("steer", mode === "steer");
-            sendIcon.innerHTML = MODE_ICONS[mode];
-            sendBtn.title = (mode === "steer")
-                ? "Steer: interrupt the running turn and send now (Ctrl/Cmd+Enter) · Esc to stop"
-                : "Queue: send after the current turn finishes (Alt+Enter) · Esc to stop";
-            sendCaret.style.display = "";
-            stopBtn.style.display = "";
-            return;
-        }
-        sendGroup.classList.remove("busy", "steer", "stopping");
-        sendIcon.innerHTML = MODE_ICONS.send;
-        sendBtn.title = "Send (Enter)";
-        sendCaret.style.display = "none";
-        stopBtn.style.display = "none";
-    }
     stopBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (!busy) { return; }
@@ -136,145 +63,10 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
 
     // ---- themed dropdowns replacing native <select> ----
     // options: [{ value, label, group?, detail?, title? }]; opts: { search?: bool }
-    function openChoiceMenu(anchorEl, options, current, onPick, opts) {
-        opts = opts || {};
-        ctxMenu.textContent = "";
-        const wantSearch = opts.search || options.length >= 9;
-
-        const list = document.createElement("div"); list.className = "menuList";
-        const renderRows = (filter) => {
-            list.textContent = "";
-            const q = (filter || "").toLowerCase();
-            let lastGroup = null; let shown = 0;
-            for (const o of options) {
-                if (q && !(o.label + " " + (o.detail || "")).toLowerCase().includes(q)) continue;
-                if (o.group && o.group !== lastGroup) {
-                    lastGroup = o.group;
-                    const gh = document.createElement("div"); gh.className = "menuGroup"; gh.textContent = o.group;
-                    list.appendChild(gh);
-                }
-                const mi = document.createElement("div"); mi.className = "mi";
-                const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = o.value === current ? "✓" : "";
-                const lbl = document.createElement("span"); lbl.className = "milbl"; lbl.textContent = o.label;
-                mi.appendChild(tick); mi.appendChild(lbl);
-                if (o.detail) { const d = document.createElement("span"); d.className = "midetail"; d.textContent = o.detail; mi.appendChild(d); }
-                if (o.title) mi.title = o.title;
-                if (o.actions && o.actions.length) {
-                    const acts = document.createElement("span"); acts.className = "miacts";
-                    for (const act of o.actions) {
-                        const btn = document.createElement("button");
-                        btn.className = "miact" + (act.on ? " on" : "");
-                        btn.title = act.title; btn.innerHTML = act.icon;
-                        btn.addEventListener("click", (e) => { e.stopPropagation(); act.onClick(); });
-                        acts.appendChild(btn);
-                    }
-                    mi.appendChild(acts);
-                }
-                mi.addEventListener("click", () => onPick(o.value));
-                list.appendChild(mi);
-                shown++;
-            }
-            if (!shown) { const e = document.createElement("div"); e.className = "mi"; e.style.opacity = "0.6"; e.textContent = "no matches"; list.appendChild(e); }
-        };
-
-        if (wantSearch) {
-            const box = document.createElement("input"); box.className = "menuSearch"; box.type = "text"; box.placeholder = "Search…";
-            box.addEventListener("input", () => renderRows(box.value));
-            box.addEventListener("click", (e) => e.stopPropagation());
-            box.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCtx(); });
-            ctxMenu.appendChild(box);
-            setTimeout(() => box.focus(), 0);
-        }
-        if (opts.refreshAction) {
-            const rb = document.createElement("div"); rb.className = "mi";
-            const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = "↻";
-            const lbl = document.createElement("span"); lbl.className = "milbl"; lbl.textContent = opts.refreshAction.label || "Refresh";
-            rb.appendChild(tick); rb.appendChild(lbl);
-            if (opts.refreshAction.detail) { const d = document.createElement("span"); d.className = "midetail"; d.textContent = opts.refreshAction.detail; rb.appendChild(d); }
-            rb.addEventListener("click", () => { hideCtx(); opts.refreshAction.onClick(); });
-            ctxMenu.appendChild(rb);
-        }
-        renderRows("");
-        ctxMenu.appendChild(list);
-
-        // Optional free-form entry row: lets the user type a value not present
-        // in the list (used by the model picker when discovery returned none).
-        if (opts.manualEntry) {
-            const me = opts.manualEntry;
-            const wrap = document.createElement("div"); wrap.className = "menuManual";
-            const input = document.createElement("input");
-            input.className = "menuSearch"; input.type = "text";
-            input.placeholder = me.placeholder || me.label || "Type a value…";
-            input.addEventListener("click", (e) => e.stopPropagation());
-            input.addEventListener("keydown", (e) => {
-                if (e.key === "Enter") { e.preventDefault(); const v = input.value; hideCtx(); me.onSubmit(v); }
-                else if (e.key === "Escape") { hideCtx(); }
-            });
-            const hint = document.createElement("div"); hint.className = "menuGroup"; hint.textContent = me.label || "Manual entry";
-            wrap.appendChild(hint); wrap.appendChild(input);
-            ctxMenu.appendChild(wrap);
-            if (!options.length) { setTimeout(() => input.focus(), 0); }
-        }
-
-        ctxMenu.style.display = "block";
-        const r = anchorEl.getBoundingClientRect();
-        const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
-        ctxMenu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4)) + "px";
-        ctxMenu.style.top = Math.max(4, r.top - h - 4) + "px";
-    }
-    let modelValue = "", modelList = [], reasoningValue = "default", reasoningList = [];
-    let reasoningDefault = "", modelDefault = "", modelLabels = {}, pinnedModels = [];
-    const SVG_PIN = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 1a1 1 0 0 0-1 1v1H6V2a1 1 0 0 0-2 0v1H3a1 1 0 0 0-1 1v2c0 2.21 1.79 4 4 4v3H5a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-1V9.95c2.15-.32 4-2.12 4-3.95V4a1 1 0 0 0-1-1h-1V2a1 1 0 0 0-1-1Z"/></svg>';
-    const SVG_STAR = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.9 3.9 4.1.6-3 2.9.7 4.1-3.7-2-3.7 2 .7-4.1-3-2.9 4.1-.6Z"/></svg>';
-    function modelLabel(id) { return (id && modelLabels[id]) || id; }
-    const modelLbl = modelPicker.querySelector(".lbl");
-    const reasoningLbl = reasoningPicker.querySelector(".lbl");
-    // "default" means: don't override — the backend uses its own default. When
-    // a default is configured in settings, show it in parens so it's not blind.
-    function defLabel(configured) { return configured && configured !== "default" ? "default (" + configured + ")" : "default"; }
-    function setModelLabel() { modelLbl.textContent = modelValue && modelValue !== "default" ? modelLabel(modelValue) : defLabel(modelDefault); }
-    function setReasoningLabel() { reasoningLbl.textContent = reasoningValue && reasoningValue !== "default" ? "effort: " + reasoningValue : defLabel(reasoningDefault); }
-    function buildModelMenuOpts() {
-        const pinned = pinnedModels || [];
-        const rest = modelList.filter((m) => !pinned.includes(m));
-        const makeActions = (m) => m === "default" ? [] : [
-            { icon: SVG_PIN, title: pinned.includes(m) ? "Unpin model" : "Pin to top", on: pinned.includes(m),
-              onClick: () => { vscode.postMessage({ type: "pin-model", model: m }); hideCtx(); } },
-            { icon: SVG_STAR, title: modelDefault === m ? "Remove as default" : "Set as default for new sessions", on: modelDefault === m,
-              onClick: () => { vscode.postMessage({ type: "set-model-default", model: modelDefault === m ? "" : m }); hideCtx(); } },
-        ];
-        const opts = [];
-        if (pinned.length) {
-            for (const m of pinned) {
-                opts.push({ value: m, label: modelLabel(m), group: "Pinned", actions: makeActions(m) });
-            }
-        }
-        for (const m of rest) {
-            opts.push({ value: m, label: m === "default" ? defLabel(modelDefault) : modelLabel(m), group: pinned.length ? "All" : undefined, actions: makeActions(m) });
-        }
-        return opts;
-    }
-    modelPicker.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (modelPicker.disabled) return;
-        // Always offer a manual entry so the user is never stuck when remote
-        // discovery (GET /models) returned nothing — e.g. not logged in yet, or
-        // the gateway answered 401. Picking it prompts for a free-form id.
-        openChoiceMenu(modelPicker, buildModelMenuOpts(), modelValue, (v) => { modelValue = v; setModelLabel(); }, {
-            refreshAction: { label: "Refresh models", detail: "Re-run GET /models", onClick: () => { showToast("Refreshing models…"); vscode.postMessage({ type: "refresh-models" }); } },
-            manualEntry: { label: "Type a model…", placeholder: "e.g. gpt-4o, claude-3-5-sonnet", onSubmit: (v) => { if (v && v.trim()) { modelValue = v.trim(); setModelLabel(); } } },
-        });
-    });
-    reasoningPicker.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (reasoningPicker.disabled || !reasoningList.length) return;
-        openChoiceMenu(reasoningPicker, reasoningList.map((r) => ({ value: r, label: r === "default" ? defLabel(reasoningDefault) : r })), reasoningValue, (v) => { reasoningValue = v; setReasoningLabel(); });
-    });
 
     // Switch agent — hand this dialogue off to another backend in place. The
     // list of candidates is requested live (it depends on the current backend),
     // then shown as a menu anchored to the header button.
-    const switchAgentBtn = document.getElementById("switchAgentBtn");
     let pendingSwitchAnchor = null;
     switchAgentBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -282,72 +74,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
         vscode.postMessage({ type: "list-backends" });
     });
 
-    // Transient toast (bottom-center, auto-dismiss). Reused for copy feedback.
-    const TOAST_CHECK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.5 3.5 6 11 2.5 7.5l1-1L6 9l6.5-6.5 1 1Z"/></svg>';
-    let toastTimer = null;
-    function showToast(message) {
-        const el = document.getElementById("toast");
-        if (!el) { return; }
-        el.innerHTML = TOAST_CHECK + "<span></span>";
-        el.querySelector("span").textContent = message;
-        el.classList.add("show");
-        if (toastTimer) { clearTimeout(toastTimer); }
-        toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
-    }
-
-    // Themed tooltip engine: replaces the unstyled native title= bubble with a
-    // theme-aware, animated one. Reads the element's title attribute (so no
-    // markup changes), suppresses the native tooltip while shown, and restores
-    // it after. Works on hover AND keyboard focus (a11y).
-    const tipEl = document.getElementById("tip");
-    let tipTarget = null;
-    function placeTip(target) {
-        const r = target.getBoundingClientRect();
-        const tr = tipEl.getBoundingClientRect();
-        let left = r.left + r.width / 2 - tr.width / 2;
-        left = Math.max(8, Math.min(left, window.innerWidth - tr.width - 8));
-        let top = r.top - tr.height - 8;
-        if (top < 8) { top = r.bottom + 8; tipEl.classList.add("below"); }
-        else { tipEl.classList.remove("below"); }
-        tipEl.style.left = left + "px";
-        tipEl.style.top = top + "px";
-    }
-    function showTip(target) {
-        const text = target.getAttribute("title");
-        if (!text || !text.trim()) { return; }
-        if (tipTarget) { hideTip(); }
-        tipTarget = target;
-        target.setAttribute("data-otitle", text);
-        target.removeAttribute("title");        // suppress the native bubble
-        tipEl.textContent = text;
-        tipEl.classList.add("show");
-        placeTip(target);                       // measure after content set
-        placeTip(target);                       // 2nd pass: size known now
-    }
-    function hideTip() {
-        tipEl.classList.remove("show");
-        if (tipTarget && tipTarget.getAttribute("data-otitle") != null) {
-            tipTarget.setAttribute("title", tipTarget.getAttribute("data-otitle"));
-            tipTarget.removeAttribute("data-otitle");
-        }
-        tipTarget = null;
-    }
-    document.addEventListener("mouseover", (e) => {
-        const t = e.target.closest && e.target.closest("[title]");
-        if (t && t !== tipTarget) { showTip(t); }
-    });
-    document.addEventListener("mouseout", (e) => {
-        if (tipTarget && !tipTarget.contains(e.relatedTarget)) { hideTip(); }
-    });
-    document.addEventListener("focusin", (e) => {
-        const t = e.target.closest && e.target.closest("[title]");
-        if (t) { showTip(t); }
-    });
-    document.addEventListener("focusout", () => hideTip());
-    // Never leave a stuck tip: hide on scroll/click/escape.
-    window.addEventListener("scroll", () => { if (tipTarget) { hideTip(); } }, true);
-    document.addEventListener("click", () => { if (tipTarget) { hideTip(); } }, true);
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && tipTarget) { hideTip(); } });
 
     // Copy the active session's "id title" to the clipboard, with a toast.
     // Wired to BOTH the header copy icon AND clicking the title text itself.
@@ -374,7 +100,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
         }
         showToast("Copied session id + title");
     }
-    const copySessionBtn = document.getElementById("copySessionBtn");
     copySessionBtn.addEventListener("click", copySession);
     // Clicking the title text also copies (more discoverable than the icon).
     chatTitle.style.cursor = "pointer";
@@ -388,7 +113,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
         { value: "present", label: "Present", detail: "agent may ask", title: "Normal: the agent can pause to ask you questions." },
         { value: "away", label: "Away", detail: "full autonomy", title: "The agent proceeds without asking; it won't wait for you." },
     ];
-    const presencePicker = document.getElementById("presencePicker");
     const presenceLbl = presencePicker.querySelector(".lbl");
     const presenceIcon = presencePicker.querySelector(".picon");
     function setPresenceLabel() {
@@ -407,7 +131,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     setPresenceLabel();
 
     // ---- tools & configuration menu (sliders) ----
-    const configBtn = document.getElementById("configBtn");
     let permissionModes = [], permissionValue = "default", permissionDefault = "default";
     // Per-session tool gating (native AI backend). available = all tools the
     // backend can expose; enabled = the subset active for this session.
@@ -497,8 +220,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     });
 
     // ---- resizable sessions pane ----
-    const sessionsPane = document.getElementById("sessionsPane");
-    const resizer = document.getElementById("resizer");
     if (saved.paneWidth) { sessionsPane.style.width = saved.paneWidth + "px"; }
     let dragging = false;
     resizer.addEventListener("pointerdown", (e) => {
@@ -516,60 +237,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     resizer.addEventListener("pointerup", endDrag);
     resizer.addEventListener("pointercancel", endDrag);
 
-    let sideMode = "auto"; // "auto" | "left" | "right", from config
-
-    // The sessions pane sits on the OUTER edge: when the view is docked on the
-    // right of the window, sessions go right; docked left, sessions go left.
-    // With no API for dock side, infer it from the webview's screen position.
-    function sideIsRight() {
-        if (sideMode === "left") return false;
-        if (sideMode === "right") return true;
-        try {
-            const center = (window.screenX || 0) + window.innerWidth / 2;
-            return center > (window.screen.width / 2);
-        } catch (e) {
-            return false;
-        }
-    }
-
-    // Responsive: a wide surface shows the sessions pane beside the chat,
-    // a narrow one hides it behind the toggle — same feel as the built-in
-    // chat sessions viewer.
-    const NARROW = 640;
-    function layout() {
-        root.classList.toggle("narrow", document.body.clientWidth < NARROW);
-        root.classList.toggle("side-right", sideIsRight());
-    }
-    new ResizeObserver(layout).observe(document.body);
-    layout();
-    listToggle.addEventListener("click", () => root.classList.toggle("listOpen"));
-
-    // Auto-scroll only when the user is already near the bottom, so reading
-    // scrollback isn't yanked away mid-stream.
-    function nearBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
-    // Marks the last PROGRAMMATIC scroll so the context-menu auto-close can tell
-    // it apart from a user scroll (new messages auto-scroll the log, which must
-    // not close an open menu like the send-mode picker).
-    let lastAutoScroll = 0;
-    function autoScroll(stick) { if (stick) { lastAutoScroll = Date.now(); log.scrollTop = log.scrollHeight; } }
-    // Force-scroll to the very bottom, after layout settles (history/images can
-    // change height a frame later, so do it now + on the next frame).
-    function scrollToBottom() {
-        lastAutoScroll = Date.now();
-        log.scrollTop = log.scrollHeight;
-        requestAnimationFrame(() => { lastAutoScroll = Date.now(); log.scrollTop = log.scrollHeight; updateScrollBtn(); });
-    }
-    // Floating "scroll to bottom" button: visible only when scrolled up.
-    let scrollBtn = null;
-    function updateScrollBtn() {
-        if (!scrollBtn) { return; }
-        scrollBtn.classList.toggle("show", !nearBottom() && log.childElementCount > 0);
-    }
-    log.addEventListener("scroll", updateScrollBtn);
-    scrollBtn = document.getElementById("scrollBottom");
-    if (scrollBtn) { scrollBtn.addEventListener("click", scrollToBottom); }
-    // Show the empty-state placeholder when the log has no messages yet.
-    function refreshEmpty() { root.classList.toggle("empty", log.childElementCount === 0); }
 
     // Error block with a Retry action (re-sends the last user message).
     function renderError(message) {
@@ -782,34 +449,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     function endThinkingStream() { streamThink = null; streamThinkBody = null; streamThinkLen = null; streamThinkText = ""; }
 
 
-    function setStatus() {
-        const q = queued > 0 ? " · " + queued + " queued" : "";
-        status.textContent = busy ? ("thinking..." + q) : (activeModel ? "model: " + modelLabel(activeModel) : "");
-        // Model/reasoning stay changeable at all times (even while a turn runs):
-        // a change applies to the next/queued message. Only disabled when there
-        // are no options to pick.
-        modelPicker.disabled = !modelList.length;
-        reasoningPicker.disabled = !reasoningList.length;
-        updateSendTitle();   // mode caret/icon depends on busy state
-        syncProgress();
-    }
-
-    const progress = document.getElementById("progress");
-    const composerEl = document.getElementById("composer");
-    // Busy/loading shows as a subtle sweep around the composer border (native-
-    // chat style), not a top bar that reads as global.
-    function syncProgress() {
-        const on = loading || busy;
-        progress.classList.remove("on");          // retire the top bar
-        if (composerEl) { composerEl.classList.toggle("working", on); }
-    }
-    // Full loading state shown while a session is being opened (empty log).
-    function setLoading(on, text) {
-        loading = on;
-        if (text) { document.getElementById("loadingText").textContent = text; }
-        root.classList.toggle("loading", on);
-        syncProgress();
-    }
 
 
     // Map a backend tool name to a native-chat icon + verb.
@@ -844,7 +483,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     // Live tool rows awaiting their result, keyed by tool id.
     const toolRows = {};
     const TAB = String.fromCharCode(9);
-    function allDigits(s) { return s.length > 0 && [...s].every((ch) => ch >= "0" && ch <= "9"); }
     // Tool output from Read comes as "  <n>	<code>"; split the line number into
     // a non-selectable gutter so copying the result never includes the numbers.
     function toolSection(label, text) {
@@ -900,15 +538,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     // Shorten a file path for display: keep the start and the tail (filename +
     // a few parent segments), dropping the middle with an ellipsis so the most
     // meaningful parts stay visible. The full path is kept in the tooltip.
-    function middleEllipsisPath(text, max) {
-        const s = String(text);
-        if (s.length <= max) { return s; }
-        const ell = "…";
-        // Bias toward the end (filename) while still showing the root prefix.
-        const tail = Math.max(Math.ceil((max - ell.length) * 0.62), 1);
-        const head = Math.max(max - ell.length - tail, 1);
-        return s.slice(0, head) + ell + s.slice(s.length - tail);
-    }
     // Humanize an unmapped tool name for display. Bridged VS Code LM tools arrive
     // vendor-namespaced (e.g. "copilot_switchAgent", "mcp_foo_bar"); strip the
     // namespace prefix and split snake/camel case so the action log never shows a
@@ -1002,7 +631,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     }
 
     // ---- plan / todo (pinned above the edited-files set, per session) ----
-    const planEl = document.getElementById("plan");
     const planBySession = {};   // sessionId -> todos[]
     function todoMark(status) {
         if (status === "completed") return svgIcon("check");
@@ -1070,16 +698,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     }
 
     // ---- Tasks panel (Sufficit-memory task list, local mirror) ----
-    const tasksEl = document.getElementById("tasks");
-    function relWhen(iso) {
-        const t = Date.parse(iso); if (!t) { return ""; }
-        const s = Math.max(0, (Date.now() - t) / 1000);
-        if (s < 90) { return "now"; }
-        if (s < 3600) { return Math.round(s / 60) + "m"; }
-        if (s < 86400) { return Math.round(s / 3600) + "h"; }
-        if (s < 2592000) { return Math.round(s / 86400) + "d"; }
-        return new Date(t).toLocaleDateString([], { day: "2-digit", month: "short" });
-    }
     let tasksCollapsed = false;   // persisted across re-renders
     let tasksShowAll = false;     // header filter: pending-only (default) vs all
     let lastTaskItems = [];
@@ -1150,7 +768,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     }
 
     // ---- guardrails (agent-defined absolute rules, sent every message) ----
-    const guardrailsEl = document.getElementById("guardrails");
     let lastGuardrailItems = [];
     function renderGuardrails(items) {
         lastGuardrailItems = items || [];
@@ -1184,9 +801,8 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     }
 
     // ---- queued messages (editable until dispatched) ----
-    const queuedEl = document.getElementById("queued");
     function renderQueued(items) {
-        queued = items.length;   // keep status text in sync
+        setQueued(items.length);   // keep status text in sync
         queuedEl.textContent = "";
         if (!items.length) { queuedEl.classList.remove("has"); setStatus(); return; }
         queuedEl.classList.add("has");
@@ -1228,7 +844,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     // The edited-files list is OWNED BY THE CONTROLLER (extension side) and
     // pushed via {type:"changed-files"}, so it survives view switches and keeps
     // approvals resolved. The plan, below, is still session-keyed in the webview.
-    const changedFiles = document.getElementById("changedFiles");
     const NEW_KEY = "__new__";          // placeholder until a session id arrives
     let wsKey = NEW_KEY;
     let changedItems = [];              // [{ path, added, removed }] from controller
@@ -1300,9 +915,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     }
     // ---- panel tabs: guardrails / tasks / edited-files collapse into an icon
     // strip above the composer; click an icon to open that panel (one at a time).
-    const panelBody = document.getElementById("panelBody");
-    const panelTabs = document.getElementById("panelTabs");
-    const attachedPanel = document.getElementById("attachedPanel");
     let activePanel = null;   // "guardrails" | "tasks" | "changed" | "attached" | null
     // Soft, theme-aware accent per tag type (VS Code chart colors) so each is
     // distinguishable at a glance; dimmed by the .ptab opacity so they stay gentle.
@@ -1352,322 +964,18 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     // Per-session actions, shown as hover icons on the right and in the
     // right-click menu. Each posts a session-action the extension handles.
     // Terminal + watch-live are CLI-only features; API backends have no executable.
-    const CLI_BACKENDS = { claude: 1, codex: 1, copilot: 1 };
-    function actionsFor(s) {
-        const cli = !!CLI_BACKENDS[s.backend];
-        const list = [];
-        if (cli) {
-            list.push({ id: "open", icon: "terminal", label: "Resume in terminal" });
-        }
-        list.push({ id: "rename", icon: "rename", label: "Rename" });
-        if (cli) {
-            list.push({ id: "watch", icon: "eye", label: "Watch live (read-only)" });
-        }
-        list.push({ id: "switchAgent", icon: "arrow-swap", label: "Switch model →" });
-        if (s.pinned) {
-            list.push({ id: "pinUp", icon: "up", label: "Move pin up" });
-            list.push({ id: "pinDown", icon: "down", label: "Move pin down" });
-            list.push({ id: "unpin", icon: "pin", label: "Unpin" });
-        } else {
-            list.push({ id: "pin", icon: "pin", label: "Pin to top" });
-        }
-        list.push(s.archived
-            ? { id: "unarchive", icon: "unarchive", label: "Unarchive" }
-            : { id: "archive", icon: "archive", label: "Archive" });
-        list.push({ id: "delete", icon: "trash", label: "Delete permanently", danger: true });
-        return list;
-    }
 
     // Remembers the session + anchor while the backend submenu is requested,
     // so the "backends" reply (async) can be shown as a follow-up menu.
-    let pendingSessionSwitch = null;
-    function runAction(s, action) {
-        if (action === "switchAgent") {
-            // Don't close the menu position context; request the candidate
-            // backends, then reopen as a submenu anchored at the same spot.
-            const rect = ctxMenu.getBoundingClientRect();
-            pendingSessionSwitch = { session: s, x: rect.left, y: rect.top };
-            hideCtx();
-            vscode.postMessage({ type: "session-list-backends", sessionId: s.sessionId, backend: s.backend });
-            return;
-        }
-        hideCtx();
-        vscode.postMessage({ type: "session-action", action, sessionId: s.sessionId, backend: s.backend });
-    }
 
     // Relative time like the native viewer ("now", "5 min ago", "1 day ago").
-    function relTime(iso) {
-        if (!iso) return "";
-        const d = (Date.now() - new Date(iso).getTime()) / 1000;
-        if (d < 60) return "now";
-        if (d < 3600) return Math.floor(d / 60) + " min ago";
-        if (d < 86400) return Math.floor(d / 3600) + "h ago";
-        if (d < 172800) return "yesterday";
-        if (d < 604800) return Math.floor(d / 86400) + " days ago";
-        if (d < 2592000) return Math.floor(d / 604800) + " wk ago";
-        return Math.floor(d / 2592000) + " months ago";
-    }
     // Recency bucket header label.
-    function bucket(iso) {
-        if (!iso) return "No date";
-        const d = (Date.now() - new Date(iso).getTime()) / 1000;
-        if (d < 86400) return "Today";
-        if (d < 172800) return "Yesterday";
-        if (d < 604800) return "This week";
-        if (d < 2592000) return "This month";
-        return "Older";
-    }
 
-    function groupHeader(label, count) {
-        const gh = document.createElement("div"); gh.className = "groupHeader";
-        const gl = document.createElement("span"); gl.textContent = label;
-        const gc = document.createElement("span"); gc.className = "gcount"; gc.textContent = String(count);
-        gh.appendChild(gl); gh.appendChild(gc);
-        return gh;
-    }
-    function renderAccount(profile) {
-        const el = document.getElementById("accountFooter");
-        if (!el) { return; }
-        el.textContent = "";
-        if (profile && (profile.name || profile.email)) {
-            if (profile.picture) {
-                const img = document.createElement("img");
-                img.setAttribute("src", profile.picture); img.alt = "";
-                el.appendChild(img);
-            } else {
-                const ic = document.createElement("div");
-                ic.className = "acc-ico";
-                ic.textContent = (profile.name || profile.email || "?").trim().charAt(0).toUpperCase();
-                el.appendChild(ic);
-            }
-            const txt = document.createElement("div");
-            txt.className = "acc-text";
-            const nm = document.createElement("div");
-            nm.className = "acc-name"; nm.textContent = profile.name || profile.email;
-            txt.appendChild(nm);
-            if (profile.name && profile.email) {
-                const sub = document.createElement("div");
-                sub.className = "acc-sub"; sub.textContent = profile.email;
-                txt.appendChild(sub);
-            }
-            el.appendChild(txt);
-            const out = document.createElement("span");
-            out.className = "acc-out"; out.title = "Sair"; out.textContent = "⎋";
-            out.onclick = (e) => { e.stopPropagation(); vscode.postMessage({ type: "account-logout" }); };
-            el.appendChild(out);
-            el.onclick = null;
-        } else {
-            const ic = document.createElement("div");
-            ic.className = "acc-ico"; ic.textContent = "↪";
-            el.appendChild(ic);
-            const txt = document.createElement("div");
-            txt.className = "acc-text";
-            const nm = document.createElement("div");
-            nm.className = "acc-name"; nm.textContent = "Entrar na Sufficit";
-            txt.appendChild(nm);
-            el.appendChild(txt);
-            el.onclick = () => vscode.postMessage({ type: "account-login" });
-        }
-    }
 
-    function renderSessions() {
-        sessionsList.textContent = "";
-        const visible = sessions.filter((s) => !s.archived || showArchived);
-        // Subagents (parentId pointing at a visible session) render nested under
-        // their parent — not as top-level rows — so the list stays a tidy tree.
-        const byId = new Map(visible.map((s) => [s.sessionId, s]));
-        const childrenOf = (id) => visible.filter((s) => s.parentId && s.parentId === id);
-        const isChild = (s) => s.parentId && byId.has(s.parentId);
-        const top = visible.filter((s) => !isChild(s));
-        // Append a row and, when expanded, its subagent children (recursively).
-        const appendTree = (s, depth) => {
-            const kids = childrenOf(s.sessionId);
-            sessionsList.appendChild(renderSessionItem(s, depth, kids.length));
-            if (kids.length && !collapsedParents.has(s.sessionId)) {
-                for (const k of kids) { appendTree(k, depth + 1); }
-            }
-        };
-        const pinned = top.filter((s) => s.pinned).sort((a, b) => (a.pinIndex || 0) - (b.pinIndex || 0));
-        const rest = top.filter((s) => !s.pinned);
-        if (pinned.length) {
-            sessionsList.appendChild(groupHeader("Pinned", pinned.length));
-            for (const s of pinned) { appendTree(s, 0); }
-        }
-        let lastBucket = null;
-        for (const s of rest) {
-            const bk = bucket(s.updatedAt);
-            if (bk !== lastBucket) {
-                lastBucket = bk;
-                const count = rest.filter((x) => bucket(x.updatedAt) === bk).length;
-                sessionsList.appendChild(groupHeader(bk, count));
-            }
-            appendTree(s, 0);
-        }
-    }
-    let dragPinId = null;
     // Drop the dragged pinned session before the target, persist the new order.
-    function dropPinnedOn(targetId) {
-        if (!dragPinId || dragPinId === targetId) { return; }
-        const order = sessions.filter((s) => s.pinned).sort((a, b) => (a.pinIndex || 0) - (b.pinIndex || 0)).map((s) => s.sessionId);
-        const from = order.indexOf(dragPinId), to = order.indexOf(targetId);
-        if (from < 0 || to < 0) { return; }
-        order.splice(from, 1);
-        order.splice(order.indexOf(targetId), 0, dragPinId);
-        // Optimistic reorder so it feels instant, then persist.
-        const idx = {}; order.forEach((id, i) => idx[id] = i);
-        for (const s of sessions) { if (s.pinned) { s.pinIndex = idx[s.sessionId]; } }
-        renderSessions();
-        vscode.postMessage({ type: "reorder-pinned", ids: order });
-    }
-    function renderSessionItem(s, depth, childCount) {
-            depth = depth || 0; childCount = childCount || 0;
-            const el = document.createElement("div");
-            el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "") + (s.deleting ? " deleting" : "") + (depth ? " subagentChild" : "");
-            if (depth) { el.style.marginLeft = (depth * 16) + "px"; }
-            // Caret to collapse/expand a parent's subagent children.
-            let caretEl = null;
-            if (childCount > 0) {
-                caretEl = document.createElement("button");
-                caretEl.className = "subCaret";
-                caretEl.style.cssText = "background:none;border:none;cursor:pointer;padding:0 2px;display:flex;align-items:center;opacity:0.7";
-                const collapsed = collapsedParents.has(s.sessionId);
-                const cv = svgIcon("chevron");
-                cv.style.transform = collapsed ? "rotate(-90deg)" : "rotate(0deg)";
-                cv.style.transition = "transform 150ms ease";
-                caretEl.appendChild(cv);
-                caretEl.title = collapsed ? "Expand subagents" : "Collapse subagents";
-                caretEl.setAttribute("aria-label", caretEl.title);
-                caretEl.addEventListener("click", (ev) => { ev.stopPropagation(); toggleCollapsed(s.sessionId); });
-            }
-            el.tabIndex = 0;
-            el.setAttribute("role", "option");
-            el.setAttribute("aria-selected", s.sessionId === activeSessionId ? "true" : "false");
-            el.addEventListener("keydown", (e) => {
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); body.click(); }
-                else if (e.key === "ArrowDown") { e.preventDefault(); const next = el.nextElementSibling; if (next && next.classList.contains("sessionItem")) { next.focus(); } else { const after = el.parentElement.querySelectorAll(".sessionItem"); const idx = Array.from(after).indexOf(el); if (idx + 1 < after.length) { after[idx + 1].focus(); } } }
-                else if (e.key === "ArrowUp") { e.preventDefault(); const prev = el.previousElementSibling; if (prev && prev.classList.contains("sessionItem")) { prev.focus(); } else { const all = el.parentElement.querySelectorAll(".sessionItem"); const idx = Array.from(all).indexOf(el); if (idx > 0) { all[idx - 1].focus(); } } }
-            });
-            // Pinned items reorder by drag-and-drop (the up/down menu still works).
-            if (s.pinned) {
-                el.draggable = true;
-                el.addEventListener("dragstart", (e) => { dragPinId = s.sessionId; el.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; });
-                el.addEventListener("dragend", () => { dragPinId = null; el.classList.remove("dragging"); document.querySelectorAll(".sessionItem.dropTarget").forEach((x) => x.classList.remove("dropTarget")); });
-                el.addEventListener("dragover", (e) => { if (dragPinId && dragPinId !== s.sessionId) { e.preventDefault(); el.classList.add("dropTarget"); } });
-                el.addEventListener("dragleave", () => el.classList.remove("dropTarget"));
-                el.addEventListener("drop", (e) => { e.preventDefault(); el.classList.remove("dropTarget"); dropPinnedOn(s.sessionId); });
-            }
 
-            // Live status indicator: spinner = working, green dot = idle/live.
-            const statusDot = document.createElement("div");
-            statusDot.className = "statusDot";
-            if (s.deleting) {
-                const sp = document.createElement("span"); sp.className = "spinner"; sp.title = "Deleting…"; statusDot.appendChild(sp);
-            } else if (s.status === "working") {
-                const w = document.createElement("span"); w.className = "work"; w.title = "Agent working…"; statusDot.appendChild(w);
-            } else if (s.status === "idle") {
-                const d = document.createElement("span"); d.className = "idle"; d.title = "Running session (idle)"; statusDot.appendChild(d);
-            } else {
-                const ic = svgIcon("chat"); ic.classList.add("stored"); ic.setAttribute("aria-hidden", "true"); statusDot.appendChild(ic);
-            }
-
-            const body = document.createElement("div");
-            body.className = "body";
-            const ttl = document.createElement("div");
-            ttl.className = "ttl";
-            if (s.pinned) { const pn = svgIcon("pin"); pn.classList.add("ttlIcon"); ttl.appendChild(pn); }
-            if (s.archived) { const ar = svgIcon("archive"); ar.classList.add("ttlIcon"); ttl.appendChild(ar); }
-            ttl.appendChild(document.createTextNode(s.title));
-            ttl.title = s.title + "\n" + s.sessionId;
-            const sub = document.createElement("span");
-            sub.className = "sub";
-            if (s.deleting) {
-                sub.textContent = "deleting…";
-            } else {
-                const statusText = s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : "");
-                sub.textContent = statusText + s.backend + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
-            }
-            sub.title = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "";
-            body.appendChild(ttl);
-            body.appendChild(sub);
-            // While a delete scrub is in flight the row is inert (no open / no menu).
-            if (!s.deleting) {
-                body.addEventListener("click", () => {
-                    root.classList.remove("listOpen");
-                    activeSessionId = s.sessionId; renderSessions();
-                    setLoading(true, "Loading session…");
-                    vscode.postMessage({ type: "open-session", sessionId: s.sessionId, backend: s.backend });
-                });
-            }
-
-            // One "more" button opens the same menu as right-click.
-            const acts = document.createElement("div");
-            acts.className = "acts";
-            if (!s.deleting) {
-                const more = document.createElement("button");
-                more.appendChild(svgIcon("more")); more.title = "Actions"; more.setAttribute("aria-label", "Actions");
-                more.addEventListener("click", (ev) => { ev.stopPropagation(); showCtx(ev, s); });
-                acts.appendChild(more);
-            }
-
-            if (caretEl) { el.appendChild(caretEl); }
-            el.appendChild(statusDot);
-            el.appendChild(body);
-            el.appendChild(acts);
-            if (!s.deleting) {
-                el.addEventListener("contextmenu", (ev) => { ev.preventDefault(); showCtx(ev, s); });
-            }
-            return el;
-    }
-
-    const ctxMenu = document.getElementById("ctxMenu");
-    function hideCtx() { ctxMenu.style.display = "none"; }
-    function showCtx(ev, s) {
-        ctxMenu.textContent = "";
-        for (const a of actionsFor(s)) {
-            if (a.danger) {
-                const sep = document.createElement("div"); sep.className = "sep"; ctxMenu.appendChild(sep);
-            }
-            const mi = document.createElement("div");
-            mi.className = "mi" + (a.danger ? " danger" : "");
-            const ic = svgIcon(a.icon); ic.classList.add("miIcon");
-            mi.appendChild(ic);
-            mi.appendChild(document.createTextNode(a.label));
-            mi.addEventListener("click", () => runAction(s, a.id));
-            ctxMenu.appendChild(mi);
-        }
-        ctxMenu.style.display = "block";
-        const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
-        ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - w - 4) + "px";
-        ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
-    }
-    document.addEventListener("click", hideCtx);
-    // Close on page scroll, but NOT when scrolling inside the menu's own list,
-    // and NOT for programmatic auto-scroll of the log (new messages must not
-    // close an open menu like the send-mode picker).
-    document.addEventListener("scroll", (e) => {
-        if (ctxMenu.contains(e.target)) { return; }
-        if (Date.now() - lastAutoScroll < 200) { return; }
-        hideCtx();
-    }, true);
 
     // Right-click menu for a file referenced by a tool row.
-    function showFileMenu(ev, path) {
-        ev.preventDefault(); ev.stopPropagation();
-        ctxMenu.textContent = "";
-        const add = (icon, label, type) => {
-            const mi = document.createElement("div"); mi.className = "mi";
-            const ic = svgIcon(icon); ic.classList.add("miIcon");
-            mi.appendChild(ic); mi.appendChild(document.createTextNode(label));
-            mi.addEventListener("click", () => { hideCtx(); vscode.postMessage({ type, path }); });
-            ctxMenu.appendChild(mi);
-        };
-        add("diff", "Open diff", "file-diff");
-        add("file", "Open file", "open-file");
-        ctxMenu.style.display = "block";
-        const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
-        ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - w - 4) + "px";
-        ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
-    }
 
     function makeChip(label, fullPath, onRemove, active, openPath) {
         const chip = document.createElement("span");
@@ -1697,20 +1005,20 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
             const base = (activeFile.split("/").filter(Boolean).pop() || activeFile) + activeFileSuffix();
             const isSuggestion = activeFilePreview && !activeFilePinned;
             // Suggestion chip clicks to PIN; an attached chip clicks to OPEN.
-            const chip = makeChip(base, activeFile + activeFileSuffix(), () => { activeFileDismissed = true; renderChips(); }, !isSuggestion, isSuggestion ? null : activeFile);
+            const chip = makeChip(base, activeFile + activeFileSuffix(), () => { setActiveFileDismissed(true); renderChips(); }, !isSuggestion, isSuggestion ? null : activeFile);
             if (isSuggestion) {
                 chip.classList.add("suggestChip");
                 chip.title = activeFile + activeFileSuffix() + " — preview (clique para anexar ao contexto)";
                 chip.addEventListener("click", (e) => {
                     if (e.target && e.target.classList && e.target.classList.contains("x")) { return; }
-                    activeFilePinned = true; renderChips();
+                    setActiveFilePinned(true); renderChips();
                 });
             }
             chips.appendChild(chip);
         }
         for (const file of attachments) {
             chips.appendChild(makeChip(file.name, file.path, () => {
-                attachments = attachments.filter((a) => a.path !== file.path);
+                setAttachments(attachments.filter((a) => a.path !== file.path));
                 renderChips();
             }, false, file.path));
         }
@@ -1720,17 +1028,10 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     }
 
     // Footer status bar: cwd · backend · permission/mode (like the native bar).
-    const statusbar = document.getElementById("statusbar");
     let lastUsage = null, lastStatusData = {};
     let lastTurn = {};            // { costUsd, durationMs } from the last turn-end
     let sessionCostUsd = 0;       // accumulated cost across the session (when reported)
-    function fmtTokens(n) { return n >= 1000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + "K" : String(n); }
     // Meter color tracks fullness like Copilot: normal < 75%, amber 75–90%, red ≥ 90%.
-    function usageColor(pct) {
-        if (pct >= 90) { return "var(--vscode-editorError-foreground, #f14c4c)"; }
-        if (pct >= 75) { return "var(--vscode-editorWarning-foreground, #cca700)"; }
-        return "var(--vscode-progressBar-background, #3794ff)";
-    }
     function renderStatusbar(data) {
         lastStatusData = data || lastStatusData;
         data = lastStatusData;
@@ -1879,7 +1180,7 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     function retryLast() {
         if (!lastSendPayload) { return; }
         vscode.postMessage(lastSendPayload);
-        if (!busy) { busy = true; setStatus(); }
+        if (!busy) { setBusy(true); setStatus(); }
     }
     function send(modeOverride) {
         const text = input.value.trim();
@@ -1909,13 +1210,12 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
         lastSendPayload = { ...payload, editFrom: null };   // remember for Retry
         vscode.postMessage(payload);
         if (editAnchor != null) { editAnchor = null; markEditing(); }
-        if (!busy && editFrom == null) { busy = true; setStatus(); }
-        attachments = [];
+        if (!busy && editFrom == null) { setBusy(true); setStatus(); }
+        setAttachments([]);
         renderChips();
     }
 
     // ---- slash-command autocomplete ----
-    const slash = document.getElementById("slash");
     let commands = [];     // [{name, description, kind}]
     let slashMatches = [];
     let slashSel = 0;
@@ -1958,7 +1258,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
     // While a turn runs the button stops it; otherwise it sends.
     sendBtn.addEventListener("click", () => { send(); });
     addContext.addEventListener("click", () => vscode.postMessage({ type: "pick-attachments" }));
-    const addBrowserPage = document.getElementById("addBrowserPage");
     if (addBrowserPage) {
         addBrowserPage.style.display = "none";   // shown only while a Simple Browser is open
         addBrowserPage.addEventListener("click", () => vscode.postMessage({ type: "attach-browser-page" }));
@@ -2066,38 +1365,38 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 break;
             }
             case "meta": {
-                sideMode = data.sessionsSide || "auto";
+                setSideMode(data.sessionsSide || "auto");
                 // Seed the default send mode once (don't override a saved choice).
                 if (data.whenBusy && !(saved && saved.sendMode)) { sendMode.value = data.whenBusy; }
                 root.classList.toggle("chat-only", !!data.chatOnly);
                 layout();   // apply the sessions-side now (meta sets sideMode)
                 layout();
-                activeSessionId = data.sessionId || "";
+                setActiveSessionId(data.sessionId || "");
                 copySessionBtn.style.display = "inline-flex";   // a session surface is open
                 clearTimeout(bootTimer); bootStep("host", null, "ok"); bootStep("session", "Session ready", "ok"); bootComplete();
                 startWorkingSet(activeSessionId);   // bind edited-files set to this session
-                currentBackend = data.backend || "";
-                currentBackendName = data.backendName || "";
-                agentLabels = data.agentLabels || null;
+                setCurrentBackend(data.backend || "");
+                setCurrentBackendName(data.backendName || "");
+                setAgentLabels(data.agentLabels || null);
                 // Per-workspace bootstrap link on the empty screen (read-only ref).
                 const bootEl = document.getElementById("bootstrapLink");
                 if (data.bootstrapLink && data.bootstrapLink.path) {
-                    bootstrapPath = data.bootstrapLink.path;
+                    setBootstrapPath(data.bootstrapLink.path);
                     bootEl.querySelector(".lbl").textContent = "Workspace bootstrap: " + (data.bootstrapLink.name || "open");
                     bootEl.style.display = "inline-flex";
                 } else {
-                    bootstrapPath = "";
+                    setBootstrapPath("");
                     bootEl.style.display = "none";
                 }
                 chatTitle.textContent = (data.title ? data.title + " · " : "") + (data.backendName || data.backend);
                 setBrowserOpen(!!data.browserOpen);
                 aiToolsAvailable = (data.aiTools && data.aiTools.available) || [];
                 aiToolsEnabled = (data.aiTools && data.aiTools.enabled) || [];
-                modelDefault = data.modelDefault || "";
-                modelLabels = data.modelLabels || {};
-                reasoningDefault = data.reasoningDefault || "";
-                modelList = data.models || [];
-                pinnedModels = data.pinnedModels || [];
+                setModelDefault(data.modelDefault || "");
+                setModelLabels(data.modelLabels || {});
+                setReasoningDefault(data.reasoningDefault || "");
+                setModelList(data.models || []);
+                setPinnedModels(data.pinnedModels || []);
                 // Keep the user's chosen model across re-meta (e.g. edit-resend,
                 // handoff) when it's still offered. Otherwise pick the right
                 // starting model: a resumed session restores its last-used model
@@ -2105,11 +1404,11 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 // (data.modelDefault), and only then falls back to the first model.
                 if (!modelValue || (modelValue !== "default" && !modelList.includes(modelValue))) {
                     if (data.resumed && data.sessionModel) {
-                        modelValue = data.sessionModel;
+                        setModelValue(data.sessionModel);
                     } else if (modelDefault && (modelDefault === "default" || modelList.includes(modelDefault))) {
-                        modelValue = modelDefault;
+                        setModelValue(modelDefault);
                     } else {
-                        modelValue = modelList[0] || "";
+                        setModelValue(modelList[0] || "");
                     }
                 }
                 // Keep the picker visible even with an empty list: the menu
@@ -2118,8 +1417,8 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 modelPicker.disabled = false;
                 modelPicker.style.display = "";
                 setModelLabel();
-                reasoningList = data.reasoningLevels || [];
-                reasoningValue = reasoningList[0] || "default";
+                setReasoningList(data.reasoningLevels || []);
+                setReasoningValue(reasoningList[0] || "default");
                 reasoningPicker.disabled = false;
                 reasoningPicker.style.display = reasoningList.length ? "" : "none";
                 setReasoningLabel();
@@ -2141,10 +1440,10 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 }
                 renderSessions();
                 renderStatusbar(data);
-                activeFile = data.activeFile || null;
-                activeFileRange = (data.activeFileStart && data.activeFileEnd) ? { start: data.activeFileStart, end: data.activeFileEnd } : null;
-                activeFilePreview = !!data.activeFilePreview; activeFilePinned = false;
-                activeFileDismissed = false; renderChips();
+                setActiveFile(data.activeFile || null);
+                setActiveFileRange((data.activeFileStart && data.activeFileEnd) ? { start: data.activeFileStart, end: data.activeFileEnd } : null);
+                setActiveFilePreview(!!data.activeFilePreview); setActiveFilePinned(false);
+                setActiveFileDismissed(false); renderChips();
                 setLoading(false);   // session resolved — reveal the conversation
                 scrollToBottom();    // start at the latest message
                 break;
@@ -2156,23 +1455,23 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
             case "active-file": {
                 // Editor switched or selection changed — refresh the context chip.
                 // Keep it dismissed only while the same file stays active.
-                if (data.path !== activeFile) { activeFileDismissed = false; activeFilePinned = false; }
-                activeFile = data.path || null;
-                activeFileRange = (data.start && data.end) ? { start: data.start, end: data.end } : null;
-                activeFilePreview = !!data.preview;
+                if (data.path !== activeFile) { setActiveFileDismissed(false); setActiveFilePinned(false); }
+                setActiveFile(data.path || null);
+                setActiveFileRange((data.start && data.end) ? { start: data.start, end: data.end } : null);
+                setActiveFilePreview(!!data.preview);
                 renderChips();
                 break;
             }
             case "prefs": {
                 // Live preference updates (no reload needed), e.g. sessions side.
-                if (typeof data.sessionsSide === "string") { sideMode = data.sessionsSide; layout(); }
+                if (typeof data.sessionsSide === "string") { setSideMode(data.sessionsSide); layout(); }
                 break;
             }
             case "clear": {
                 conversationRows = [];
                 log.textContent = "";
                 copySessionBtn.style.display = "none";
-                activeModel = ""; busy = false; queued = 0;
+                setActiveModel(""); setBusy(false); setQueued(0);
                 resetWorkingState();
                 refreshEmpty();
                 sendBtn.disabled = false;
@@ -2208,7 +1507,7 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 break;
             }
             case "sessions": {
-                sessions = data.items;
+                setSessions(data.items);
                 renderSessions();
                 break;
             }
@@ -2227,12 +1526,12 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 // "default" selection.
                 const newList = data.models || [];
                 if (newList.length) {
-                    modelList = newList;
-                    modelLabels = data.labels || modelLabels;
+                    setModelList(newList);
+                    setModelLabels(data.labels || modelLabels);
                     if (modelValue && modelValue !== "default" && !modelList.includes(modelValue)) {
-                        modelValue = modelList[0] || "";
+                        setModelValue(modelList[0] || "");
                     } else if (!modelValue) {
-                        modelValue = modelList[0] || "";
+                        setModelValue(modelList[0] || "");
                     }
                     modelPicker.disabled = false;
                     modelPicker.style.display = "";
@@ -2254,8 +1553,8 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 break;
             }
             case "model-prefs": {
-                if (Array.isArray(data.pinnedModels)) { pinnedModels = data.pinnedModels; }
-                if (data.modelDefault !== undefined) { modelDefault = data.modelDefault; setModelLabel(); }
+                if (Array.isArray(data.pinnedModels)) { setPinnedModels(data.pinnedModels); }
+                if (data.modelDefault !== undefined) { setModelDefault(data.modelDefault); setModelLabel(); }
                 break;
             }
             case "history": {
@@ -2295,7 +1594,7 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                 // right-click menu: show the candidate backends as a submenu at
                 // the spot the context menu was, then hand the session off.
                 const ctx = pendingSessionSwitch;
-                pendingSessionSwitch = null;
+                setPendingSessionSwitch(null);
                 const items = (data.items || []).filter((b) => !b.current);
                 if (!ctx || !items.length) { break; }
                 ctxMenu.textContent = "";
@@ -2347,7 +1646,7 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                     }
                     el.appendChild(list);
                 }
-                busy = true; setStatus();   // a turn just started (covers queued flush)
+                setBusy(true); setStatus();   // a turn just started (covers queued flush)
                 break;
             }
             case "attachments-picked": {
@@ -2387,29 +1686,29 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
                     // Legacy events without fatal are treated as fatal (default),
                     // preserving the old defensive behaviour for real turn errors.
                     if (ev.fatal !== false) {
-                        busy = false; sendBtn.disabled = false; setStatus();
+                        setBusy(false); sendBtn.disabled = false; setStatus();
                     }
                     renderError(ev.message);
                 }
                 else if (ev.kind === "session") {
                     if (ev.model) {
-                        activeModel = ev.model;
-                        if (modelList.includes(ev.model)) { modelValue = ev.model; setModelLabel(); }
+                        setActiveModel(ev.model);
+                        if (modelList.includes(ev.model)) { setModelValue(ev.model); setModelLabel(); }
                     }
-                    activeSessionId = ev.sessionId || activeSessionId;
+                    setActiveSessionId(ev.sessionId || activeSessionId);
                     bindWorkingSet(ev.sessionId);
                     if (agentLabels) {
                         const parts = ["agent: " + agentLabels.agent, "model: " + (ev.model ? modelLabel(ev.model) : "default"), "backend: " + (currentBackendName || currentBackend)];
                         if (agentLabels.toolsDeclared && agentLabels.toolsDeclared.length) { parts.push("tools: " + agentLabels.toolsDeclared.join(", ")); }
                         append("meta", parts.join(" · "));
                         // only once, so re-opening a saved session won't show stale agent badges
-                        agentLabels = null;
+                        setAgentLabels(null);
                     }
                     append("meta", "session " + ev.sessionId + (ev.model ? " · " + modelLabel(ev.model) : ""));
                     setStatus();
                 }
                 else if (ev.kind === "turn-end") {
-                    busy = false; sendBtn.disabled = false; setStatus();
+                    setBusy(false); sendBtn.disabled = false; setStatus();
                     lastTurn = { costUsd: ev.costUsd, durationMs: ev.durationMs };
                     if (ev.costUsd) { sessionCostUsd += ev.costUsd; }
                     append("meta", "—" + (ev.costUsd ? " $" + ev.costUsd.toFixed(4) : "") + (ev.durationMs ? " " + (ev.durationMs/1000).toFixed(1) + "s" : "") + " —");
@@ -2419,64 +1718,6 @@ import { ICONS, svgIcon, fileIcon } from "./icons";
         }
     });
 
-    // Boot screen: shows immediately on parse, hides once a session resolves.
-    // the first session meta/history marks boot complete and hides the overlay.
-    const BOOT_ICONS = {
-        ok: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 11.6 3.4 8.5l-1 1 4.1 4.1L14 6.1l-1-1Z"/></svg>',
-        fail: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3 9.3-.7.7L8 8.7 5.7 11l-.7-.7L7.3 8 5 5.7l.7-.7L8 7.3 10.3 5l.7.7L8.7 8Z"/></svg>'
-    };
-    const bootStepsEl = document.getElementById("bootSteps");
-    const bootHintEl = document.getElementById("bootHint");
-    const bootSteps = new Map();
-    let bootDone = false;
-    function renderBootStep(id, label, status, detail) {
-        if (!bootStepsEl) { return; }
-        try {
-            let row = bootSteps.get(id);
-            if (!row) {
-                row = document.createElement("div");
-                row.className = "bootStep";
-                const ic = document.createElement("span"); ic.className = "bsIcon";
-                const lb = document.createElement("span"); lb.className = "bsLabel";
-                const dt = document.createElement("span"); dt.className = "bsDetail";
-                row.appendChild(ic); row.appendChild(lb); row.appendChild(dt);
-                bootStepsEl.appendChild(row);
-                bootSteps.set(id, row);
-            }
-            if (label != null) { row.querySelector(".bsLabel").textContent = label; }
-            if (detail != null) { row.querySelector(".bsDetail").textContent = detail; }
-            const st = status || "pending";
-            row.className = "bootStep " + st;
-            const ic = row.querySelector(".bsIcon");
-            ic.innerHTML = st === "pending" ? '<span class="bsSpin"></span>' : (BOOT_ICONS[st] || "");
-        } catch (e) { /* best-effort — never block script init */ }
-    }
-    function bootStep(id, label, status, detail) {
-        if (bootDone && status === "ok") { return; }
-        renderBootStep(id, label, status, detail);
-    }
-    function bootComplete() {
-        if (bootDone) { return; }
-        bootDone = true;
-        try { clearTimeout(bootForce); } catch (e) {}
-        root.classList.add("booted");
-    }
-    // Seed the steps we know about up front (extension confirms/overrides them).
-    try { bootStep("host", "Connecting to the extension host", "pending"); } catch (e) {}
-    try { bootStep("ui", "Loading interface", "ok"); } catch (e) {}
-    try { bootStep("session", "Preparing session", "pending"); } catch (e) {}
-    // Safety: never trap the user behind the boot screen. After a short grace
-    // period surface a warning; shortly after, force-reveal the UI even if the
-    // extension never resolved the session (e.g. a backend's discovery hung).
-    const bootTimer = setTimeout(() => {
-        if (bootDone) { return; }
-        if (bootHintEl) { bootHintEl.textContent = "Taking longer than expected — see Output › Symposium for diagnostics."; }
-    }, 8000);
-    const bootForce = setTimeout(() => {
-        if (bootDone) { return; }
-        bootStep("session", "Preparing session", "warn", "timed out");
-        bootComplete();   // reveal the composer/list anyway so the user can act
-    }, 15000);
 
     setStatus();
     refreshEmpty();   // show the placeholder until a conversation loads
