@@ -7,10 +7,10 @@ import { sessionTag } from "./tasks";
  * same symposium-session:<id> tag as tasks, and injected into EVERY outbound
  * message so the agent cannot drift from or ignore them.
  *
- * Ownership: the AGENT adds them (via the `add_guardrail` tool) to lock in a
- * hard constraint the user gave it or a commitment it makes. The USER reviews
- * and can remove or clear them from the UI, but never adds — so the panel only
- * appears once the agent has set at least one rule.
+ * Ownership: the AGENT adds them (`add_guardrail`) to lock in a hard constraint
+ * the user gave it or a commitment it makes, and can clear them all on request
+ * (`clear_guardrails`). The USER can also remove/clear from the UI. The panel
+ * only appears once at least one rule is set.
  */
 
 export const GUARDRAIL_TYPE = "guardrail";

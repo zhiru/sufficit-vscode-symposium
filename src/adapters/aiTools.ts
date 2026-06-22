@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { readSession, dumpToText } from "../sessionReader";
 import { mimeTypeFor } from "./parse";
 import { fetchSessionTasks, markTaskDone } from "../sync/tasks";
-import { saveGuardrail } from "../sync/guardrails";
+import { saveGuardrail, clearSessionGuardrails } from "../sync/guardrails";
 import { workspaceKey, resourceContentPath, ensureScaffold, readWorkspaceBootstrap } from "../config/root";
 
 /**
@@ -104,7 +104,7 @@ export const AI_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "add_guardrail",
-            description: "Add an absolute rule (guardrail) for THIS chat session — a hard constraint you must honor on every message for the rest of the session (e.g. 'only edit the backend, never the Razor markup'). Use it to lock in a constraint the user gave you, or a commitment you make, so it can't drift across turns. Guardrails are injected into every later message. You can only ADD; the user reviews and can remove or clear them. Keep each one short and imperative.",
+            description: "Add an absolute rule (guardrail) for THIS chat session — a hard constraint you must honor on every message for the rest of the session (e.g. 'only edit the backend, never the Razor markup'). Use it to lock in a constraint the user gave you, or a commitment you make, so it can't drift across turns. Guardrails are injected into every later message. Keep each one short and imperative.",
             parameters: {
                 type: "object",
                 properties: {
@@ -112,6 +112,14 @@ export const AI_TOOLS: OpenAITool[] = [
                 },
                 required: ["text"],
             },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "clear_guardrails",
+            description: "Remove ALL guardrails for THIS chat session (when the user asks to clear/remove the guardrails). Returns how many were removed. After this, no guardrails are injected until new ones are added.",
+            parameters: { type: "object", properties: {}, required: [] },
         },
     },
     {
@@ -319,7 +327,7 @@ export function aiToolsForAgent(declared: string[]): string[] {
     names.add("list_tasks"); names.add("task_complete");
     // Guardrails are session-scoped self-constraints: always available so any
     // agent can lock in a hard rule the user gave it (the user can still remove).
-    names.add("add_guardrail");
+    names.add("add_guardrail"); names.add("clear_guardrails");
     // Workspace bootstrap is a per-folder config file (read/replace), always safe.
     names.add("get_workspace_bootstrap"); names.add("set_workspace_bootstrap");
     if (has(/^sufficit-ai\b|^sufficit-ai\/|^memory\b/i)) {
@@ -736,8 +744,18 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
             case "task_complete": {
                 const id = String(args.id ?? "");
                 if (!id) { return JSON.stringify({ error: "id is required" }); }
-                const ok = await markTaskDone(hub, id);
-                return JSON.stringify({ ok });
+                if (!hub.configured()) { return JSON.stringify({ ok: false, error: "memory hub not configured" }); }
+                await markTaskDone(hub, id);
+                // Verify against the hub (source of truth) so a transient write
+                // failure can't be reported as success — re-read and confirm the tag.
+                let done = false;
+                try {
+                    const [o] = await hub.getByIds([id]);
+                    done = !!o && String(o.tags ?? "").split(",").map((t) => t.trim()).includes("status:done");
+                } catch { /* leave done=false */ }
+                return JSON.stringify(done
+                    ? { ok: true, id, done: true }
+                    : { ok: false, id, error: "could not confirm completion — the task is still pending; try again" });
             }
             case "add_guardrail": {
                 const text = String(args.text ?? "").trim();
@@ -746,6 +764,12 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 if (!hub.configured()) { return JSON.stringify({ error: "memory hub not configured — guardrails unavailable" }); }
                 const id = await saveGuardrail(hub, ctx.sessionId, text);
                 return JSON.stringify({ id, added: text });
+            }
+            case "clear_guardrails": {
+                if (!ctx.sessionId) { return JSON.stringify({ error: "no current session" }); }
+                if (!hub.configured()) { return JSON.stringify({ error: "memory hub not configured — guardrails unavailable" }); }
+                const removed = await clearSessionGuardrails(hub, ctx.sessionId);
+                return JSON.stringify({ ok: true, removed });
             }
             case "web_search": {
                 const r = await hub.webSearch(String(args.query ?? ""), typeof args.limit === "number" ? args.limit : 8);
