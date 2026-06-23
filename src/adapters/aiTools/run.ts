@@ -242,20 +242,42 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 const raw = Array.isArray(args.tasks) ? args.tasks : (args.title ? [args.title] : []);
                 const titles = raw.map((t) => (typeof t === "string" ? t : (t && typeof t === "object" ? (t as any).title : ""))).map((s) => String(s ?? "").trim()).filter(Boolean);
                 if (!titles.length) { return JSON.stringify({ error: "provide tasks: [\"step 1\", \"step 2\", …]" }); }
-                const tags = `task-anchor,${sessionTag(ctx.sessionId)}`;
+                const userRequested = args.user_requested === true;
+                const creatorTag = userRequested ? "creator:user" : "creator:agent";
+                const tags = `task-anchor,${sessionTag(ctx.sessionId)},${creatorTag}`;
                 const ids: string[] = [];
                 for (const title of titles) {
                     const id = await hub.save({ type: "task-anchor", title: title.slice(0, 80), summary: title, tags });
                     if (id) { ids.push(id); }
                 }
-                return JSON.stringify({ ok: true, created: ids.length, ids });
+                const reminder = userRequested
+                    ? "USER-REQUESTED TASKS: When you finish, present justification and WAIT for user confirmation before calling task_complete."
+                    : "AGENT TASKS: Call task_complete(id) immediately after finishing each task - don't wait.";
+                return JSON.stringify({
+                    ok: true,
+                    created: ids.length,
+                    ids,
+                    user_requested: userRequested,
+                    reminder,
+                });
             }
             case "list_tasks": {
                 if (!ctx.sessionId) { return JSON.stringify({ tasks: [] }); }
                 const all = await fetchSessionTasks(hub, ctx.sessionId);
                 const includeDone = args.all === true;
                 const tasks = (includeDone ? all : all.filter((t) => !t.done))
-                    .map((t) => ({ id: t.id, type: t.type, title: t.title, summary: t.summary, done: !!t.done }));
+                    .map((t) => {
+                        const tags = String(t.tags || "").split(",").map((tag) => tag.trim());
+                        const userRequested = tags.includes("creator:user");
+                        return {
+                            id: t.id,
+                            type: t.type,
+                            title: t.title,
+                            summary: t.summary,
+                            done: !!t.done,
+                            user_requested: userRequested,
+                        };
+                    });
                 return JSON.stringify({ tasks, pendingOnly: !includeDone });
             }
             case "task_complete": {

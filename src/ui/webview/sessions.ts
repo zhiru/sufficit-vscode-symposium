@@ -174,6 +174,7 @@ export function renderSessionItem(s, depth, childCount) {
         body.className = "body";
         const ttl = document.createElement("div");
         ttl.className = "ttl";
+        if (isSubagent) { const rb = svgIcon("robot"); rb.classList.add("ttlIcon", "subagentBadge"); ttl.appendChild(rb); }
         if (s.pinned) { const pn = svgIcon("pin"); pn.classList.add("ttlIcon"); ttl.appendChild(pn); }
         if (s.archived) { const ar = svgIcon("archive"); ar.classList.add("ttlIcon"); ttl.appendChild(ar); }
         ttl.appendChild(document.createTextNode(s.title));

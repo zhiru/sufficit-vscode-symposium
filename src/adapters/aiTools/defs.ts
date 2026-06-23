@@ -72,6 +72,7 @@ export const AI_TOOLS: OpenAITool[] = [
                 type: "object",
                 properties: {
                     tasks: { type: "array", items: { type: "string" }, description: "One short title per step/task, in order." },
+                    user_requested: { type: "boolean", description: "Set true when user explicitly requested this task. Default false (agent-created). User-requested tasks require user confirmation before completion." },
                 },
                 required: ["tasks"],
             },
@@ -95,7 +96,7 @@ export const AI_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "task_complete",
-            description: "Mark a session task (by its memory id) as completed. It then drops out of the pending Tasks list. Use when you finish the work a task-checkpoint described.",
+            description: "Mark a session task (by its memory id) as completed. WORKFLOW: (1) Agent-created tasks (default): call IMMEDIATELY after finishing - don't wait. (2) User-requested tasks: present justification why task is complete and WAIT for user confirmation before calling this. The task drops from pending Tasks panel.",
             parameters: {
                 type: "object",
                 properties: {

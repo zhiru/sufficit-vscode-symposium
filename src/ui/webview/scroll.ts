@@ -56,11 +56,12 @@ export function refreshEmpty(): void { root.classList.toggle("empty", log.childE
 let stickyUserMessage: HTMLElement | null = null;
 
 export function armStickyUserMessage(el: HTMLElement): void {
+    // Clear previous sticky
     if (stickyUserMessage && stickyUserMessage !== el) {
         stickyUserMessage.classList.remove("stickyUser");
     }
     stickyUserMessage = el;
-    stickyUserMessage.classList.add("stickyUser");
+    // Don't apply sticky immediately - only on scroll
 }
 
 export function clearStickyUserMessage(): void {
@@ -68,8 +69,26 @@ export function clearStickyUserMessage(): void {
     stickyUserMessage = null;
 }
 
-const clearStickyOnManualScroll = () => clearStickyUserMessage();
-log.addEventListener("wheel", clearStickyOnManualScroll, { passive: true });
-log.addEventListener("touchstart", clearStickyOnManualScroll, { passive: true });
-log.addEventListener("pointerdown", clearStickyOnManualScroll);
-log.addEventListener("keydown", clearStickyOnManualScroll);
+// Check sticky state on scroll: apply when user message scrolled out of view upward
+// Only activate when user manually scrolls up (not at bottom)
+function updateStickyState(): void {
+    if (!stickyUserMessage) { return; }
+
+    // Don't apply sticky if we're at or near bottom (auto-scroll / not manually scrolled up)
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 100;
+    if (atBottom) {
+        stickyUserMessage.classList.remove("stickyUser");
+        return;
+    }
+
+    const rect = stickyUserMessage.getBoundingClientRect();
+    const logRect = log.getBoundingClientRect();
+    // Message scrolled above viewport top -> sticky
+    if (rect.top < logRect.top) {
+        stickyUserMessage.classList.add("stickyUser");
+    } else {
+        stickyUserMessage.classList.remove("stickyUser");
+    }
+}
+
+log.addEventListener("scroll", updateStickyState, { passive: true });

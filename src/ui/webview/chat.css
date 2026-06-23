@@ -270,6 +270,7 @@
     .sessionItem .acts button:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.25)); }
     .sessionItem .acts button.danger:hover { color: var(--vscode-errorForeground); }
     .ttlIcon { width: 12px; height: 12px; vertical-align: -1px; margin-right: 4px; opacity: 0.7; }
+    .ttlIcon.subagentBadge { opacity: 0.8; color: var(--vscode-charts-purple, #b180d7); }
     #ctxMenu .miIcon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 8px; opacity: 0.85; }
     #ctxMenu .mi { display: flex; align-items: center; }
     /* ---- themed tooltip (replaces native title=) ---- */
@@ -366,6 +367,13 @@
     }
     .msg { margin: 0 0 18px 0; word-break: break-word; line-height: 1.65; user-select: text; -webkit-user-select: text; }
     .msg.plain { white-space: pre-wrap; }
+    /* Transient status annotation (e.g. "image transcribed"): quiet, non-content. */
+    .msg.statusNotice {
+        font-size: 0.85em; opacity: 0.7; font-style: italic;
+        margin: 6px 0; padding: 4px 10px;
+        border-left: 2px solid var(--vscode-descriptionForeground, rgba(128,128,128,0.4));
+        color: var(--vscode-descriptionForeground);
+    }
     /* Clear separation between message blocks (not between tool rows): a hairline
        rule + breathing room above each user/assistant turn marks where one ends
        and the next begins. */
@@ -407,7 +415,9 @@
                 color-mix(in srgb, var(--vscode-editor-background, #1f1f1f) 92%, transparent) 72%,
                 transparent 100%
             );
-        box-shadow: 0 10px 18px color-mix(in srgb, var(--vscode-editor-background, #1f1f1f) 78%, transparent);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #3C3C3C) 60%, transparent);
+        padding-bottom: 8px;
     }
     .msg.user.stickyUser .ubody {
         box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 42%, transparent);
@@ -908,8 +918,9 @@
         transition: opacity 120ms ease;
     }
     .thinkSum:hover { opacity: 1; }
-    .thinkSum svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--vscode-focusBorder, #7C3AED); }
-    .thinkChev { width: 10px; height: 10px; flex-shrink: 0; transition: transform 150ms ease; opacity: 0.6; }
+    .thinkSum svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--vscode-focusBorder, #7C3AED); vertical-align: middle; }
+    .thinkChev { width: 10px; height: 10px; flex-shrink: 0; transition: transform 150ms ease; opacity: 0.6; display: flex; align-items: center; }
+    .thinkChev svg { vertical-align: middle; }
     details.thinkBlock[open] .thinkChev { transform: rotate(90deg); }
     .thinkLen { margin-left: auto; font-weight: 400; opacity: 0.55; font-size: 0.88em; font-variant-numeric: tabular-nums; }
     .thinkBody {

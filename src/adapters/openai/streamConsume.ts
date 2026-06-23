@@ -10,6 +10,8 @@ export interface ConsumeCallbacks {
     onText: (delta: string) => void;
     /** A streamed error event from the provider. */
     onError: (message: string) => void;
+    /** A transient, non-content status notice (e.g. "image transcribed"). Optional. */
+    onStatusNotice?: (notice: string) => void;
 }
 
 /**
@@ -154,6 +156,11 @@ export async function consumeStream(
                     };
                 }
                 const delta = json?.choices?.[0]?.delta;
+                // Transient status notice (e.g. vision transcription annotation).
+                // Not model output — surfaced separately, never added to `assistant`.
+                if (typeof delta?.status_notice === "string" && delta.status_notice.trim()) {
+                    cb.onStatusNotice?.(delta.status_notice.trim());
+                }
                 if (typeof delta?.content === "string" && delta.content) {
                     markDelta();
                     assistant += delta.content; cb.onText(delta.content);

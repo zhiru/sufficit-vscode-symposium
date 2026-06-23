@@ -182,6 +182,7 @@ export class TurnRunner {
                 const { text, toolCalls, aborted, usage } = await consumeStream(res.body, m, { requestStartedAt, responseStartedAt }, responses, {
                     onText: (delta) => this.d.emit({ kind: "text", text: delta, model: m, modelLabel: this.d.label(m) }),
                     onError: (message) => this.d.emit({ kind: "error", message }),
+                    onStatusNotice: (notice) => this.d.emit({ kind: "status-notice", text: notice }),
                 });
 
                 // Context monitor: report token usage for this request. inputTokens

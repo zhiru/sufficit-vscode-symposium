@@ -2,7 +2,7 @@
 import { vscode, saved } from "./vscode";
 import { bootComplete, bootStep, bootTimer } from "./boot";
 import { renderChips, setBrowserOpen } from "./composer";
-import { append, branchBanner, endStream, message, renderError, renderThinkBlock, streamDelta, streamThinkingDelta, resetLastMsg } from "./messages";
+import { append, branchBanner, endStream, message, renderError, renderStatusNotice, renderThinkBlock, streamDelta, streamThinkingDelta, resetLastMsg } from "./messages";
 import { fillToolResult, renderTool } from "./tools";
 import { bindWorkingSet, renderChangedFiles, renderGuardrails, renderQueued, renderTasks, renderPlan, resetWorkingState, startWorkingSet, refreshPanels, changedItems, setChangedItems } from "./panels";
 import { renderAccount, renderSessions } from "./sessions";
@@ -334,6 +334,7 @@ window.addEventListener("message", ({ data }) => {
             const ev = data.event;
             if (ev.kind === "thinking") streamThinkingDelta(ev.text);
             else if (ev.kind === "text") streamDelta(ev.text);
+            else if (ev.kind === "status-notice") renderStatusNotice(ev.text);
             else if (ev.kind === "tool-start") { endStream(); renderTool(ev.toolName, ev.detail || "", { toolId: ev.toolId, input: ev.input, added: ev.added, removed: ev.removed, todos: ev.todos, path: ev.path }); }
             else if (ev.kind === "tool-output") fillToolResult(ev.toolId, ev.text);
             else if (ev.kind === "tool-end") fillToolResult(ev.toolId, ev.result);

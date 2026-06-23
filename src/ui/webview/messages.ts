@@ -42,6 +42,18 @@ export function append(cls, text) {
     autoScroll(stick);
     return el;
 }
+// Transient status notice (e.g. vision transcription annotation).
+// Rendered as a quiet system annotation, NOT model output — never persisted.
+export function renderStatusNotice(text) {
+    const stick = nearBottom();
+    endStream(); // flush any in-flight assistant bubble before the notice
+    const el = document.createElement("div");
+    el.className = "msg statusNotice";
+    el.textContent = text;
+    log.appendChild(el);
+    autoScroll(stick);
+    return el;
+}
 export function branchBanner(title, detail) {
     const stick = nearBottom();
     endToolGroup(); endStream();
