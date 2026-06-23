@@ -231,9 +231,12 @@
     .sessionItem.deleting { opacity: 0.55; cursor: default; pointer-events: none; border-left-color: var(--vscode-errorForeground); }
     .sessionItem.deleting .ttl { text-decoration: line-through; }
     .sessionItem.deleting .sub { color: var(--vscode-errorForeground); }
+    .sessionItem.subagentChild { background: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 3%, transparent); }
     .sessionItem.deleting .statusDot .spinner { width: 12px; height: 12px; border-width: 2px; }
     .sessionItem .statusDot .stored { width: 13px; height: 13px; opacity: 0.4; }
     .sessionItem.active .statusDot .stored { opacity: 0.7; }
+    .sessionItem .statusDot .subagentIcon { opacity: 0.55; color: var(--vscode-charts-purple, #b180d7); }
+    .sessionItem.active .statusDot .subagentIcon { opacity: 0.85; }
     .sessionItem .ttl { line-height: 1.35; }
     .sessionItem .sub { margin-top: 1px; }
     .sessionItem:hover { background: var(--vscode-list-hoverBackground); }

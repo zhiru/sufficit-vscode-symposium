@@ -50,7 +50,17 @@ export function setHubTokenProvider(fn: () => Promise<string | null>): void {
 
 export class HubClient {
     private base(): string {
-        return vscode.workspace.getConfiguration("symposium.hub").get<string>("url", "").replace(/\/+$/, "");
+        const explicit = vscode.workspace.getConfiguration("symposium.hub").get<string>("url", "").replace(/\/+$/, "");
+        if (explicit) { return explicit; }
+        // Derive hub URL from the OpenAI base URL (same Sufficit AI gateway host).
+        // Users who configure openai.baseUrl get auto-sync without a separate hub.url.
+        const openaiBase = vscode.workspace.getConfiguration("symposium.openai").get<string>("baseUrl", "");
+        if (!openaiBase) { return ""; }
+        try {
+            return new URL(openaiBase).origin;
+        } catch {
+            return "";
+        }
     }
 
     private token(): string {

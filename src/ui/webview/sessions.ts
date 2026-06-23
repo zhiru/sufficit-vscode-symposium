@@ -152,8 +152,10 @@ export function renderSessionItem(s, depth, childCount) {
         }
 
         // Live status indicator: spinner = working, green dot = idle/live.
+        // Subagent sessions (parentId != null) show robot icon for visual distinction.
         const statusDot = document.createElement("div");
         statusDot.className = "statusDot";
+        const isSubagent = !!s.parentId;
         if (s.deleting) {
             const sp = document.createElement("span"); sp.className = "spinner"; sp.title = "Deleting…"; statusDot.appendChild(sp);
         } else if (s.status === "working") {
@@ -161,7 +163,11 @@ export function renderSessionItem(s, depth, childCount) {
         } else if (s.status === "idle") {
             const d = document.createElement("span"); d.className = "idle"; d.title = "Running session (idle)"; statusDot.appendChild(d);
         } else {
-            const ic = svgIcon("chat"); ic.classList.add("stored"); ic.setAttribute("aria-hidden", "true"); statusDot.appendChild(ic);
+            const ic = svgIcon(isSubagent ? "robot" : "chat");
+            ic.classList.add("stored");
+            if (isSubagent) { ic.classList.add("subagentIcon"); }
+            ic.setAttribute("aria-hidden", "true");
+            statusDot.appendChild(ic);
         }
 
         const body = document.createElement("div");
