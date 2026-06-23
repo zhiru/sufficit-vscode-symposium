@@ -26,9 +26,51 @@ export type ChatMessage = ChatMsg;
 
 /** Token usage parsed from an OpenAI-compatible response (chat or responses). */
 export interface ApiUsage {
+    /** Prompt/input tokens reported by the provider for the last model request. */
     inputTokens: number;
+    /** Completion/output tokens reported by the provider for the last model request. */
     outputTokens: number;
+    /** Provider-reported total tokens, when available; otherwise the UI falls back to input + output. */
+    totalTokens?: number;
+    /** Internal reasoning tokens, when the provider exposes them as completion token details. */
+    reasoningTokens?: number;
+    /** Input tokens served from the provider-side prompt cache. */
     cacheRead: number;
+    /** Effective model id returned by the gateway/provider after routing and fallback. */
+    model?: string;
+    /** Configured provider key that served the request. */
+    providerKey?: string;
+    /** Provider connector family that served the request, such as claude, codex, or openai. */
+    providerType?: string;
+    /** Model or preset id originally requested by the client before gateway routing. */
+    requestedModel?: string;
+    /** Total dispatch attempts made by the gateway for this request. */
+    attempts?: number;
+    /** Failed attempts before the successful fallback target, when any. */
+    fallbackAttempts?: number;
+    /** Gateway-side context compression diagnostics, when compression changed the outbound request. */
+    compression?: {
+        /** Approximate characters saved before dispatch. */
+        savedChars?: number;
+        /** Approximate characters before gateway compression. */
+        originalChars?: number;
+        /** Approximate characters after gateway compression. */
+        compressedChars?: number;
+        /** Messages truncated in place by the compressor. */
+        truncatedMessages?: number;
+        /** Historical messages removed from the live context. */
+        removedMessages?: number;
+        /** Historical tool calls pruned from assistant messages. */
+        prunedToolCalls?: number;
+        /** Historical tool results folded into summaries. */
+        foldedToolResults?: number;
+    };
+    /** End-to-end duration of the last HTTP model call, measured locally. */
+    durationMs?: number;
+    /** Time from local request start until response headers/body became available. */
+    ttfbMs?: number;
+    /** Time from local request start until the first text/tool delta was observed. */
+    firstDeltaMs?: number;
 }
 
 export interface OpenAIAdapterConfig {

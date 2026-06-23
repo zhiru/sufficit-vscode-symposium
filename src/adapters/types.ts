@@ -22,7 +22,51 @@ export type AgentEvent =
     | { kind: "tool-output"; toolName?: string; toolId?: string; text: string }
     | { kind: "tool-end"; toolName: string; detail?: string; toolId?: string; result?: string }
     | { kind: "turn-end"; costUsd?: number; durationMs?: number }
-    | { kind: "usage"; inputTokens?: number; outputTokens?: number; cacheRead?: number; contextWindow?: number }
+    | {
+        kind: "usage";
+        /** Prompt/input tokens in the current live context. */
+        inputTokens?: number;
+        /** Completion/output tokens from the last model call. */
+        outputTokens?: number;
+        /** Provider-reported total tokens, when available. */
+        totalTokens?: number;
+        /** Reasoning tokens included in output token details, when available. */
+        reasoningTokens?: number;
+        /** Prompt-cache read tokens, when available. */
+        cacheRead?: number;
+        /** Model context window used by the UI meter. */
+        contextWindow?: number;
+        /** Effective model id after routing/fallback. */
+        model?: string;
+        /** Friendly label for the effective model id. */
+        modelLabel?: string;
+        /** Configured provider key selected by the gateway. */
+        providerKey?: string;
+        /** Provider connector family, such as claude, codex, openai, or deepseek. */
+        providerType?: string;
+        /** Requested model/preset id before gateway routing. */
+        requestedModel?: string;
+        /** Number of dispatch attempts made for the last model request. */
+        attempts?: number;
+        /** Number of failed attempts before a successful fallback target. */
+        fallbackAttempts?: number;
+        /** Server-side context compression diagnostics for the last request. */
+        compression?: {
+            savedChars?: number;
+            originalChars?: number;
+            compressedChars?: number;
+            truncatedMessages?: number;
+            removedMessages?: number;
+            prunedToolCalls?: number;
+            foldedToolResults?: number;
+        };
+        /** Duration of the last HTTP model call, measured locally. */
+        durationMs?: number;
+        /** Time to first byte/headers for the last model call, measured locally. */
+        ttfbMs?: number;
+        /** Time until first streamed text/tool delta, measured locally. */
+        firstDeltaMs?: number;
+    }
     | { kind: "error"; message: string; retryable?: boolean; fatal?: boolean };
 
 /** A session known to a backend, listed in the sessions tree. */

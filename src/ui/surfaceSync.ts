@@ -20,13 +20,14 @@ export interface SurfaceSyncDeps {
     post: (message: unknown) => void;
     getController: () => SyncController | undefined;
     getTerminalSession: () => SyncTerminal | undefined;
-    getHub: () => HubClient;
     getAccount: () => { get(): Promise<unknown> } | undefined;
     setLoggedIn: (v: boolean) => void;
     getCommands: () => SlashCommand[];
 }
 
 export class SurfaceSync {
+    private readonly hub = new HubClient();
+
     constructor(private readonly d: SurfaceSyncDeps) { }
 
     /** Project-local mirror of this session's tasks (in .vscode, versionable). */
@@ -41,8 +42,8 @@ export class SurfaceSync {
         const mirror = this.taskMirrorFile();
         let items: TaskItem[] = [];
         try {
-            if (!this.d.getHub().configured() || !sessionId) { throw new Error("no hub/session"); }
-            items = await fetchSessionTasks(this.d.getHub(), sessionId);
+            if (!this.hub.configured() || !sessionId) { throw new Error("no hub/session"); }
+            items = await fetchSessionTasks(this.hub, sessionId);
             if (mirror) {
                 try {
                     fs.mkdirSync(path.dirname(mirror), { recursive: true });
@@ -87,8 +88,8 @@ export class SurfaceSync {
         const sessionId = this.d.getController()?.sessionId ?? "";
         let items: { id: string; text: string }[] = [];
         try {
-            if (this.d.getHub().configured() && sessionId) {
-                items = (await fetchSessionGuardrails(this.d.getHub(), sessionId)).map((g) => ({ id: g.id, text: g.text }));
+            if (this.hub.configured() && sessionId) {
+                items = (await fetchSessionGuardrails(this.hub, sessionId)).map((g) => ({ id: g.id, text: g.text }));
             }
         } catch { items = []; }
         this.d.post({ type: "guardrails", items });

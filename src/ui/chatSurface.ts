@@ -1,6 +1,3 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import * as vscode from "vscode";
 import { AgentAdapter, FollowHandle, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatController } from "./chatController";
@@ -9,14 +6,14 @@ import { renderHtml } from "./chatHtml";
 import { TerminalSession } from "./terminalSession";
 import { LiveSessions } from "../sessions/runtime";
 import { symposiumLog } from "../extension";
-import { ledgerDir } from "../ledger";
 import { ChangedFilesManager } from "./changedFiles";
 import { BackendHandoff } from "./backendHandoff";
-import { HubClient } from "../sync/hubClient";
+import { SurfaceSync } from "./surfaceSync";
 import { readWorkspaceBootstrap } from "../config/root";
 import { probeRtk } from "../adapters/rtk";
-import { fetchSessionTasks, setTaskDone, TaskItem } from "../sync/tasks";
-import { fetchSessionGuardrails, removeGuardrail, clearSessionGuardrails } from "../sync/guardrails";
+import { HubClient } from "../sync/hubClient";
+import { setTaskDone } from "../sync/tasks";
+import { removeGuardrail, clearSessionGuardrails } from "../sync/guardrails";
 import {
     activeEditorContext,
     attachmentFromUri,
@@ -62,10 +59,12 @@ export class ChatSurface {
     private ready = false;
     private loggedIn = false;   // cached Sufficit login state (for system hints)
     private queue: unknown[] = [];
+    private readonly hub = new HubClient();
 
     private readonly disposables: vscode.Disposable[] = [];
     private readonly changedFiles = new ChangedFilesManager({ post: (m) => this.post(m), getCwd: () => this.cwd(), getSid: () => this.sid(), resolveChanged: (p) => this.controller?.resolveChanged(p), getRawItems: () => this.controller?.changedItemsRaw() ?? [] }, this.disposables);
     private readonly handoff = new BackendHandoff({ getAdapter: (b) => this.deps.adapterByBackend.get(b), listSessions: () => this.deps.listSessions(), cwdFor: (i) => this.deps.cwdFor(i), openDialogue: (b, o, t) => this.openDialogue(b, o, t), post: (m) => this.post(m), getController: () => this.controller, getTerminalSession: () => this.terminalSession });
+    private readonly sync = new SurfaceSync({ post: (m) => this.post(m), getController: () => this.controller, getTerminalSession: () => this.terminalSession, getAccount: () => this.deps.account, setLoggedIn: (v) => { this.loggedIn = v; }, getCommands: () => this.symposiumCommands });
 
     constructor(
         private readonly webview: vscode.Webview,
@@ -88,7 +87,7 @@ export class ChatSurface {
         this.disposables.push(vscode.window.tabGroups.onDidChangeTabs(
             () => this.post({ type: "browser-state", open: isSimpleBrowserOpen() })));
         if (this.deps.account) {
-            this.disposables.push(this.deps.account.onDidChange(() => void this.pushAccount()));
+            this.disposables.push(this.deps.account.onDidChange(() => void this.sync.pushAccount()));
         }
         // Live-apply preference changes (e.g. sessions side) without a reload.
         this.disposables.push(vscode.workspace.onDidChangeConfiguration((e) => {
@@ -107,116 +106,6 @@ export class ChatSurface {
         }
     }
 
-    private readonly hub = new HubClient();
-
-    /** Project-local mirror of this session's tasks (in .vscode, versionable). */
-    private taskMirrorFile(): string | undefined {
-        const cwd = this.controller?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        return cwd ? path.join(cwd, ".vscode", "symposium.tasks.json") : undefined;
-    }
-
-    /**
-     * Loads the Sufficit-memory tasks bound to THIS chat session (task-anchor +
-     * task-checkpoint, tagged with the session id) and pushes them to the Tasks
-     * panel. Mirrored to .vscode/symposium.tasks.json so it shows offline / when
-     * the hub is down. The session id is the binding key.
-     */
-    private async refreshTasks(): Promise<void> {
-        const sessionId = this.controller?.sessionId ?? "";
-        const mirror = this.taskMirrorFile();
-        let items: TaskItem[] = [];
-        try {
-            if (!this.hub.configured() || !sessionId) { throw new Error("no hub/session"); }
-            items = await fetchSessionTasks(this.hub, sessionId);
-            if (mirror) {
-                try {
-                    fs.mkdirSync(path.dirname(mirror), { recursive: true });
-                    fs.writeFileSync(mirror, JSON.stringify({ sessionId, items }, null, 2), "utf8");
-                } catch { /* mirror best-effort */ }
-            }
-        } catch {
-            // Offline / hub down: read the project-local mirror for this session.
-            try {
-                const cached = JSON.parse(fs.readFileSync(mirror ?? "", "utf8"));
-                items = cached?.sessionId === sessionId ? (cached.items ?? []) : [];
-            } catch { items = []; }
-        }
-        this.post({ type: "tasks", items, project: sessionId });
-    }
-
-    /**
-     * Opens an inspection view as a read-only editor tab: the compact model
-     * context (the per-backend store = exactly what the LLM receives now) or the
-     * literal last request body (ledger/request-last.json). The on-screen chat
-     * stays the full transcript; these are for analysis of the compacted side.
-     */
-    private async openInspectView(target: "context" | "request"): Promise<void> {
-        const id = this.controller?.sessionId;
-        if (!id) { void vscode.window.showInformationMessage("Open and use a session first."); return; }
-        let file: string | undefined;
-        if (target === "request") {
-            file = path.join(ledgerDir(id), "request-last.json");
-        } else {
-            const root = path.join(os.homedir(), ".symposium", "sessions");
-            try {
-                for (const backend of fs.readdirSync(root)) {
-                    const f = path.join(root, backend, id + ".json");
-                    if (fs.existsSync(f)) { file = f; break; }
-                }
-            } catch { /* no store */ }
-        }
-        if (!file || !fs.existsSync(file)) {
-            void vscode.window.showInformationMessage(
-                "Nothing to inspect yet — send a message first (Sufficit AI / OpenAI backend only).");
-            return;
-        }
-        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file), { preview: false });
-    }
-
-    /** Pushes the session's user guardrails to the panel. */
-    private async refreshGuardrails(): Promise<void> {
-        const sessionId = this.controller?.sessionId ?? "";
-        let items: { id: string; text: string }[] = [];
-        try {
-            if (this.hub.configured() && sessionId) {
-                items = (await fetchSessionGuardrails(this.hub, sessionId)).map((g) => ({ id: g.id, text: g.text }));
-            }
-        } catch { items = []; }
-        this.post({ type: "guardrails", items });
-    }
-
-    /**
-     * Attaches the content of a VS Code integrated-browser page as a context
-     * file. Invokes the built-in open_browser_page tool (prompts the user to
-     * share the open page), captures its snapshot, and adds it as a composer chip.
-     */
-    private async attachBrowserPage(): Promise<void> {
-        const lm = (vscode as unknown as { lm?: { invokeTool?: (n: string, o: unknown, t: unknown) => Promise<{ content: unknown[] }> } }).lm;
-        if (!lm?.invokeTool) {
-            void vscode.window.showWarningMessage("VS Code does not expose browser tools (open_browser_page) in this version.");
-            return;
-        }
-        const cts = new vscode.CancellationTokenSource();
-        try {
-            const r = await lm.invokeTool("open_browser_page",
-                { input: {}, toolInvocationToken: undefined } as vscode.LanguageModelToolInvocationOptions<object>, cts.token);
-            const text = (r.content as any[]).map((p) => (p instanceof vscode.LanguageModelTextPart ? p.value : "")).join("\n").trim();
-            if (!text || /opted not to share|no .*page/i.test(text)) {
-                void vscode.window.showInformationMessage("No browser page shared.");
-                return;
-            }
-            const dir = path.join(os.homedir(), ".symposium", "context");
-            fs.mkdirSync(dir, { recursive: true });
-            const file = path.join(dir, `browser-page-${Date.now()}.md`);
-            fs.writeFileSync(file, "# Browser page (VS Code)\n\n" + text, "utf8");
-            this.post({ type: "attachments-picked", files: [{ path: file, name: "browser-page.md" }] });
-        } catch (err) {
-            void vscode.window.showErrorMessage(`Failed to attach the page: ${err instanceof Error ? err.message : err}`);
-        } finally {
-            cts.dispose();
-        }
-    }
-
     private async onMessage(message: WebviewToHost): Promise<void> {
         symposiumLog(`[surface] <- webview: ${message?.type}${message?.type === "send" ? ` (${(message.text ?? "").length} chars)` : ""}`);
         try {
@@ -229,9 +118,9 @@ export class ChatSurface {
                     }
                     this.queue = [];
                     void this.refreshSessions();
-                    void this.pushAccount();
-                    void this.refreshTasks();
-                    void this.refreshGuardrails();
+                    void this.sync.pushAccount();
+                    void this.sync.refreshTasks();
+                    void this.sync.refreshGuardrails();
                     // Nothing bound yet (view just opened): restore the last
                     // active session if we have one, else start a fresh dialogue.
                     if (!this.controller && !this.followHandle && !this.terminalSession) {
@@ -250,7 +139,7 @@ export class ChatSurface {
                     return;
                 }
                 case "attach-browser-page": {
-                    await this.attachBrowserPage();
+                    await this.sync.attachBrowserPage();
                     return;
                 }
                 case "account-login": {
@@ -305,13 +194,13 @@ export class ChatSurface {
                     return;
                 }
                 case "refresh-tasks": {
-                    void this.refreshTasks();
+                    void this.sync.refreshTasks();
                     return;
                 }
                 case "task-set-done": {
                     if (typeof message.id === "string" && this.hub.configured()) {
                         await setTaskDone(this.hub, message.id, message.done === true);
-                        void this.refreshTasks();
+                        void this.sync.refreshTasks();
                     }
                     return;
                 }
@@ -319,7 +208,7 @@ export class ChatSurface {
                     if (typeof message.id === "string" && this.hub.configured()) {
                         await removeGuardrail(this.hub, message.id);
                         await this.controller?.reloadGuardrails();
-                        void this.refreshGuardrails();
+                        void this.sync.refreshGuardrails();
                     }
                     return;
                 }
@@ -330,7 +219,7 @@ export class ChatSurface {
                         if (ok === "Clear") {
                             await clearSessionGuardrails(this.hub, sid);
                             await this.controller?.reloadGuardrails();
-                            void this.refreshGuardrails();
+                            void this.sync.refreshGuardrails();
                         }
                     }
                     return;
@@ -350,7 +239,7 @@ export class ChatSurface {
                     const current = this.controller?.backend ?? this.terminalSession?.backend;
                     const adapter = current ? this.deps.adapterByBackend.get(current) : undefined;
                     if (adapter) {
-                        this.refreshModels(adapter, true);   // explicit: force a fresh GET /models
+                        this.sync.refreshModels(adapter, true);   // explicit: force a fresh GET /models
                     }
                     return;
                 }
@@ -415,7 +304,7 @@ export class ChatSurface {
                     return;
                 }
                 case "inspect": {
-                    await this.openInspectView(message.target);
+                    await this.sync.openInspectView(message.target);
                     return;
                 }
                 case "open-file": {
@@ -798,8 +687,8 @@ export class ChatSurface {
             this.post({ type: "event", event: { kind: "tool-start", toolName: "tmux", detail: options.tmuxName + " — survives VS Code closing" } });
         }
         void this.terminalSession.start();
-        this.postCommands(adapter);
-        this.refreshModels(adapter);
+        this.sync.postCommands(adapter);
+        this.sync.refreshModels(adapter);
         this.onTitleChange?.(`▷ ${title} · ${adapter.backend}`);
     }
 
@@ -839,8 +728,8 @@ export class ChatSurface {
             : undefined;
         const controller = existing ?? this.deps.runtime.create(adapter, options);
         this.controller = controller;
-        void this.refreshTasks();   // load this session's tasks into the panel
-        void this.refreshGuardrails();
+        void this.sync.refreshTasks();   // load this session's tasks into the panel
+        void this.sync.refreshGuardrails();
 
         const sessionsSide = vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto");
         this.post({
@@ -904,20 +793,20 @@ export class ChatSurface {
             if (ev?.kind === "tool-end" && typeof ev.toolName === "string") {
                 const n = ev.toolName;
                 if (n === "add_guardrail" || n === "clear_guardrails") {
-                    const repaint = () => void this.controller?.reloadGuardrails().then(() => this.refreshGuardrails());
+                    const repaint = () => void this.controller?.reloadGuardrails().then(() => this.sync.refreshGuardrails());
                     repaint(); setTimeout(repaint, 700);
                 } else if (n === "add_task" || n === "task_complete" || (n === "memory_save")) {
-                    void this.refreshTasks(); setTimeout(() => void this.refreshTasks(), 700);
+                    void this.sync.refreshTasks(); setTimeout(() => void this.sync.refreshTasks(), 700);
                 }
             }
             // Refresh the Tasks panel when a turn ends: the agent may have saved
             // task-checkpoints mid-turn (bound to this session), which the panel
             // otherwise wouldn't pick up until reopen/manual refresh.
             if (ev?.kind === "turn-end") {
-                void this.refreshTasks();
+                void this.sync.refreshTasks();
                 // The agent may have added a guardrail mid-turn (add_guardrail tool):
                 // reload the controller's injection cache and repaint the panel.
-                void this.controller?.reloadGuardrails().then(() => this.refreshGuardrails());
+                void this.controller?.reloadGuardrails().then(() => this.sync.refreshGuardrails());
                 // Re-mirror the working tree from git: a turn may have edited files
                 // via shell/sed (no tool event, no index change) that the live
                 // changed-files signal and the .git/index watcher both miss.
@@ -931,8 +820,8 @@ export class ChatSurface {
         if (options.resumeSessionId) {
             this.deps.lastActive.set({ backend, sessionId: options.resumeSessionId });
         }
-        this.postCommands(adapter);
-        this.refreshModels(adapter);
+        this.sync.postCommands(adapter);
+        this.sync.refreshModels(adapter);
         this.onTitleChange?.(`${title} · ${adapter.backend}`);
     }
 
@@ -940,55 +829,6 @@ export class ChatSurface {
     private readonly symposiumCommands: import("../adapters/types").SlashCommand[] = [
         { name: "refresh-models", description: "Refresh the model list from the provider API", kind: "builtin" },
     ];
-
-    /** Fetches the backend's slash commands/skills and sends them for autocomplete. */
-    private postCommands(adapter: AgentAdapter): void {
-        const append = this.symposiumCommands;
-        if (!adapter.commands) {
-            this.post({ type: "commands", items: append });
-            return;
-        }
-        void adapter.commands()
-            .then((items) => this.post({ type: "commands", items: [...items, ...append] }))
-            .catch(() => this.post({ type: "commands", items: append }));
-    }
-
-    /**
-     * The `meta` message carries `adapter.models()` synchronously, which for
-     * remote-discovery backends (OpenAI-compatible) may be a stale/fallback
-     * list when the discovery cache is still empty — e.g. the first session
-     * opened after a reload. This kicks off an async refresh and posts an
-     * updated `models` message so the picker repopulates once discovery lands.
-     */
-    private refreshModels(adapter: AgentAdapter, force = false): void {
-        if (!adapter.refreshModels) {
-            return;
-        }
-        const backend = adapter.backend;
-        // Explicit refresh (force) must re-query the gateway, not return the
-        // possibly-stale file cache; the post-meta auto-refresh stays cache-friendly.
-        void adapter.refreshModels(force)
-            .then(({ models, labels }) => {
-                // Only the dialogue still bound to this backend should apply it
-                // (the user may have switched agents while discovery ran).
-                const current = this.controller?.backend ?? this.terminalSession?.backend;
-                if (current !== backend || !models?.length) {
-                    return;
-                }
-                this.post({ type: "models", models, labels: labels ?? {}, refreshed: force });
-            })
-            .catch(() => undefined);
-    }
-
-    /** Pushes the Sufficit account (or null) for the sessions-pane footer. */
-    private async pushAccount(): Promise<void> {
-        if (!this.deps.account) {
-            return;
-        }
-        const profile = await this.deps.account.get().catch(() => undefined);
-        this.loggedIn = !!profile;
-        this.post({ type: "account", profile: profile ?? null });
-    }
 
     async refreshSessions(): Promise<void> {
         const sessions = await this.deps.listSessions();

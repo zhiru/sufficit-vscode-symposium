@@ -23,6 +23,11 @@ import {
 import { friendlyToolDetail, toolPath } from "./toolDetail";
 import { getOpenAITokenProvider } from "./token";
 
+interface StreamTiming {
+    requestStartedAt: number;
+    responseStartedAt: number;
+}
+
 /**
  * A direct OpenAI-compatible chat session (no CLI): streams /chat/completions
  * over HTTP with a custom base URL + headers, to talk straight to sufficit-ai
@@ -499,6 +504,8 @@ export class OpenAISession extends EventEmitter implements AgentSession {
     private async run(): Promise<void> {
         this.abort = new AbortController();
         this.turnNo++;   // each run() is one conversation turn (ledger turn index)
+        const turnStartedAt = Date.now();
+        const emitTurnEnd = () => this.emit("event", { kind: "turn-end", durationMs: Date.now() - turnStartedAt });
         const responses = this.cfg.api === "responses";
         const base = this.cfg.baseUrl.replace(/\/+$/, "");
         const url = base + (responses ? "/responses" : "/chat/completions");
@@ -514,7 +521,7 @@ export class OpenAISession extends EventEmitter implements AgentSession {
             && !Object.keys(this.cfg.headers).some((k) => k.toLowerCase() === "authorization");
         if (noExplicitAuth && !loginToken) {
             this.emit("event", { kind: "error", message: "Not authenticated: sign in to Sufficit (Accounts menu / avatar) to use the Sufficit AI backend. If you already signed in and the error persists, the token is not being stored in this environment (code-server without a keyring): set symposium.openai.apiKey or an Authorization header." });
-            this.emit("event", { kind: "turn-end" });
+            emitTurnEnd();
             return;
         }
         // Model guard: never POST with an empty model (the gateway 400s). Try a
@@ -525,7 +532,7 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         }
         if (!this.model()) {
             this.emit("event", { kind: "error", message: "No model selected for Sufficit AI. Pick a model in the session selector or set symposium.openai.model / symposium.openai.models." });
-            this.emit("event", { kind: "turn-end" });
+            emitTurnEnd();
             return;
         }
         // Tools exposed to the model: local shell/filesystem tools (always — the
@@ -590,9 +597,11 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                 // Ledger audit: record the LITERAL request body (truth of what the
                 // LLM received this hop) — feeds the "Request" inspection view.
                 ledger.recordRequest(this.sessionId, body);
+                const requestStartedAt = Date.now();
                 const res = await fetch(url, {
                     method: "POST", headers: this.headers(loginToken), body: JSON.stringify(body), signal: this.abort.signal,
                 });
+                const responseStartedAt = Date.now();
                 if (!res.ok || !res.body) {
                     const detail = await res.text().catch(() => "");
                     const retryable = res.status >= 500 || res.status === 429 || res.status === 408;
@@ -600,7 +609,7 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                     hitCap = false;
                     break;
                 }
-                const { text, toolCalls, aborted, usage } = await this.consume(res.body, this.model());
+                const { text, toolCalls, aborted, usage } = await this.consume(res.body, this.model(), { requestStartedAt, responseStartedAt });
 
                 // Context monitor: report token usage for this request. inputTokens
                 // is the prompt size = the live context the model just saw, so the
@@ -611,8 +620,21 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                         kind: "usage",
                         inputTokens: usage.inputTokens,
                         outputTokens: usage.outputTokens,
+                        totalTokens: usage.totalTokens,
+                        reasoningTokens: usage.reasoningTokens,
                         cacheRead: usage.cacheRead,
                         contextWindow: this.contextWindow(),
+                        model: usage.model,
+                        modelLabel: usage.model ? this.label(usage.model) : undefined,
+                        providerKey: usage.providerKey,
+                        providerType: usage.providerType,
+                        requestedModel: usage.requestedModel,
+                        attempts: usage.attempts,
+                        fallbackAttempts: usage.fallbackAttempts,
+                        compression: usage.compression,
+                        durationMs: usage.durationMs,
+                        ttfbMs: usage.ttfbMs,
+                        firstDeltaMs: usage.firstDeltaMs,
                     });
                 }
 
@@ -743,23 +765,53 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         // Auto-compaction: if the context crossed the threshold this turn, fold it
         // before the next send (lazy, so it never delays this turn-end).
         this.maybeAutoCompact();
-        this.emit("event", { kind: "turn-end" });
+        emitTurnEnd();
     }
 
     /**
      * Reads an SSE stream, emitting text deltas. Also accumulates streamed
      * tool_calls (chat completions) so the caller can run them and continue.
      */
-    private async consume(stream: ReadableStream<Uint8Array>, m: string): Promise<{ text: string; toolCalls: ToolCall[]; aborted: boolean; usage?: ApiUsage }> {
+    private async consume(stream: ReadableStream<Uint8Array>, m: string, timing: StreamTiming): Promise<{ text: string; toolCalls: ToolCall[]; aborted: boolean; usage?: ApiUsage }> {
         const responses = this.cfg.api === "responses";
         const reader = stream.getReader();
         const decoder = new TextDecoder();
         let buf = "";
         let assistant = "";
         let usage: ApiUsage | undefined;  // final token counts, when the API reports them
+        let effectiveModel = m;
+        let firstDeltaMs: number | undefined;
         const calls: ToolCall[] = []; // indexed by streamed tool_call index
         let lastFnIndex = 0;          // responses API: index of the most recent function_call
-        const done = () => ({ text: assistant, toolCalls: calls.filter((c) => c && c.function.name), aborted: false, usage });
+        const stampUsage = (u: ApiUsage): ApiUsage => ({
+            ...u,
+            model: u.model || effectiveModel,
+            durationMs: Date.now() - timing.requestStartedAt,
+            ttfbMs: timing.responseStartedAt - timing.requestStartedAt,
+            firstDeltaMs,
+        });
+        const numberOrUndefined = (value: unknown): number | undefined => {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : undefined;
+        };
+        const stringOrUndefined = (value: unknown): string | undefined =>
+            typeof value === "string" && value.trim() ? value : undefined;
+        const compressionOrUndefined = (value: any): ApiUsage["compression"] | undefined => {
+            if (!value || typeof value !== "object") { return undefined; }
+            return {
+                savedChars: numberOrUndefined(value.saved_chars),
+                originalChars: numberOrUndefined(value.original_chars),
+                compressedChars: numberOrUndefined(value.compressed_chars),
+                truncatedMessages: numberOrUndefined(value.truncated_messages),
+                removedMessages: numberOrUndefined(value.removed_messages),
+                prunedToolCalls: numberOrUndefined(value.pruned_tool_calls),
+                foldedToolResults: numberOrUndefined(value.folded_tool_results),
+            };
+        };
+        const markDelta = () => {
+            firstDeltaMs ??= Date.now() - timing.requestStartedAt;
+        };
+        const done = () => ({ text: assistant, toolCalls: calls.filter((c) => c && c.function.name), aborted: false, usage: usage ? stampUsage(usage) : undefined });
         try {
         for (; ;) {
             const r = await reader.read();
@@ -774,19 +826,29 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                 if (payload === "[DONE]") { return done(); }
                 try {
                     const json = JSON.parse(payload);
+                    if (typeof json?.model === "string" && json.model) {
+                        effectiveModel = json.model;
+                    }
                     if (responses) {
                         const ty = json?.type;
+                        if (typeof json?.response?.model === "string" && json.response.model) {
+                            effectiveModel = json.response.model;
+                        }
                         if (ty === "response.output_text.delta" && typeof json.delta === "string") {
+                            markDelta();
                             assistant += json.delta; this.emit("event", { kind: "text", text: json.delta, model: m, modelLabel: this.label(m) });
                         } else if (ty === "response.output_item.added" && json?.item?.type === "function_call") {
+                            markDelta();
                             // New function call: index by output_index; carry call_id + name.
                             const i = json.output_index ?? calls.length;
                             calls[i] = { id: json.item.call_id ?? json.item.id ?? "", type: "function", function: { name: json.item.name ?? "", arguments: json.item.arguments ?? "" } };
                             lastFnIndex = i;
                         } else if (ty === "response.function_call_arguments.delta" && typeof json.delta === "string") {
+                            markDelta();
                             const i = json.output_index ?? lastFnIndex;
                             if (calls[i]) { calls[i].function.arguments += json.delta; }
                         } else if (ty === "response.function_call_arguments.done" && typeof json.arguments === "string") {
+                            markDelta();
                             // Some gateways send the full arguments only in the .done event (no deltas).
                             const i = json.output_index ?? lastFnIndex;
                             if (calls[i]) { calls[i].function.arguments = json.arguments; }
@@ -794,10 +856,22 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                             this.emit("event", { kind: "error", message: String(json?.error?.message ?? "response error") });
                         } else if ((ty === "response.completed" || ty === "response.incomplete") && json?.response?.usage) {
                             const u = json.response.usage;
+                            // Gateway diagnostics are a non-standard extension grouped
+                            // under `usage.gateway`; standard OpenAI clients ignore it.
+                            const meta = u.gateway ?? json.response.gateway ?? json.gateway ?? {};
                             usage = {
                                 inputTokens: Number(u.input_tokens ?? 0),
                                 outputTokens: Number(u.output_tokens ?? 0),
+                                totalTokens: numberOrUndefined(u.total_tokens),
+                                reasoningTokens: numberOrUndefined(u.output_tokens_details?.reasoning_tokens),
                                 cacheRead: Number(u.input_tokens_details?.cached_tokens ?? 0),
+                                model: stringOrUndefined(meta.effective_model_id) || stringOrUndefined(json.response.model) || effectiveModel,
+                                providerKey: stringOrUndefined(meta.provider_key),
+                                providerType: stringOrUndefined(meta.provider_type),
+                                requestedModel: stringOrUndefined(meta.requested_model),
+                                attempts: numberOrUndefined(meta.attempts),
+                                fallbackAttempts: numberOrUndefined(meta.fallback_attempts),
+                                compression: compressionOrUndefined(meta.compression),
                             };
                         }
                         continue;
@@ -806,18 +880,33 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                     // empty and `usage` carries the turn's token totals.
                     if (json?.usage) {
                         const u = json.usage;
+                        // Gateway diagnostics are optional and ignored by standard
+                        // OpenAI clients; Symposium uses them to explain routing,
+                        // fallbacks, and server-side compression in the context menu.
+                        const meta = u.gateway ?? json.gateway ?? {};
                         usage = {
                             inputTokens: Number(u.prompt_tokens ?? 0),
                             outputTokens: Number(u.completion_tokens ?? 0),
+                            totalTokens: numberOrUndefined(u.total_tokens),
+                            reasoningTokens: numberOrUndefined(u.completion_tokens_details?.reasoning_tokens),
                             cacheRead: Number(u.prompt_tokens_details?.cached_tokens ?? 0),
+                            model: stringOrUndefined(meta.effective_model_id) || effectiveModel,
+                            providerKey: stringOrUndefined(meta.provider_key),
+                            providerType: stringOrUndefined(meta.provider_type),
+                            requestedModel: stringOrUndefined(meta.requested_model),
+                            attempts: numberOrUndefined(meta.attempts),
+                            fallbackAttempts: numberOrUndefined(meta.fallback_attempts),
+                            compression: compressionOrUndefined(meta.compression),
                         };
                     }
                     const delta = json?.choices?.[0]?.delta;
                     if (typeof delta?.content === "string" && delta.content) {
+                        markDelta();
                         assistant += delta.content; this.emit("event", { kind: "text", text: delta.content, model: m, modelLabel: this.label(m) });
                     }
                     // Accumulate tool_calls: name+id arrive first, arguments stream in chunks.
                     for (const tc of delta?.tool_calls ?? []) {
+                        markDelta();
                         const i = tc.index ?? 0;
                         if (!calls[i]) { calls[i] = { id: tc.id ?? "", type: "function", function: { name: "", arguments: "" } }; }
                         if (tc.id) { calls[i].id = tc.id; }

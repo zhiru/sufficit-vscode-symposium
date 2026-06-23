@@ -44,6 +44,8 @@ export function renderStatusbar(data) {
 export function openUsagePopover(anchor) {
     const u = lastUsage; if (!u) { return; }
     const win = u.contextWindow || 0, used = u.inputTokens || 0, out = u.outputTokens || 0, cache = u.cacheRead || 0;
+    const total = u.totalTokens || (used + out);
+    const reasoning = u.reasoningTokens || 0;
     const fresh = Math.max(0, used - cache);
     const free = Math.max(0, win - used);
     const pct = win ? Math.round(used / win * 100) : 0;
@@ -64,12 +66,15 @@ export function openUsagePopover(anchor) {
         r.appendChild(a); r.appendChild(b); return r;
     };
     const group = (t) => { const g = document.createElement("div"); g.className = "uGroup"; g.textContent = t; box.appendChild(g); };
+    const ms = (value) => value ? (value / 1000).toFixed(value >= 10000 ? 0 : 1) + "s" : "";
+    const count = (value) => String(Math.round(Number(value || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
     // Header: title + model on the left, big colored % on the right.
     const headRow = document.createElement("div"); headRow.className = "uHeadRow";
     const htx = document.createElement("div"); htx.className = "uHeadTxt";
     const h = document.createElement("div"); h.className = "uHead"; h.textContent = "Context Window"; htx.appendChild(h);
-    if (activeModel) { const sm = document.createElement("div"); sm.className = "uModel"; sm.textContent = modelLabel(activeModel); htx.appendChild(sm); }
+    const shownModel = u.modelLabel || (u.model ? modelLabel(u.model) : "") || (activeModel ? modelLabel(activeModel) : "");
+    if (shownModel) { const sm = document.createElement("div"); sm.className = "uModel"; sm.textContent = shownModel; htx.appendChild(sm); }
     const big = document.createElement("div"); big.className = "uPct"; big.textContent = pct + "%"; big.style.color = col;
     headRow.appendChild(htx); headRow.appendChild(big); box.appendChild(headRow);
 
@@ -85,6 +90,26 @@ export function openUsagePopover(anchor) {
     box.appendChild(row("Used", fmtTokens(used), { dot: col, note: pct + "%" }));
     box.appendChild(row("Free", fmtTokens(free), { dot: "var(--vscode-input-background, rgba(128,128,128,0.3))", note: (100 - pct) + "%" }));
     box.appendChild(row("Window", fmtTokens(win)));
+    if (u.providerKey || u.providerType || u.model || u.requestedModel || u.attempts || u.fallbackAttempts) {
+        const provider = u.providerKey || u.providerType;
+        const effective = provider && u.model ? provider + " / " + u.model : (u.model || provider);
+        if (effective) { box.appendChild(row("Effective", effective)); }
+        if (u.providerType && u.providerType !== u.providerKey) { box.appendChild(row("Provider type", u.providerType)); }
+        if (u.requestedModel && u.requestedModel !== u.model) { box.appendChild(row("Requested", u.requestedModel)); }
+        if (u.attempts) { box.appendChild(row("Attempts", String(u.attempts))); }
+        if (u.fallbackAttempts) { box.appendChild(row("Fallbacks", String(u.fallbackAttempts))); }
+        const cmp = u.compression;
+        if (cmp?.savedChars) {
+            box.appendChild(row("Compression", count(cmp.savedChars) + " chars saved"));
+            if (cmp.originalChars && cmp.compressedChars) {
+                box.appendChild(row("Chars", count(cmp.originalChars) + " -> " + count(cmp.compressedChars), { sub: true }));
+            }
+            if (cmp.truncatedMessages) { box.appendChild(row("Truncated", String(cmp.truncatedMessages), { sub: true })); }
+            if (cmp.removedMessages) { box.appendChild(row("Removed", String(cmp.removedMessages), { sub: true })); }
+            if (cmp.prunedToolCalls) { box.appendChild(row("Pruned tools", String(cmp.prunedToolCalls), { sub: true })); }
+            if (cmp.foldedToolResults) { box.appendChild(row("Folded results", String(cmp.foldedToolResults), { sub: true })); }
+        }
+    }
 
     group("Last turn");
     box.appendChild(row("Input (prompt)", fmtTokens(used)));
@@ -93,10 +118,18 @@ export function openUsagePopover(anchor) {
         box.appendChild(row("Fresh", fmtTokens(fresh), { sub: true }));
     }
     box.appendChild(row("Output", fmtTokens(out)));
-    box.appendChild(row("Total tokens", fmtTokens(used + out)));
+    if (reasoning) { box.appendChild(row("Reasoning", fmtTokens(reasoning), { sub: true })); }
+    box.appendChild(row("Total tokens", fmtTokens(total)));
     if (lastTurn.costUsd) { box.appendChild(row("Cost", "$" + lastTurn.costUsd.toFixed(4))); }
-    if (lastTurn.durationMs) { box.appendChild(row("Time", (lastTurn.durationMs / 1000).toFixed(1) + "s")); }
     if (sessionCostUsd > 0) { box.appendChild(row("Session cost", "$" + sessionCostUsd.toFixed(4))); }
+
+    if (lastTurn.durationMs || u.durationMs || u.ttfbMs || u.firstDeltaMs) {
+        group("Runtime");
+        if (lastTurn.durationMs) { box.appendChild(row("Turn time", ms(lastTurn.durationMs))); }
+        if (u.durationMs) { box.appendChild(row("Model call", ms(u.durationMs))); }
+        if (u.ttfbMs) { box.appendChild(row("TTFB", ms(u.ttfbMs))); }
+        if (u.firstDeltaMs) { box.appendChild(row("First delta", ms(u.firstDeltaMs))); }
+    }
 
     // Inspect (analysis): open the compact model context and the literal last
     // request as read-only editor tabs. The full transcript stays on screen.
@@ -110,9 +143,8 @@ export function openUsagePopover(anchor) {
     insp.appendChild(mkInspect("Last request", "request", "Open the literal last request body sent to the gateway"));
     box.appendChild(insp);
 
-    // Only offer Compact when the active backend advertises it (claude/codex/
-    // copilot). The native API backends have no /compact — they auto-window
-    // history — so the button would otherwise send a literal "/compact" text.
+    // Only offer Compact when the active backend advertises it. Native API
+    // backends can intercept /compact locally; others may omit the command.
     if (commands.some((c) => c.name === "compact")) {
         const btn = document.createElement("button"); btn.className = "uCompact"; btn.textContent = "Compact Conversation";
         btn.addEventListener("click", () => { hideCtx(); input.value = "/compact"; send(); });
