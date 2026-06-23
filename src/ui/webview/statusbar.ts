@@ -87,6 +87,7 @@ export function openUsagePopover(anchor) {
     bar.appendChild(fill); box.appendChild(bar);
 
     group("Context");
+    if (u.estimated) { box.appendChild(row("Source", "local estimate")); }
     box.appendChild(row("Used", fmtTokens(used), { dot: col, note: pct + "%" }));
     box.appendChild(row("Free", fmtTokens(free), { dot: "var(--vscode-input-background, rgba(128,128,128,0.3))", note: (100 - pct) + "%" }));
     box.appendChild(row("Window", fmtTokens(win)));
@@ -112,7 +113,10 @@ export function openUsagePopover(anchor) {
     }
 
     group("Last turn");
-    box.appendChild(row("Input (prompt)", fmtTokens(used)));
+    box.appendChild(row(u.estimated ? "Input estimate" : "Input (prompt)", fmtTokens(used)));
+    if (u.requestChars) { box.appendChild(row("Request chars", count(u.requestChars), { sub: true })); }
+    if (u.requestMessageCount) { box.appendChild(row("Messages", String(u.requestMessageCount), { sub: true })); }
+    if (u.requestToolCount) { box.appendChild(row("Tools", String(u.requestToolCount), { sub: true })); }
     if (cache) {
         box.appendChild(row("Cached", fmtTokens(cache), { sub: true, note: cachePct + "% hit" }));
         box.appendChild(row("Fresh", fmtTokens(fresh), { sub: true }));

@@ -174,7 +174,7 @@ export class OpenAIAdapter implements AgentAdapter {
         if (list.length) {
             setDiscovered(cfg.baseUrl, list, labels, context);
             const cacheKey = `openai:${cfg.baseUrl}`;
-            setCached(cacheKey, { models: list, labels, lastUpdate: new Date().toISOString() });
+            setCached(cacheKey, { models: list, labels, context, lastUpdate: new Date().toISOString() });
         }
         cfg.log?.(`[${this.backend}] discovered ${list.length} models from ${url}`);
     }
@@ -191,7 +191,7 @@ export class OpenAIAdapter implements AgentAdapter {
             const cacheKey = `openai:${cfg.baseUrl}`;
             const stored = getCached(cacheKey);
             if (stored?.models.length) {
-                setDiscovered(cfg.baseUrl, stored.models, stored.labels ?? {});
+                setDiscovered(cfg.baseUrl, stored.models, stored.labels ?? {}, stored.context);
             }
         }
         const configured = cfg.models.length ? cfg.models : (getDiscoveredModels(cfg.baseUrl) ?? []);
@@ -213,7 +213,7 @@ export class OpenAIAdapter implements AgentAdapter {
             const cacheKey = `openai:${cfg.baseUrl}`;
             const stored = getCached(cacheKey);
             if (!force && stored && isFresh(stored)) {
-                setDiscovered(cfg.baseUrl, stored.models, stored.labels ?? {});
+                setDiscovered(cfg.baseUrl, stored.models, stored.labels ?? {}, stored.context);
             } else {
                 await this.discoverModels(cfg).catch(() => undefined);
             }

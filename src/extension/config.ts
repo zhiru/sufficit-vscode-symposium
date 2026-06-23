@@ -89,6 +89,7 @@ export function openaiConfig(context: vscode.ExtensionContext): OpenAIAdapterCon
         maxToolHops: config.get<number>("maxToolHops", 50),
         noProgressStop: config.get<number>("noProgressStop", 0),
         autoCompactAt: config.get<number>("autoCompactAt", 0.8),
+        maxHistoryMessages: config.get<number>("maxHistoryMessages", 40),
         shellExecution: config.get<any>("shellExecution", "silent"),
         log: symposiumLog,
     };
@@ -145,6 +146,7 @@ export function buildCustomAdapters(context: vscode.ExtensionContext, defs: Cust
                 maxToolHops: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxToolHops", 50),
                 noProgressStop: vscode.workspace.getConfiguration("symposium.openai").get<number>("noProgressStop", 0),
                 autoCompactAt: vscode.workspace.getConfiguration("symposium.openai").get<number>("autoCompactAt", 0.8),
+                maxHistoryMessages: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxHistoryMessages", 40),
                 shellExecution: vscode.workspace.getConfiguration("symposium.openai").get<any>("shellExecution", "silent"),
                 log: symposiumLog,
             };

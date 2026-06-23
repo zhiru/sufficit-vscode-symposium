@@ -256,6 +256,11 @@
           "default": 0.8,
           "description": "Auto-compact the conversation when a request reaches this fraction (0–1) of the model's context window: older turns are summarized into one note (full transcript stays in the lossless ledger; tool outputs recoverable via read_session) so the live context shrinks. 0 disables auto-compaction (manual /compact still works)."
         },
+        "symposium.openai.maxHistoryMessages": {
+          "type": "number",
+          "default": 40,
+          "description": "Max recent conversation messages sent to OpenAI-compatible backends per request. System/developer prompts are preserved separately. Lower this when long tool-heavy sessions hit provider context limits; 0 disables local trimming."
+        },
         "symposium.openai.shellExecution": {
           "type": "string",
           "enum": [

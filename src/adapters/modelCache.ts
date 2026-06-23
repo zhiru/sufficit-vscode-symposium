@@ -13,6 +13,8 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 export interface ModelCacheEntry {
     models: string[];
     labels?: Record<string, string>;
+    /** Per-model context windows advertised by the gateway's /models catalog. */
+    context?: Record<string, number>;
     lastUpdate: string; // ISO 8601
 }
 

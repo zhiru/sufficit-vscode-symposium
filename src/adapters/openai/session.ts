@@ -28,6 +28,13 @@ interface StreamTiming {
     responseStartedAt: number;
 }
 
+interface RequestEstimate {
+    inputTokens: number;
+    requestChars: number;
+    messageCount: number;
+    toolCount: number;
+}
+
 /**
  * A direct OpenAI-compatible chat session (no CLI): streams /chat/completions
  * over HTTP with a custom base URL + headers, to talk straight to sufficit-ai
@@ -178,6 +185,56 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         const firstUserIdx = this.messages.findIndex((m) => m.role === "user");
         if (firstUserIdx === -1) { return false; }
         return (this.messages.length - firstUserIdx) > max;
+    }
+
+    /**
+     * Local preflight estimate for requests that may fail before the provider
+     * emits a final usage chunk. It intentionally uses the serialized request
+     * body, because tool schemas and tool-call history both consume context even
+     * though they are not visible as plain chat text in the transcript.
+     */
+    private estimateRequest(bodyJson: string, messageCount: number, toolCount: number): RequestEstimate {
+        return {
+            inputTokens: Math.max(1, Math.ceil(bodyJson.length / 4)),
+            requestChars: bodyJson.length,
+            messageCount,
+            toolCount,
+        };
+    }
+
+    /** Keep the context meter truthful while a request is in flight. */
+    private emitRequestEstimate(estimate: RequestEstimate): void {
+        const model = this.model();
+        this.emit("event", {
+            kind: "usage",
+            inputTokens: estimate.inputTokens,
+            outputTokens: 0,
+            totalTokens: estimate.inputTokens,
+            cacheRead: 0,
+            contextWindow: this.contextWindow(),
+            estimated: true,
+            requestChars: estimate.requestChars,
+            requestMessageCount: estimate.messageCount,
+            requestToolCount: estimate.toolCount,
+            model,
+            modelLabel: this.label(model),
+            requestedModel: model,
+        });
+    }
+
+    /** Human-readable preflight details appended to HTTP failures. */
+    private requestEstimateDiagnostic(estimate: RequestEstimate): string {
+        const win = this.contextWindow();
+        const pct = win ? Math.round((estimate.inputTokens / win) * 100) : 0;
+        return [
+            "Request estimate:",
+            `input_tokens≈${estimate.inputTokens}`,
+            `context_window=${win || "unknown"}`,
+            win ? `used≈${pct}%` : undefined,
+            `request_chars=${estimate.requestChars}`,
+            `messages=${estimate.messageCount}`,
+            `tools=${estimate.toolCount}`,
+        ].filter(Boolean).join(" ");
     }
 
     /**
@@ -593,19 +650,23 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                     if (responses) { body.reasoning = { effort }; }
                     else { body.reasoning_effort = effort; }
                 }
+                const bodyJson = JSON.stringify(body);
+                const estimate = this.estimateRequest(bodyJson, outMessages.length, toolList.length);
+                this.emitRequestEstimate(estimate);
                 this.cfg.log?.(`[${this.backend}] POST ${url} api=${this.cfg.api} model=${this.model()} tools=${toolList.length} hop=${hop}`);
                 // Ledger audit: record the LITERAL request body (truth of what the
                 // LLM received this hop) — feeds the "Request" inspection view.
                 ledger.recordRequest(this.sessionId, body);
                 const requestStartedAt = Date.now();
                 const res = await fetch(url, {
-                    method: "POST", headers: this.headers(loginToken), body: JSON.stringify(body), signal: this.abort.signal,
+                    method: "POST", headers: this.headers(loginToken), body: bodyJson, signal: this.abort.signal,
                 });
                 const responseStartedAt = Date.now();
                 if (!res.ok || !res.body) {
                     const detail = await res.text().catch(() => "");
+                    const diagnostic = this.requestEstimateDiagnostic(estimate);
                     const retryable = res.status >= 500 || res.status === 429 || res.status === 408;
-                    this.emit("event", { kind: "error", message: `HTTP ${res.status} ${res.statusText} ${detail}`.trim(), retryable });
+                    this.emit("event", { kind: "error", message: `HTTP ${res.status} ${res.statusText} ${detail}\n${diagnostic}`.trim(), retryable });
                     hitCap = false;
                     break;
                 }

@@ -36,6 +36,14 @@ export type AgentEvent =
         cacheRead?: number;
         /** Model context window used by the UI meter. */
         contextWindow?: number;
+        /** True when these numbers are a local preflight estimate, not provider-reported usage. */
+        estimated?: boolean;
+        /** Approximate serialized request body size sent to the gateway. */
+        requestChars?: number;
+        /** Number of chat/input messages included in the last request body. */
+        requestMessageCount?: number;
+        /** Number of function tools advertised in the last request body. */
+        requestToolCount?: number;
         /** Effective model id after routing/fallback. */
         model?: string;
         /** Friendly label for the effective model id. */
