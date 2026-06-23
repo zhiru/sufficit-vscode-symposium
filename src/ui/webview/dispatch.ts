@@ -10,7 +10,7 @@ import { renderStatusbar, openUsagePopover, setLastTurn, setLastUsage, setSessio
 import { setStatus, setLoading, updateSendTitle } from "./status";
 import { hideCtx, openChoiceMenu, showToast } from "./menus";
 import { modelLabel, modelLabels, modelValue, modelList, modelDefault, reasoningList, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, setReasoningDefault, setReasoningLabel, setReasoningList, setReasoningValue, buildModelMenuOpts } from "./models";
-import { layout, refreshEmpty, scrollToBottom, nearBottom, autoScroll } from "./scroll";
+import { armStickyUserMessage, layout, refreshEmpty, scrollToBottom, nearBottom, autoScroll } from "./scroll";
 import { svgIcon } from "./icons";
 import { log, root, composerEl, status, chatTitle, switchAgentBtn, copySessionBtn, sendBtn, input, presencePicker, configBtn, ctxMenu, modelPicker, reasoningPicker, sendMode } from "./dom";
 import { activeSessionId, currentBackend, currentBackendName, sessions, busy, activeModel, agentLabels, attachments, activeFile, commands, conversationRows, setActiveFile, setActiveFileDismissed, setActiveFilePinned, setActiveFilePreview, setActiveFileRange, setActiveModel, setActiveSessionId, setAgentLabels, setBootstrapPath, setBusy, setCommands, setConversationRows, setCurrentBackend, setCurrentBackendName, setPendingSessionSwitch, setQueued, setSessions, setSideMode, pendingSessionSwitch, permissionModes, permissionValue, permissionDefault, aiToolsAvailable, aiToolsEnabled, pendingSwitchAnchor, setPermissionModes, setPermissionValue, setPermissionDefault, setAiToolsAvailable, setAiToolsEnabled, setPendingSwitchAnchor } from "./state";
@@ -286,6 +286,7 @@ window.addEventListener("message", ({ data }) => {
         case "user": {
             endStream();
             const el = message("user", data.text, Date.now());
+            armStickyUserMessage(el);
             if (data.attachments?.length) {
                 const list = document.createElement("div");
                 list.className = "msgAtts";

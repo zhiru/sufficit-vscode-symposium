@@ -5,6 +5,7 @@ import { middleEllipsisPath, allDigits } from "./format";
 import { showFileMenu } from "./menus";
 import { nearBottom, autoScroll } from "./scroll";
 import { toolGroupBody, bumpToolGroup, endToolGroup } from "./messages";
+import { renderTodos } from "./panels";
 
 // Map a backend tool name to a native-chat icon + verb.
 const TOOL_META = {

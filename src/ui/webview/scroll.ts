@@ -52,3 +52,24 @@ scrollBtn = document.getElementById("scrollBottom");
 if (scrollBtn) { scrollBtn.addEventListener("click", scrollToBottom); }
 // Show the empty-state placeholder when the log has no messages yet.
 export function refreshEmpty(): void { root.classList.toggle("empty", log.childElementCount === 0); }
+
+let stickyUserMessage: HTMLElement | null = null;
+
+export function armStickyUserMessage(el: HTMLElement): void {
+    if (stickyUserMessage && stickyUserMessage !== el) {
+        stickyUserMessage.classList.remove("stickyUser");
+    }
+    stickyUserMessage = el;
+    stickyUserMessage.classList.add("stickyUser");
+}
+
+export function clearStickyUserMessage(): void {
+    stickyUserMessage?.classList.remove("stickyUser");
+    stickyUserMessage = null;
+}
+
+const clearStickyOnManualScroll = () => clearStickyUserMessage();
+log.addEventListener("wheel", clearStickyOnManualScroll, { passive: true });
+log.addEventListener("touchstart", clearStickyOnManualScroll, { passive: true });
+log.addEventListener("pointerdown", clearStickyOnManualScroll);
+log.addEventListener("keydown", clearStickyOnManualScroll);

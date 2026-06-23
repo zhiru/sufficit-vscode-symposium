@@ -396,6 +396,19 @@
     /* user turns: right-aligned bubble */
     .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
     .msg.user .role { opacity: 0.75; }
+    .msg.user.stickyUser {
+        position: sticky; top: 0; z-index: 4;
+        background:
+            linear-gradient(
+                var(--vscode-editor-background, #1f1f1f) 0%,
+                color-mix(in srgb, var(--vscode-editor-background, #1f1f1f) 92%, transparent) 72%,
+                transparent 100%
+            );
+        box-shadow: 0 10px 18px color-mix(in srgb, var(--vscode-editor-background, #1f1f1f) 78%, transparent);
+    }
+    .msg.user.stickyUser .ubody {
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #0078d4) 42%, transparent);
+    }
     /* user bubble: a blue tint matching the app's own accent — derived from the
        send button's blue (button.background) so it reads unmistakably blue (not
        grey) and mirrors the native chat. button.background is the most saturated

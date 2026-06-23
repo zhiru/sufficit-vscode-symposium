@@ -1,7 +1,7 @@
 // Message + tool + stream rendering.
 import { vscode } from "./vscode";
 import { log } from "./dom";
-import { conversationRows, currentBackend, activeModel, busy, setConversationRows } from "./state";
+import { conversationRows, currentBackend, currentBackendName, activeModel, busy, setConversationRows } from "./state";
 import { setStatus, syncProgress, setLoading } from "./status";
 import { modelLabel } from "./models";
 import { showFileMenu } from "./menus";
@@ -9,7 +9,7 @@ import { autoScroll, nearBottom, refreshEmpty, scrollToBottom } from "./scroll";
 import { renderMarkdown, inline } from "./markdown";
 import { svgIcon, fileIcon } from "./icons";
 import { middleEllipsisPath, allDigits } from "./format";
-import { beginEdit } from "./composer";
+import { beginEdit, lastUserRow } from "./composer";
 import { renderTodos, todoMark } from "./panels";
 
 // Error block with a Retry action (re-sends the last user message).
