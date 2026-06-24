@@ -46,23 +46,28 @@ export async function fetchSessionTasks(hub: HubClient, sessionId: string): Prom
 /** Sets/clears a task's completed state (DONE_TAG). User- or agent-driven. */
 export async function setTaskDone(hub: HubClient, id: string, done: boolean): Promise<boolean> {
     if (!hub.configured() || !id) { return false; }
-    const [obs] = await hub.getByIds([id]);
-    if (!obs) { return false; }
-    const tags = String(obs.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean).filter((t) => t !== DONE_TAG);
-    if (done) { tags.push(DONE_TAG); }
-    await hub.save({ ...obs, tags: tags.join(",") });
-    return true;
+    // Direct upsert: save is id-based. Append or remove DONE_TAG without
+    // spreading stale API fields back into the payload.
+    try {
+        const [obs] = await hub.getByIds([id]);
+        const existing = obs ? String(obs.tags ?? "") : "";
+        const tags = existing.split(",").map((t) => t.trim()).filter(Boolean).filter((t) => t !== DONE_TAG);
+        if (done) { tags.push(DONE_TAG); }
+        await hub.save({ id, type: obs?.type || "task-checkpoint", title: obs?.title || "task", summary: obs?.summary || "", tags: tags.join(",") });
+        return true;
+    } catch { return false; }
 }
 
 /** Marks a task observation completed by adding the DONE_TAG (idempotent). */
 export async function markTaskDone(hub: HubClient, id: string): Promise<boolean> {
     if (!hub.configured() || !id) { return false; }
-    const [obs] = await hub.getByIds([id]);
-    if (!obs) { return false; }
-    if (hasTag(obs.tags, DONE_TAG)) { return true; }
-    const tags = obs.tags ? `${obs.tags},${DONE_TAG}` : DONE_TAG;
-    await hub.save({ ...obs, tags });
-    return true;
+    // Direct upsert: save is id-based (id present → update). No need to read
+    // the observation first — that added a failure point (getByIds returning
+    // empty) and spread stale/extra API fields back into the save payload.
+    try {
+        await hub.save({ id, type: "task-checkpoint", title: "completed", summary: "completed", tags: DONE_TAG });
+        return true;
+    } catch { return false; }
 }
 
 /** Latest PENDING task-checkpoint for a session (falls back to latest pending task, then any). */

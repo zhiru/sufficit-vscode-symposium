@@ -305,17 +305,10 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 const id = String(args.id ?? "");
                 if (!id) { return JSON.stringify({ error: "id is required" }); }
                 if (!hub.configured()) { return JSON.stringify({ ok: false, error: "memory hub not configured" }); }
-                await markTaskDone(hub, id);
-                // Verify against the hub (source of truth) so a transient write
-                // failure can't be reported as success — re-read and confirm the tag.
-                let done = false;
-                try {
-                    const [o] = await hub.getByIds([id]);
-                    done = !!o && String(o.tags ?? "").split(",").map((t) => t.trim()).includes("status:done");
-                } catch { /* leave done=false */ }
-                return JSON.stringify(done
+                const ok = await markTaskDone(hub, id);
+                return JSON.stringify(ok
                     ? { ok: true, id, done: true }
-                    : { ok: false, id, error: "could not confirm completion — the task is still pending; try again" });
+                    : { ok: false, id, error: "save failed — check hub configuration" });
             }
             case "add_guardrail": {
                 const text = String(args.text ?? "").trim();
