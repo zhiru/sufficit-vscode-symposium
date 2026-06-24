@@ -8,6 +8,7 @@ function candidateWorkspaceStorageRoots(): string[] {
     return [
         path.join(h, ".config", "Code", "User", "workspaceStorage"),
         path.join(h, ".local", "share", "code-server", "User", "workspaceStorage"),
+        path.join(h, ".vscode-server", "data", "User", "workspaceStorage"),
     ];
 }
 
@@ -23,16 +24,36 @@ function walkJsonl(dir: string): string[] {
     return out;
 }
 
-export function copilotTranscriptFiles(): string[] {
-    const files: string[] = [];
+function workspaceRootsWithCopilot(): Array<{ root: string; wsName: string; copilotRoot: string }> {
+    const out: Array<{ root: string; wsName: string; copilotRoot: string }> = [];
     for (const root of candidateWorkspaceStorageRoots()) {
         let workspaces: fs.Dirent[];
         try { workspaces = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
         for (const ws of workspaces) {
             if (!ws.isDirectory()) { continue; }
-            const transcriptDir = path.join(root, ws.name, "GitHub.copilot-chat", "transcripts");
-            files.push(...walkJsonl(transcriptDir));
+            const copilotRoot = path.join(root, ws.name, "GitHub.copilot-chat");
+            try {
+                if (fs.statSync(copilotRoot).isDirectory()) {
+                    out.push({ root, wsName: ws.name, copilotRoot });
+                }
+            } catch { /* ignore */ }
         }
+    }
+    return out;
+}
+
+export function copilotTranscriptFiles(): string[] {
+    const files: string[] = [];
+    for (const ws of workspaceRootsWithCopilot()) {
+        files.push(...walkJsonl(path.join(ws.copilotRoot, "transcripts")));
+    }
+    return [...new Set(files)];
+}
+
+function chatSessionsFiles(): string[] {
+    const files: string[] = [];
+    for (const ws of workspaceRootsWithCopilot()) {
+        files.push(...walkJsonl(path.join(ws.root, ws.wsName, "chatSessions")));
     }
     return [...new Set(files)];
 }
@@ -46,78 +67,62 @@ function parseTimestamp(value: unknown): number | undefined {
     return undefined;
 }
 
+function extractLegacyInputText(j: any): string | undefined {
+    if (j && j.kind === 0 && j.v) {
+        const t = typeof j.v.inputState?.inputText === "string" ? j.v.inputState.inputText.trim() : "";
+        if (t) { return t; }
+    }
+    if (j && j.kind === 1 && Array.isArray(j.k)) {
+        if (j.k.length === 2 && j.k[0] === "inputState" && (j.k[1] === "inputText" || j.k[1] === "value")) {
+            const v = typeof j.v === "string" ? j.v.trim() : "";
+            if (v && v.length < 200 && /^[a-f0-9]+$/i.test(v)) { return undefined; }
+            if (v) { return v; }
+        }
+    }
+    return undefined;
+}
+
+function extractModernMessageText(j: any): string | undefined {
+    if (!j || typeof j !== "object") { return undefined; }
+    if (j.type === "user.message" || j.type === "assistant.message") {
+        const c = j.data?.content;
+        if (typeof c === "string" && c.trim()) { return c.trim(); }
+    }
+    return undefined;
+}
+
+function normalizeTitle(text: string): string {
+    const clean = text.trim();
+    const summaryMatch = clean.match(/<summary>\s*([\s\S]*?)\s*<\/summary>/i);
+    const picked = summaryMatch ? summaryMatch[1].trim() : clean;
+    return picked.slice(0, 80);
+}
+
 function chatSessionTitle(file: string): string | undefined {
     try {
-        let inputText = "";
+        let candidate = "";
         const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
         for (const line of lines) {
             if (!line.trim()) { continue; }
             let j: any;
             try { j = JSON.parse(line); } catch { continue; }
-            // kind 0 = session snapshot: inputState.inputText may or may not be set.
-            if (j && j.kind === 0 && j.v) {
-                const t = typeof j.v.inputState?.inputText === "string" ? j.v.inputState.inputText.trim() : "";
-                if (t) { inputText = t; }
-            }
-            // kind 1 = incremental delta; text updates via ["inputState","inputText"] key.
-            if (j && j.kind === 1 && Array.isArray(j.k)) {
-                if (j.k.length === 2 && j.k[0] === "inputState" && (j.k[1] === "inputText" || j.k[1] === "value")) {
-                    const v = typeof j.v === "string" ? j.v.trim() : "";
-                    // Some code-server versions store a placeholder hash instead of real text on empty state.
-                    if (v && v.length < 200 && /^[a-f0-9]+$/i.test(v)) { continue; }
-                    if (v) { inputText = v; }
-                }
+            const legacy = extractLegacyInputText(j);
+            if (legacy) { candidate = legacy; }
+            const modern = extractModernMessageText(j);
+            if (modern) {
+                candidate = modern;
+                break;
             }
         }
-        return inputText ? inputText.slice(0, 80) : undefined;
+        return candidate ? normalizeTitle(candidate) : undefined;
     } catch { return undefined; }
-}
-
-export function allCopilotSessions(): Map<string, { label: string; updatedTs: number; isTranscript: boolean }> {
-    const map = new Map<string, { label: string; updatedTs: number; isTranscript: boolean }>();
-    // Transcripts (full content, preferred)
-    for (const file of copilotTranscriptFiles()) {
-        const id = path.basename(file, ".jsonl");
-        const info = transcriptSummary(file);
-        if (info) {
-            map.set(id, { label: info.title, updatedTs: info.updatedAt ? info.updatedAt.getTime() : 0, isTranscript: true });
-        }
-    }
-    // chatSessions metadata (no-transcript sessions, fallback)
-    for (const file of chatSessionsFiles()) {
-        const id = path.basename(file, ".jsonl");
-        if (map.has(id)) { continue; }  // transcripted session wins
-        const label = chatSessionTitle(file);
-        if (!label) { continue; }
-        let updatedTs = 0;
-        try {
-            const stat = fs.statSync(file);
-            updatedTs = stat.mtimeMs;
-        } catch { /* ignore */ }
-        map.set(id, { label, updatedTs, isTranscript: false });
-    }
-    return map;
-}
-
-function chatSessionsFiles(): string[] {
-    const files: string[] = [];
-    for (const root of candidateWorkspaceStorageRoots()) {
-        let workspaces: fs.Dirent[];
-        try { workspaces = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
-        for (const ws of workspaces) {
-            if (!ws.isDirectory()) { continue; }
-            const dir = path.join(root, ws.name, "chatSessions");
-            files.push(...walkJsonl(dir));
-        }
-    }
-    return [...new Set(files)];
 }
 
 function transcriptSummary(file: string): SessionInfo | undefined {
     const sessionId = path.basename(file, ".jsonl");
+    let updated = 0;
     let title = "Copilot Chat";
     let firstUser = "";
-    let updated = 0;
     try {
         const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
         for (const line of lines) {
@@ -126,31 +131,37 @@ function transcriptSummary(file: string): SessionInfo | undefined {
             try { ev = JSON.parse(line); } catch { continue; }
             const ts = parseTimestamp(ev.timestamp);
             if (ts && ts > updated) { updated = ts; }
+
             if (!firstUser && ev.type === "user.message") {
                 const c = ev.data?.content;
-                if (typeof c !== "string" || !c.trim()) { continue; }
-                const clean = c.trim();
-                // VS Code auto-summaries wrap the real prompt between tags.
-                const summaryMatch = clean.match(/<summary>\s*([\s\S]*?)\s*<\/summary>/i);
-                firstUser = summaryMatch ? summaryMatch[1].trim() : clean;
-                title = firstUser.slice(0, 80);
+                if (typeof c === "string" && c.trim()) {
+                    firstUser = c.trim();
+                    title = normalizeTitle(firstUser);
+                }
+                continue;
+            }
+
+            if (!firstUser) {
+                const legacy = extractLegacyInputText(ev);
+                if (legacy) {
+                    firstUser = legacy;
+                    title = normalizeTitle(firstUser);
+                }
             }
         }
-        // No user.message found in transcript: try the chatSessions metadata.
+
         if (!firstUser) {
-            for (const root of candidateWorkspaceStorageRoots()) {
-                let workspaces: fs.Dirent[];
-                try { workspaces = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
-                for (const ws of workspaces) {
-                    if (!ws.isDirectory()) { continue; }
-                    const chatFile = path.join(root, ws.name, "chatSessions", sessionId + ".jsonl");
-                    const cs = chatSessionTitle(chatFile);
-                    if (cs) { title = cs; break; }
+            for (const file of chatSessionsFiles()) {
+                if (path.basename(file, ".jsonl") !== sessionId) { continue; }
+                const cs = chatSessionTitle(file);
+                if (cs) {
+                    title = cs;
+                    break;
                 }
-                if (title !== "Copilot Chat") { break; }
             }
         }
     } catch { return undefined; }
+
     return {
         backend: "copilot",
         sessionId,
@@ -162,15 +173,38 @@ function transcriptSummary(file: string): SessionInfo | undefined {
 
 function parseToolArgs(raw: unknown): string | undefined {
     if (typeof raw !== "string" || !raw.trim()) { return undefined; }
-    try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
+    try { return JSON.stringify(JSON.parse(raw)); } catch { return raw; }
 }
 
-function toolDetail(name: string, args: string | undefined): string {
-    if (!args) { return name; }
-    try {
-        const o = JSON.parse(args);
-        return String(o.explanation || o.description || o.goal || o.command || o.filePath || o.path || o.query || name).slice(0, 160);
-    } catch { return name; }
+function toolDetail(name: string, input?: string): string {
+    return input ? `${name} ${input}` : name;
+}
+
+export function allCopilotSessions(): Map<string, { label: string; updatedTs: number; isTranscript: boolean }> {
+    const map = new Map<string, { label: string; updatedTs: number; isTranscript: boolean }>();
+
+    for (const file of copilotTranscriptFiles()) {
+        const id = path.basename(file, ".jsonl");
+        const info = transcriptSummary(file);
+        if (info) {
+            map.set(id, {
+                label: info.title || "Copilot Chat",
+                updatedTs: info.updatedAt ? info.updatedAt.getTime() : 0,
+                isTranscript: true,
+            });
+        }
+    }
+
+    for (const file of chatSessionsFiles()) {
+        const id = path.basename(file, ".jsonl");
+        if (map.has(id)) { continue; }
+        const title = chatSessionTitle(file) || "Copilot Chat";
+        let updatedTs = 0;
+        try { updatedTs = fs.statSync(file).mtimeMs || 0; } catch { /* ignore */ }
+        map.set(id, { label: title, updatedTs, isTranscript: false });
+    }
+
+    return map;
 }
 
 export function transcriptHistory(file: string): HistoryMessage[] {
@@ -181,11 +215,13 @@ export function transcriptHistory(file: string): HistoryMessage[] {
             let ev: any;
             try { ev = JSON.parse(line); } catch { continue; }
             const ts = parseTimestamp(ev.timestamp);
+
             if (ev.type === "user.message") {
                 const content = ev.data?.content;
                 if (typeof content === "string" && content.trim()) { out.push({ role: "user", text: content, ts }); }
                 continue;
             }
+
             if (ev.type === "assistant.message") {
                 const content = ev.data?.content;
                 if (typeof content === "string" && content.trim()) { out.push({ role: "assistant", text: content, ts }); }
@@ -196,6 +232,9 @@ export function transcriptHistory(file: string): HistoryMessage[] {
                 }
                 continue;
             }
+
+            const legacy = extractLegacyInputText(ev);
+            if (legacy) { out.push({ role: "user", text: legacy, ts }); }
         }
     } catch { /* ignore */ }
     return out;
@@ -215,20 +254,8 @@ export function deleteImportedCopilotSession(info: SessionInfo): string[] {
         const wsRoot = transcript.split(`${path.sep}GitHub.copilot-chat${path.sep}`)[0];
         if (!wsRoot || wsRoot === transcript) { continue; }
         rmrf(path.join(wsRoot, "GitHub.copilot-chat", "debug-logs", info.sessionId));
-        rmrf(path.join(wsRoot, "GitHub.copilot-chat", "chat-session-resources", info.sessionId));
-        rmrf(path.join(wsRoot, "chatSessions", info.sessionId + ".jsonl"));
-    }
-    // Also remove any matching chatSessions file by id.
-    for (const root of candidateWorkspaceStorageRoots()) {
-        let workspaces: fs.Dirent[];
-        try { workspaces = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
-        for (const ws of workspaces) {
-            if (!ws.isDirectory()) { continue; }
-            rmrf(path.join(root, ws.name, "chatSessions", info.sessionId + ".jsonl"));
-        }
-    }
-    if (!files.length) {
-        residual.push("Copilot transcript not found; removed matching chatSessions entries only");
+        rmrf(path.join(wsRoot, "chatSessions", `${info.sessionId}.jsonl`));
+        if (fs.existsSync(transcript)) { residual.push(transcript); }
     }
     return residual;
 }
