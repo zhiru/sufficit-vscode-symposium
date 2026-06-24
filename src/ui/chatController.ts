@@ -3,7 +3,7 @@ import { parseTodoFence } from "../adapters/todos";
 import { buildOutboundPrompt } from "./outboundPrompt";
 import { probeRtk, rtkCached } from "../adapters/rtk";
 import { HubClient } from "../sync/hubClient";
-import { fetchLatestCheckpoint } from "../sync/tasks";
+import { fetchLatestCheckpoint, fetchSessionTasks, TaskItem } from "../sync/tasks";
 import { fetchSessionGuardrails } from "../sync/guardrails";
 import { WebviewToHost } from "./protocol";
 import { RenderStream } from "./renderStream";
@@ -34,6 +34,10 @@ export class ChatController {
     // lazily and whenever the user edits them in the UI.
     private guardrails: string[] = [];
     private guardrailsLoaded = false;
+
+    // Pending tasks reminder, refreshed on every outbound to catch agent-created tasks.
+    private pendingTasks: TaskItem[] = [];
+
     private readonly changed = new ChangedFilesState();
     private readonly queue = new ChatQueue();
     // Replayable render-message buffer + webview sink + read-only followers.
@@ -261,10 +265,39 @@ export class ChatController {
         catch { /* keep the prior cache */ }
     }
 
+    /** (Re)loads pending tasks and generates a reminder summary. */
+    private async reloadTasks(): Promise<void> {
+        if (!this.sessionId || !this.hub.configured()) { this.pendingTasks = []; return; }
+        try {
+            const all = await fetchSessionTasks(this.hub, this.sessionId);
+            // Only pending tasks (not done)
+            this.pendingTasks = all.filter((t) => !t.done);
+        } catch { /* keep the prior cache */ }
+    }
+
+    /** Builds a per-message reminder from pending tasks. */
+    private pendingTasksSummary(): string | undefined {
+        if (this.pendingTasks.length === 0) { return undefined; }
+        const items = this.pendingTasks.map((t) => {
+            const userRequested = (t.tags ?? "").includes("user-requested");
+            const marker = userRequested ? "[USER]" : "";
+            return `- ${marker} ${t.title}`;
+        }).join("\n");
+        return (
+            "[TASKS — You have pending tasks. Call task_complete(id) IMMEDIATELY after finishing each one]\n" +
+            items +
+            "\n(For user-requested tasks [USER], present justification and WAIT for user confirmation before completing.)"
+        );
+    }
+
     private async dispatch(msg: PendingMessage): Promise<void> {
         // Guardrails: load once (cached), then inject on every message below.
         if (!this.guardrailsLoaded && this.adapter.roleAware?.() === true && this.sessionId && this.hub.configured()) {
             await this.reloadGuardrails();
+        }
+        // Tasks: refresh on EVERY dispatch to catch newly created tasks.
+        if (this.sessionId && this.hub.configured()) {
+            await this.reloadTasks();
         }
         // Resume hook (deterministic, no LLM): on a CONTINUITY message — the agent
         // was idle or queued, NOT steered — prepend this session's latest
@@ -331,6 +364,7 @@ export class ChatController {
             bootstrap: this.options.bootstrap,
             resumeCheckpoint: msg.resumeCheckpoint,
             guardrails: this.guardrails,
+            pendingTasksSummary: this.pendingTasksSummary(),
             autonomy: msg.autonomy,
             asRoles: roleAware,
         });

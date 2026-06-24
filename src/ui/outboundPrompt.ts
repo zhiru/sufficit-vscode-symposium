@@ -9,6 +9,7 @@ export interface OutboundPromptState {
     sessionIdInjected?: boolean;
     bootstrapInjected?: boolean;
     checkpointInjected?: boolean;
+    tasksReminderInjected?: boolean;
 }
 
 export interface BuildOutboundPromptOptions extends OutboundPromptState {
@@ -30,6 +31,12 @@ export interface BuildOutboundPromptOptions extends OutboundPromptState {
      * them. Owned by the user via the UI, never the agent.
      */
     guardrails?: string[];
+    /**
+     * Summary of pending tasks for this session (agent-created or user-requested),
+     * injected on EVERY message to remind the agent to call task_complete.
+     * Empty string when no pending tasks.
+     */
+    pendingTasksSummary?: string;
     autonomy?: string;
     /** True when the backend can execute shell commands where rtk is useful. */
     rtk?: boolean;
@@ -113,8 +120,15 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
         sessionIdInjected: options.sessionIdInjected ?? false,
         bootstrapInjected: options.bootstrapInjected ?? false,
         checkpointInjected: options.checkpointInjected ?? false,
+        tasksReminderInjected: false,
     };
 
+    // Pending tasks reminder (injected EVERY message, before guardrails)
+    if (options.pendingTasksSummary) {
+        prefixes.push(options.pendingTasksSummary);
+        state.tasksReminderInjected = true;
+    }
+    
     // Guardrails first, EVERY message: user-defined absolute rules that override
     // the agent's own judgement. Re-sent each turn so they're never forgotten.
     const guardrails = (options.guardrails ?? []).map((g) => g.trim()).filter(Boolean);
