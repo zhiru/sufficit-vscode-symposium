@@ -176,6 +176,7 @@ export class SurfaceDialogues {
             modelLabels: adapter.modelLabels?.() ?? {},
             resumed: true,
             readOnly: true,
+            busy: false,
             models: [],
             sessionId: info.sessionId,
             title: info.title,
@@ -227,6 +228,7 @@ export class SurfaceDialogues {
             modelLabels: adapter.modelLabels?.() ?? {},
             resumed: !!options.resumeSessionId,
             terminal: true,
+            busy: false,
             models: [],
             sessionId: options.resumeSessionId ?? "",
             title,
@@ -308,13 +310,11 @@ export class SurfaceDialogues {
             backend: adapter.backend,
             backendName: adapter.displayName,
             modelLabels: adapter.modelLabels?.() ?? {},
-            // Inline badge for an agent-def-bound dialogue (shown once, on the
-            // first turn). Null for plain sessions. See SessionStartOptions.
+            // Inline badge for an agent-def-bound dialogue (once, first turn; null = plain). See SessionStartOptions.
             agentLabels: options.agentName
                 ? { agent: options.agentName, toolsDeclared: options.toolsDeclared ?? [], toolsAllowed: options.toolsAllowed ?? [] }
                 : null,
-            // Per-workspace bootstrap link for the empty screen (null = none).
-            bootstrapLink: bootstrapLink ?? null,
+            bootstrapLink: bootstrapLink ?? null,   // per-workspace bootstrap link (null = none)
             resumed: !!options.resumeSessionId,
             models: adapter.models?.() ?? [],
             reasoningLevels: adapter.reasoningLevels?.() ?? [],
@@ -328,6 +328,8 @@ export class SurfaceDialogues {
             browserOpen: isSimpleBrowserOpen(),
             // Per-session tool gating for the native AI backend (undefined for CLIs).
             aiTools: controller.aiToolsInfo?.(),
+            // Real busy state (resets a stuck "thinking" compose on reopen).
+            busy: controller.isBusy,
             permissionModes: adapter.permissionModes?.() ?? [],
             permission: adapter.defaultPermission?.() ?? "default",
             sessionId: options.resumeSessionId ?? "",

@@ -366,18 +366,10 @@ export function aiToolsForAgent(declared: string[]): string[] {
 }
 
 /** Filters tool definitions to an allowlist of names (undefined = all). */
-export function filterTools<T extends { function?: { name: string }; name?: string }>(tools: T[], allow?: string[]): T[] {
-    const allowSet = allow ? new Set(allow) : undefined;
-    const seen = new Set<string>();
-    return tools.filter((t) => {
-        const name = (t.function?.name ?? t.name) as string;
-        if (allowSet && !allowSet.has(name)) {
-            return false;
-        }
-        if (seen.has(name)) {
-            return false; // deduplicate
-        }
-        seen.add(name);
-        return true;
-    });
+export function filterTools<T extends { function?: { name: string; description?: string }; name?: string; description?: string }>(tools: T[], allow?: string[]): T[] {
+    if (!allow) {
+        return tools;
+    }
+    const set = new Set(allow);
+    return tools.filter((t) => set.has((t.function?.name ?? t.name) as string));
 }

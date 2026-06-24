@@ -18,6 +18,15 @@ import {
 } from "./requestWindow";
 
 /**
+ * Strip source prefix from tool name (sym_, local_, agent_, vscode_).
+ * Added by turnRunner to resolve name collisions across tool sources.
+ */
+function stripSourcePrefix(name: string): string {
+    const prefixMatch = name.match(/^(sym_|local_|agent_|vscode_)(.*)$/);
+    return prefixMatch ? prefixMatch[2] : name;
+}
+
+/**
  * One conversation turn for an OpenAISession: the streaming tool-call loop that
  * POSTs the windowed history, consumes the SSE reply, runs any requested tools,
  * and round-trips until the model finishes (or a cap / guard stops it). Owns the
@@ -114,6 +123,49 @@ export class TurnRunner {
         // computed fresh each turn so registry/setting changes take effect.
         const vscodeTools = responses ? lmToolDefsResponses() : lmToolDefs();
 
+        // Tool name collision handling: prefix source for tools with same name
+        // but different descriptions; deduplicate only if name+description match.
+        // Sources: sym_ (memory), local_ (local), agent_ (subagent), vscode_ (VS Code LM)
+        const allTools = [
+            ...memoryTools.map((t) => ({ tool: t, source: "sym_" })),
+            ...localTools.map((t) => ({ tool: t, source: "local_" })),
+            ...subagentTools.map((t) => ({ tool: t, source: "agent_" })),
+            ...vscodeTools.map((t) => ({ tool: t, source: "vscode_" })),
+        ];
+        const nameGroups = new Map<string, { tool: any; source: string }[]>();
+        for (const { tool, source } of allTools) {
+            const t = tool as any;
+            const name = (t.function?.name ?? t.name) as string;
+            if (!nameGroups.has(name)) { nameGroups.set(name, []); }
+            nameGroups.get(name)!.push({ tool, source });
+        }
+        const finalTools: { tool: any; source: string }[] = [];
+        for (const group of nameGroups.values()) {
+            const t0 = group[0].tool as any;
+            const firstDesc = t0.function?.description ?? t0.description;
+            const allSameDesc = group.every((g) => {
+                const tg = g.tool as any;
+                return (tg.function?.description ?? tg.description) === firstDesc;
+            });
+            if (allSameDesc) {
+                // Deduplicate: keep only one (any source, descriptions match)
+                finalTools.push(group[0]);
+            } else {
+                // Prefix source to avoid collision
+                for (const { tool, source } of group) {
+                    const nameKey = (tool.function?.name ?? tool.name) as string;
+                    if (tool.function) {
+                        tool.function = { ...tool.function, name: `${source}${nameKey}` };
+                        tool.function.description = `[${source.slice(0, -1)}] ${tool.function.description ?? ""}`;
+                    } else if (tool.name) {
+                        tool.name = `${source}${nameKey}`;
+                        tool.description = `[${source.slice(0, -1)}] ${tool.description}`;
+                    }
+                    finalTools.push({ tool, source });
+                }
+            }
+        }
+
         // How many tool round-trips one turn may run before pausing. In
         // autonomous mode (presence "away") there is NO limit; otherwise the
         // configurable cap applies (default 50) so it pauses for "continue".
@@ -149,7 +201,7 @@ export class TurnRunner {
                 // unset, expose all; when set to [], expose none (tools off).
                 const allow = this.d.options.aiTools;
                 const toolList = filterTools<{ function?: { name: string }; name?: string }>(
-                    [...memoryTools, ...localTools, ...subagentTools, ...vscodeTools] as { function?: { name: string }; name?: string }[], allow);
+                    finalTools.map((ft) => ft.tool) as { function?: { name: string }; name?: string }[], allow);
                 if (toolList.length > 0) {
                     body.tools = toolList;
                     body.tool_choice = "auto";
@@ -281,39 +333,40 @@ export class TurnRunner {
                     // CLI's Write/Edit — snapshot the pre-edit content (revert) and
                     // emit added/removed + a diff so the change shows in the
                     // changed-files panel. This is why these are preferred over sed.
-                    const counts = diffCounts(tc.function.name, args);
+                    const unprefixedName = stripSourcePrefix(tc.function.name);
+                    const counts = diffCounts(unprefixedName, args);
                     const editPath = counts ? this.d.resolveToolPath(args.path) : undefined;
                     if (counts && editPath && this.d.sessionId) {
                         snapshots.capture(this.d.sessionId, editPath);
                     }
                     this.d.emit({
                         kind: "tool-start",
-                        toolName: tc.function.name,
-                        detail: friendlyToolDetail(tc.function.name, args),
-                        path: editPath ?? toolPath(tc.function.name, args),
+                        toolName: unprefixedName,
+                        detail: friendlyToolDetail(unprefixedName, args),
+                        path: editPath ?? toolPath(unprefixedName, args),
                         added: counts?.added,
                         removed: counts?.removed,
-                        diff: editDiff(tc.function.name, args),
+                        diff: editDiff(unprefixedName, args),
                         toolId: tc.id,
                         input: tc.function.arguments,
                     });
                     const shellMode = this.d.shellExecutionMode();
                     const progressCbs = {
-                        onData: (chunk: string) => this.d.emit({ kind: "tool-output", toolName: tc.function.name, toolId: tc.id, text: chunk }),
-                        onTerminal: (terminalName: string) => this.d.emit({ kind: "tool-start", toolName: tc.function.name, detail: `watching in terminal: ${terminalName}`, toolId: tc.id, terminalName }),
-                        onNotify: (message: string) => this.d.emit({ kind: "tool-output", toolName: tc.function.name, toolId: tc.id, text: `\n[notify] ${message}\n` }),
+                        onData: (chunk: string) => this.d.emit({ kind: "tool-output", toolName: unprefixedName, toolId: tc.id, text: chunk }),
+                        onTerminal: (terminalName: string) => this.d.emit({ kind: "tool-start", toolName: unprefixedName, detail: `watching in terminal: ${terminalName}`, toolId: tc.id, terminalName }),
+                        onNotify: (message: string) => this.d.emit({ kind: "tool-output", toolName: unprefixedName, toolId: tc.id, text: `\n[notify] ${message}\n` }),
                     };
-                    const result = isLmTool(tc.function.name)
-                        ? await invokeLmTool(tc.function.name, args)
-                        : await runAiTool(tc.function.name, args, { hub: this.d.hub, cwd: this.d.options.cwd, permission: this.d.options.permission, sessionId: this.d.sessionId, shellExecution: shellMode, progress: progressCbs, parentBackend: this.d.backend, subagents: getSubagentHost() });
-                    this.d.emit({ kind: "tool-end", toolName: tc.function.name, toolId: tc.id, result });
-                    messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: result });
+                    const result = isLmTool(unprefixedName)
+                        ? await invokeLmTool(unprefixedName, args)
+                        : await runAiTool(unprefixedName, args, { hub: this.d.hub, cwd: this.d.options.cwd, permission: this.d.options.permission, sessionId: this.d.sessionId, shellExecution: shellMode, progress: progressCbs, parentBackend: this.d.backend, subagents: getSubagentHost() });
+                    this.d.emit({ kind: "tool-end", toolName: unprefixedName, toolId: tc.id, result });
+                    messages.push({ role: "tool", tool_call_id: tc.id, name: unprefixedName, content: result });
                     // Ledger (lossless): record the tool call + its result so the full
                     // transcript and read_session survive context compaction.
-                    this.d.led("tool", result, { name: tc.function.name, detail: friendlyToolDetail(tc.function.name, args) });
+                    this.d.led("tool", result, { name: unprefixedName, detail: friendlyToolDetail(unprefixedName, args) });
                     // Feed the continuous-follow-up digest (one compact line per step).
-                    const step = friendlyToolDetail(tc.function.name, args);
-                    progress.push((tc.function.name + (step ? " — " + step : "")).slice(0, 110));
+                    const step = friendlyToolDetail(unprefixedName, args);
+                    progress.push((unprefixedName + (step ? " — " + step : "")).slice(0, 110));
                     if (progress.length > 60) { progress.shift(); }
                     this.d.safePersist();   // each completed tool round is durable immediately
                 }
