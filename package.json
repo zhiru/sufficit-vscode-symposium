@@ -612,6 +612,8 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
     "compile": "npm run clean && tsc -p ./ && npm run build:webview",
+    "dev:sync-installed": "node scripts/dev-sync-installed.mjs",
+    "dev:deploy": "npm run compile && npm run dev:sync-installed",
     "build:webview": "esbuild src/ui/webview/index.ts --bundle --format=iife --target=es2020 --outfile=out/ui/webview.bundle.js && esbuild src/ui/webview/chat.css --bundle --outfile=out/ui/webview.css",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src",
