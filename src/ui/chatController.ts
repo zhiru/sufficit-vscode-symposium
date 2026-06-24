@@ -186,14 +186,27 @@ export class ChatController {
      * emits stay buffered in the stream and are flushed here on the first emit
      * after the id arrives (we append everything past persistedCount).
      */
-    private persistEmit(_message: unknown): void {
+    private persistEmit(message: unknown): void {
         const id = this.sessionId;
         if (!id) { return; }
-        const log = this.stream.messages;
-        for (let i = this.persistedCount; i < log.length; i++) {
-            renderLog.appendRender(id, log[i]);
+        // Append THIS message directly. The stream buffer may have shifted
+        // (5000-line cap), which makes index-based loops unreliable — so we
+        // persist the exact message we received instead of indexing into the
+        // buffer. The deferred flush (when sessionId arrives late) still uses
+        // the index loop below, which is safe because no shifts happen before
+        // the id is known.
+        if (this.persistedCount >= this.stream.messages.length) {
+            // Already caught up (or seeded from disk) — append the new one.
+            renderLog.appendRender(id, message);
+        } else {
+            // Deferred flush: sessionId just arrived, persist buffered messages
+            // that were emitted before we had an id.
+            const log = this.stream.messages;
+            for (let i = this.persistedCount; i < log.length; i++) {
+                renderLog.appendRender(id, log[i]);
+            }
         }
-        this.persistedCount = log.length;
+        this.persistedCount = this.stream.messages.length;
     }
 
     /**

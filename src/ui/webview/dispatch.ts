@@ -332,6 +332,12 @@ window.addEventListener("message", ({ data }) => {
             renderGuardrails(data.items || []);
             break;
         }
+        case "busy": {
+            // Host-driven busy state correction (e.g. after render-log replay).
+            setBusy(!!data.busy);
+            setStatus();
+            break;
+        }
         case "event": {
             const ev = data.event;
             if (ev.kind === "thinking") streamThinkingDelta(ev.text);

@@ -393,6 +393,10 @@ export class SurfaceDialogues {
         if (options.resumeSessionId) {
             this.d.deps.lastActive.set({ backend, sessionId: options.resumeSessionId });
         }
+        // The render-log replay above may have set busy=true (user messages in
+        // the log trigger setBusy(true) in the webview). Re-assert the real busy
+        // state AFTER the replay so the compose button is correct.
+        this.d.post({ type: "busy", busy: controller.isBusy });
         this.d.sync.postCommands(adapter);
         this.d.sync.refreshModels(adapter);
         this.d.onTitleChange?.(`${title} · ${adapter.backend}`);
