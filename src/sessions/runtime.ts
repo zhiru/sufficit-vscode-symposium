@@ -79,6 +79,17 @@ export class LiveSessions {
         return out;
     }
 
+    /**
+     * Live transcript of a running session straight from its controller — the
+     * freshest copy, available before any ledger/store flush. Undefined when no
+     * controller is live for the id.
+     */
+    readTranscript(sessionId: string): { backend?: string; title?: string; messages: { role: string; text: string }[] } | undefined {
+        const controller = this.findBySessionId(sessionId);
+        if (!controller) { return undefined; }
+        return { backend: controller.backend, title: controller.title, messages: controller.transcriptMessages() };
+    }
+
     /** Creates and registers a new controller. */
     create(adapter: AgentAdapter, options: SessionStartOptions): ChatController {
         return this.createWithKey(adapter, options).controller;

@@ -6,7 +6,7 @@ import { mimeTypeFor } from "../parse";
 import { fetchSessionTasks, markTaskDone, sessionTag } from "../../sync/tasks";
 import { saveGuardrail, clearSessionGuardrails } from "../../sync/guardrails";
 import { workspaceKey, resourceContentPath, ensureScaffold, readWorkspaceBootstrap } from "../../config/root";
-import { ToolContext } from "./types";
+import { ToolContext, getLiveTranscriptReader } from "./types";
 import { canUseRtk, normalizeTerminalId, resolvePath, runShell, runShellInTerminal } from "./shell";
 
 /** Strips HTML to readable text (drops script/style, tags → spaces). */
@@ -48,10 +48,31 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
         if (name === "read_session") {
             const id = String(args.id ?? "").trim() || ctx.sessionId;
             if (!id) { return JSON.stringify({ error: "no session id (none provided and no current session)" }); }
-            const dump = readSession(id);
-            if (dump.source === "none") { return JSON.stringify({ error: `session ${id} not found on disk` }); }
             const tail = typeof args.tail === "number" ? args.tail : undefined;
             const maxChars = typeof args.max_chars === "number" ? args.max_chars : undefined;
+            // Disk (ledger) is the lossless, complete history. A RESUMED session's
+            // live controller only holds post-resume messages, so it must NOT shadow
+            // the ledger. Pick whichever source has MORE messages: live wins only
+            // when it has unflushed messages the ledger doesn't yet have; disk wins
+            // for resumed sessions where the ledger is complete. Either way we never
+            // error — a running session always has at least its current message, and
+            // when nothing is found we return an empty-but-valid dump, not an error
+            // (an error would make the agent believe it has no context).
+            const disk = readSession(id);
+            const live = getLiveTranscriptReader()?.read(id);
+            const liveCount = live ? live.messages.length : 0;
+            if (live && liveCount > disk.count) {
+                const dump = { id, source: "live" as const, backend: live.backend ?? disk.backend, title: live.title ?? disk.title, count: liveCount, messages: live.messages };
+                return dumpToText(dump, { tail, maxChars });
+            }
+            if (disk.source !== "none") {
+                return dumpToText(disk, { tail, maxChars });
+            }
+            // Nothing on disk: fall back to live even if it ties at 0, then to an
+            // empty dump so the caller always gets a well-formed transcript.
+            const dump = live
+                ? { id, source: "live" as const, backend: live.backend, title: live.title, count: liveCount, messages: live.messages }
+                : { id, source: "none" as const, count: 0, messages: [] };
             return dumpToText(dump, { tail, maxChars });
         }
         // ---- per-workspace session bootstrap (a local config file, NOT memory) ----

@@ -130,6 +130,13 @@ export function message(role, text, ts, model) {
         const av = document.createElement("span"); av.className = "avatar"; av.appendChild(svgIcon("robot"));
         const name = document.createElement("span"); name.textContent = currentBackendName || BACKEND_NAMES[currentBackend] || "Agent";
         label.appendChild(av); label.appendChild(name);
+        // Model/preset used for this reply, shown next to the name. For Sufficit
+        // (openai) this is the preset label. Helps spot a model switch at a glance.
+        const ml = effectiveModel ? modelLabel(effectiveModel) : "";
+        if (ml) {
+            const mdl = document.createElement("span"); mdl.className = "roleModel"; mdl.textContent = ml;
+            label.appendChild(mdl);
+        }
     } else {
         // Reset after user message so the next assistant reply always shows its label
         if (role === "user") { lastMsgBackend = ""; lastMsgModel = ""; }
@@ -157,7 +164,9 @@ export function message(role, text, ts, model) {
     if (role === "user") {
         // Edit & resend from here: load this message back into the composer;
         // re-sending rewinds the conversation to this point (Esc cancels).
-        const edit = document.createElement("button"); edit.className = "msgCopy"; edit.title = "Edit & resend from here";
+        const edit = document.createElement("button"); edit.className = "msgCopy";
+        edit.title = "Edit — restarts the conversation from this message (everything after it is discarded)";
+        edit.setAttribute("aria-label", edit.title);
         edit.appendChild(svgIcon("edit"));
         edit.addEventListener("click", () => {
             const idx = Number(wrap.dataset.msgIndex || "-1");

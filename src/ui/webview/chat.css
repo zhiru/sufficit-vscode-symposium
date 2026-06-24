@@ -231,7 +231,15 @@
     .sessionItem.deleting { opacity: 0.55; cursor: default; pointer-events: none; border-left-color: var(--vscode-errorForeground); }
     .sessionItem.deleting .ttl { text-decoration: line-through; }
     .sessionItem.deleting .sub { color: var(--vscode-errorForeground); }
-    .sessionItem.subagentChild { background: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 3%, transparent); }
+    .sessionItem.subagentChild {
+        background: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 8%, transparent);
+        border-left-color: var(--vscode-charts-purple, #b180d7);
+        border-left-width: 3px;
+    }
+    .sessionItem.subagentChild.active {
+        border-left-color: var(--vscode-charts-purple, #b180d7);
+        background: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 15%, var(--vscode-list-activeSelectionBackground));
+    }
     .sessionItem.deleting .statusDot .spinner { width: 12px; height: 12px; border-width: 2px; }
     .sessionItem .statusDot .stored { width: 13px; height: 13px; opacity: 0.4; }
     .sessionItem.active .statusDot .stored { opacity: 0.7; }
@@ -270,7 +278,13 @@
     .sessionItem .acts button:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.25)); }
     .sessionItem .acts button.danger:hover { color: var(--vscode-errorForeground); }
     .ttlIcon { width: 12px; height: 12px; vertical-align: -1px; margin-right: 4px; opacity: 0.7; }
-    .ttlIcon.subagentBadge { opacity: 0.8; color: var(--vscode-charts-purple, #b180d7); }
+    .ttlIcon.subagentBadge {
+        opacity: 1;
+        color: var(--vscode-charts-purple, #b180d7);
+        width: 14px;
+        height: 14px;
+        filter: drop-shadow(0 0 2px var(--vscode-charts-purple, #b180d7));
+    }
     #ctxMenu .miIcon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 8px; opacity: 0.85; }
     #ctxMenu .mi { display: flex; align-items: center; }
     /* ---- themed tooltip (replaces native title=) ---- */
@@ -381,12 +395,19 @@
        hover highlight box symmetric around the content. The separator line sits
        at the top edge with the gap above it provided by the margin. */
     .msg.user, .msg.assistant {
+        position: relative;
         margin: 20px -10px 0 -10px; padding: 10px;
         border-top: 1px solid var(--vscode-panel-border, color-mix(in srgb, var(--vscode-foreground) 14%, transparent));
     }
     #log > .msg.user:first-child, #log > .msg.assistant:first-child { margin-top: 0; border-top: none; }
     .role { font-size: 0.82em; opacity: 1; margin-bottom: 7px; display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: 0.02em; color: var(--vscode-foreground); }
     .role .msgTime { font-weight: 400; opacity: 0.4; font-size: 0.92em; color: var(--vscode-descriptionForeground); transition: opacity 150ms ease; }
+    .role .roleModel {
+        font-weight: 400; font-size: 0.92em; opacity: 0.6;
+        color: var(--vscode-descriptionForeground);
+        padding: 1px 6px; border-radius: 4px;
+        background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+    }
     /* messages that an in-progress edit will replace on resend */
     .msg.willReplace { opacity: 0.4; }
     #composer.editing { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); border-radius: 6px; }
@@ -438,6 +459,9 @@
     .msg.assistant { position: relative; }
     /* copy: a hover-only floating action in the corner, reserves no space */
     .msgTools { position: absolute; top: 8px; right: 8px; margin: 0; z-index: 1; }
+    /* User rows are right-aligned (label "You · time" sits top-right), so put the
+       edit button on the empty left side to avoid covering the label. */
+    .msg.user .msgTools { right: auto; left: 8px; }
     /* hovering copy highlights exactly the message it will copy */
     .msg.assistant:has(.msgCopy:hover) {
         background: var(--vscode-editor-inactiveSelectionBackground, rgba(128,128,128,0.12));
@@ -448,6 +472,12 @@
         color: var(--vscode-icon-foreground, var(--vscode-foreground)); opacity: 0; transition: opacity 150ms ease, background-color 150ms ease;
     }
     .msg.assistant:hover .msgCopy { opacity: 0.6; }
+    .msg.user:hover .msgCopy { opacity: 0.6; }
+    /* hovering the user edit button highlights the message it will rewind to */
+    .msg.user:has(.msgCopy:hover) {
+        background: var(--vscode-editor-inactiveSelectionBackground, rgba(128,128,128,0.12));
+        border-radius: 6px; box-shadow: 0 0 0 1px var(--vscode-focusBorder, rgba(128,128,128,0.4)) inset;
+    }
     .msgCopy:hover { opacity: 1 !important; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .msgCopy.done { opacity: 1 !important; color: var(--vscode-charts-green, #89d185); }
     .msgCopy svg { width: 13px; height: 13px; }
@@ -734,8 +764,24 @@
     /* ---- panel tabs: guardrails / tasks / edited-files behind an icon strip ---- */
     #guardrails { margin: 0 12px 8px 12px; }
     #panelBody { display: none; }
-    #panelBody.has { display: block; margin-top: 14px; }
-    #panelTabs { display: none; gap: 6px; padding: 5px 12px; align-items: center; }
+    #panelBody.has { display: block; margin-top: 4px; margin-bottom: 0; }
+    /* Docked: the open panel sits flush on the composer — flat bottom corners,
+       no gap — so the panel + textarea read as one attached unit. */
+    #panelBody.has #attachedPanel,
+    #panelBody.has #tasks .tkcard,
+    #panelBody.has #guardrails .grcard {
+        margin-bottom: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        border-bottom: none;
+    }
+    #panelBody.has #tasks, #panelBody.has #guardrails, #panelBody.has #changedFiles { margin-bottom: 0; }
+    #composer.panelsAttached {
+        margin-top: 0;
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }
+    #panelTabs { display: none; gap: 6px; padding: 5px 12px 0 12px; align-items: center; margin-top: 10px; }
     #panelTabs.has { display: flex; }
     .ptab {
         display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; cursor: pointer;

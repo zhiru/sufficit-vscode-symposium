@@ -157,6 +157,8 @@ export class ConfigPanel {
                     let value: unknown = message.value;
                     if (message.key.endsWith("maxToolHops")) { value = Math.max(1, Number(message.value) || 50); }
                     else if (message.key.endsWith("noProgressStop")) { value = Math.max(0, Number(message.value) || 0); }
+                    else if (message.key.endsWith("autoCompactAt")) { value = Math.min(1, Math.max(0, Number(message.value) || 0)); }
+                    else if (message.key.endsWith("maxHistoryMessages")) { value = Math.max(0, Number(message.value) || 0); }
                     else if (message.key === "chat.tools.global.autoApprove") {
                         value = message.value === "true";
                         // optIn must be on for the global flag to take effect.
@@ -218,6 +220,8 @@ export class ConfigPanel {
                 lmTools: root.get<string>("lmTools", "terminal"),
                 maxToolHops: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxToolHops", 50),
                 noProgressStop: vscode.workspace.getConfiguration("symposium.openai").get<number>("noProgressStop", 0),
+                autoCompactAt: vscode.workspace.getConfiguration("symposium.openai").get<number>("autoCompactAt", 0.8),
+                maxHistoryMessages: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxHistoryMessages", 40),
                 shellExecution: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
                 autoApprove: vscode.workspace.getConfiguration().get<boolean>("chat.tools.global.autoApprove", false),
             },

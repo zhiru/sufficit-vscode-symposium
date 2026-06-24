@@ -24,7 +24,7 @@ export interface ReadMsg {
 
 export interface SessionDump {
     id: string;
-    source: "ledger" | "store" | "cli" | "none";
+    source: "ledger" | "store" | "cli" | "live" | "none";
     backend?: string;
     title?: string;
     count: number;

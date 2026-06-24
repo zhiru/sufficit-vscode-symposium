@@ -115,8 +115,9 @@ export function dropPinnedOn(targetId) {
 }
 export function renderSessionItem(s, depth, childCount) {
         depth = depth || 0; childCount = childCount || 0;
+        const isSubagent = !!s.parentId;
         const el = document.createElement("div");
-        el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "") + (s.deleting ? " deleting" : "") + (depth ? " subagentChild" : "");
+        el.className = "sessionItem" + (s.sessionId === activeSessionId ? " active" : "") + (s.archived ? " archived" : "") + (s.pinned ? " pinned" : "") + (s.deleting ? " deleting" : "") + (isSubagent ? " subagentChild" : "");
         if (depth) { el.style.marginLeft = (depth * 16) + "px"; }
         // Caret to collapse/expand a parent's subagent children.
         let caretEl = null;
@@ -155,7 +156,6 @@ export function renderSessionItem(s, depth, childCount) {
         // Subagent sessions (parentId != null) show robot icon for visual distinction.
         const statusDot = document.createElement("div");
         statusDot.className = "statusDot";
-        const isSubagent = !!s.parentId;
         if (s.deleting) {
             const sp = document.createElement("span"); sp.className = "spinner"; sp.title = "Deleting…"; statusDot.appendChild(sp);
         } else if (s.status === "working") {

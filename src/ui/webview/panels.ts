@@ -1,6 +1,6 @@
 // Plan/tasks/guardrails/queued/changed-files panels + working set.
 import { vscode } from "./vscode";
-import { planEl, tasksEl, guardrailsEl, queuedEl, changedFiles, panelBody, panelTabs, attachedPanel, chips } from "./dom";
+import { planEl, tasksEl, guardrailsEl, queuedEl, changedFiles, panelBody, panelTabs, attachedPanel, chips, composerEl } from "./dom";
 import { activeSessionId, setQueued } from "./state";
 import { setStatus } from "./status";
 import { svgIcon, fileIcon } from "./icons";
@@ -309,6 +309,9 @@ export function refreshPanels() {
     const defs = panelDefs();
     const shown = defs.filter((d) => d.count > 0);
     if (activePanel && !shown.some((d) => d.key === activePanel)) { activePanel = null; }
+    // When exactly one panel has content, open it automatically (0→1) so the
+    // user sees it docked above the composer without having to click its tab.
+    if (activePanel == null && shown.length === 1) { activePanel = shown[0].key; }
     panelTabs.textContent = "";
     for (const d of shown) {
         const b = document.createElement("button");
@@ -323,7 +326,10 @@ export function refreshPanels() {
     }
     panelTabs.classList.toggle("has", shown.length > 0);
     for (const d of defs) { d.el.style.display = (d.count > 0 && activePanel === d.key) ? "" : "none"; }
-    panelBody.classList.toggle("has", activePanel != null && shown.some((d) => d.key === activePanel));
+    const bodyVisible = activePanel != null && shown.some((d) => d.key === activePanel);
+    panelBody.classList.toggle("has", bodyVisible);
+    // Dock the open panel flush onto the composer (no gap, connected borders).
+    composerEl.classList.toggle("panelsAttached", bodyVisible);
 }
 export function resetWorkingState() {
     // clear arrives before meta; the controller re-sends changed-files on

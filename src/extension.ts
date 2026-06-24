@@ -7,7 +7,7 @@ import { AgentAdapter, SessionInfo } from "./adapters/types";
 import { SessionStore } from "./sessions/store";
 import { LiveSessions } from "./sessions/runtime";
 import { SubagentManager } from "./sessions/subagents";
-import { setSubagentHost } from "./adapters/aiTools";
+import { setSubagentHost, setLiveTranscriptReader } from "./adapters/aiTools";
 import { ChatPanel } from "./ui/chatPanel";
 import { ChatViewProvider } from "./ui/chatView";
 import { ConfigPanel } from "./ui/configPanel";
@@ -59,6 +59,12 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     setSubagentHost(new SubagentManager(runtime, adapterByBackend,
         () => vscode.workspace.getConfiguration("symposium.subagents").get<number>("timeoutMs", 300000)));
     context.subscriptions.push({ dispose: () => setSubagentHost(undefined) });
+
+    // Live transcript reader: lets read_session pull a running session's freshest
+    // transcript from its controller before any ledger/store flush. Late-bound so
+    // the tool layer never imports the runtime.
+    setLiveTranscriptReader({ read: (id) => runtime.readTranscript(id) });
+    context.subscriptions.push({ dispose: () => setLiveTranscriptReader(undefined) });
 
     // Sufficit Identity login (tokens in SecretStorage; basis for memory/MCP).
     const auth = new SufficitAuth(context, symposiumLog);

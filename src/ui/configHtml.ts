@@ -146,6 +146,7 @@ export function renderConfigHtml(): string {
         { id: "instruction", label: "Instructions", key: "instruction" },
         { id: "backends", label: "Backends" },
         { id: "prefs", label: "Preferences" },
+        { id: "compaction", label: "Compaction" },
         { id: "sync", label: "Sync" },
     ];
 
@@ -286,13 +287,55 @@ export function renderConfigHtml(): string {
         );
     }
 
+    function compactionView() {
+        const p = (state && state.prefs) || {};
+        const sel = (key, value, opts) =>
+            '<select class="pref" data-key="' + esc(key) + '">' +
+            opts.map(o => '<option value="' + esc(o.v) + '"' + (o.v === value ? " selected" : "") + ">" + esc(o.l) + "</option>").join("") +
+            "</select>";
+        const item = (name, desc, ctl) =>
+            '<div class="pref-item"><div class="meta">' +
+                '<span class="name">' + esc(name) + '</span>' +
+                '<span class="desc">' + esc(desc) + "</span>" +
+            '</div><div class="ctl">' + ctl + "</div></div>";
+        const section = (title, body) =>
+            '<section class="section"><div class="section-title">' + esc(title) + "</div>" + body + "</section>";
+        // autoCompactAt is a 0–1 fraction stored as a number; compare as fixed strings.
+        const compactAt = String(p.autoCompactAt != null ? p.autoCompactAt : 0.8);
+        const histMsgs = String(p.maxHistoryMessages != null ? p.maxHistoryMessages : 40);
+
+        return (
+            section("Auto-compaction",
+                item("Auto-compact threshold", "Summarize older turns into one note when a request reaches this fraction of the model's context window. The full transcript stays in the lossless ledger (recoverable via read_session). Disabled = only manual /compact.",
+                    sel("symposium.openai.autoCompactAt", compactAt,
+                        [{ v: "0", l: "Disabled" }, { v: "0.6", l: "60% of context" }, { v: "0.7", l: "70% of context" },
+                         { v: "0.75", l: "75% of context" }, { v: "0.8", l: "80% of context" }, { v: "0.85", l: "85% of context" },
+                         { v: "0.9", l: "90% of context" }]))
+            ) +
+            section("History window",
+                item("Max history messages", "Max recent conversation messages sent per request to OpenAI-compatible backends. System/developer prompts are kept separately. Lower this if long tool-heavy sessions hit provider context limits. Unlimited = no local trimming.",
+                    sel("symposium.openai.maxHistoryMessages", histMsgs,
+                        [{ v: "0", l: "Unlimited" }, { v: "20", l: "20 messages" }, { v: "40", l: "40 messages" },
+                         { v: "60", l: "60 messages" }, { v: "100", l: "100 messages" }, { v: "200", l: "200 messages" }]))
+            ) +
+            section("Turn limits",
+                item("Step limit per turn", "Max tool round-trips an API backend may run in a single turn before pausing for 'continue'. Ignored in autonomous mode (presence Away = no limit).",
+                    sel("symposium.openai.maxToolHops", String(p.maxToolHops || 50),
+                        [{ v: "10", l: "10" }, { v: "25", l: "25" }, { v: "50", l: "50" }, { v: "100", l: "100" }, { v: "200", l: "200" }])) +
+                item("Stop if no reply", "Anti-loop: stop the turn after this many consecutive tool steps with no assistant reply. Unlimited = never auto-stop on silence.",
+                    sel("symposium.openai.noProgressStop", String(p.noProgressStop || 0),
+                        [{ v: "0", l: "Unlimited" }, { v: "8", l: "8 steps" }, { v: "12", l: "12 steps" }, { v: "16", l: "16 steps" }, { v: "24", l: "24 steps" }]))
+            )
+        );
+    }
+
     function render() {
         renderTabs();
         const main = document.getElementById("content");
         const page = (h) => '<div class="page">' + h + "</div>";
         if (!state) { main.innerHTML = page('<div class="empty">Loading…</div>'); return; }
-        if (active === "prefs") {
-            main.innerHTML = page(prefsView());
+        if (active === "prefs" || active === "compaction") {
+            main.innerHTML = page(active === "compaction" ? compactionView() : prefsView());
             main.querySelectorAll("select.pref").forEach(el => {
                 el.onchange = () => vscode.postMessage({ type: "set-pref", key: el.getAttribute("data-key"), value: el.value });
             });

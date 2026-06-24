@@ -72,13 +72,13 @@ ${chatStyles}
         </div>
         <div id="queued"></div>
         <div id="plan"></div>
+        <div id="panelTabs"></div>
         <div id="panelBody">
             <div id="guardrails"></div>
             <div id="tasks"></div>
             <div id="changedFiles"></div>
             <div id="attachedPanel"><div class="apHead">Attached to context</div><div id="chips"></div></div>
         </div>
-        <div id="panelTabs"></div>
         <div id="composer">
             <div id="slash"></div>
             <textarea id="input" placeholder="Ask the agent…  (Enter sends · Shift+Enter newline)"></textarea>

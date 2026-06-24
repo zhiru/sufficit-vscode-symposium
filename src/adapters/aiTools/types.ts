@@ -86,3 +86,23 @@ export function setSubagentHost(host: SubagentHost | undefined): void {
 export function getSubagentHost(): SubagentHost | undefined {
     return subagentHost;
 }
+
+/**
+ * Reads the live transcript of a running session straight from its controller —
+ * the freshest copy, available before any ledger/store flush. Late-bound (same
+ * pattern as SubagentHost) so the tool layer never imports the runtime.
+ */
+export interface LiveTranscriptReader {
+    /** Live transcript for a running session, or undefined when none is live. */
+    read(sessionId: string): { backend?: string; title?: string; messages: { role: string; text: string }[] } | undefined;
+}
+
+let liveTranscriptReader: LiveTranscriptReader | undefined;
+/** Sets the process-wide live transcript reader (called once the runtime exists). */
+export function setLiveTranscriptReader(reader: LiveTranscriptReader | undefined): void {
+    liveTranscriptReader = reader;
+}
+/** The current live transcript reader, or undefined when the runtime is unavailable. */
+export function getLiveTranscriptReader(): LiveTranscriptReader | undefined {
+    return liveTranscriptReader;
+}
