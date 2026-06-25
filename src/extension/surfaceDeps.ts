@@ -29,6 +29,10 @@ export function buildChatSurfaceDeps(args: SurfaceDepsArgs): ChatSurfaceDeps {
         // new running session shows its working indicator immediately.
         listSessions: async () => {
             const liveInfos = runtime.liveInfos();
+            // Persist the subagent→parent link while it's live, so the session
+            // stays nested under its main conversation after it's stored to disk
+            // (disk rows otherwise lose the in-memory parentId).
+            for (const l of liveInfos) { if (l.parentId) { store.setParent(l.sessionId, l.parentId); } }
             const reconciledLive = new Set<string>();
             const disk = store.decorate(await rawSessions(), true)
                 .map((s) => {

@@ -105,7 +105,7 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
  * directory from a transcript. The cwd matters: `claude --resume` only finds
  * sessions that belong to the directory it is started in.
  */
-export async function readSessionMeta(file: string): Promise<{ title?: string; cwd?: string }> {
+export async function readSessionMeta(file: string): Promise<{ title?: string; cwd?: string; gitBranch?: string; originSessionId?: string }> {
     let content: string;
     try {
         content = await fs.promises.readFile(file, "utf8");
@@ -114,11 +114,15 @@ export async function readSessionMeta(file: string): Promise<{ title?: string; c
     }
     let title: string | undefined;
     let cwd: string | undefined;
+    let gitBranch: string | undefined;
     for (const line of content.split("\n").slice(0, 30)) {
         try {
             const entry = JSON.parse(line);
             if (!cwd && typeof entry.cwd === "string" && entry.cwd) {
                 cwd = entry.cwd;
+            }
+            if (!gitBranch && typeof entry.gitBranch === "string" && entry.gitBranch) {
+                gitBranch = entry.gitBranch;
             }
             if (!title && entry.type === "user") {
                 const c = entry.message?.content;
@@ -131,12 +135,23 @@ export async function readSessionMeta(file: string): Promise<{ title?: string; c
                     }
                 }
             }
-            if (title && cwd) {
+            if (title && cwd && gitBranch) {
                 break;
             }
         } catch {
             // non-JSON lines are skipped
         }
     }
-    return { title, cwd };
+    // Conversation lineage: claude-mem embeds memories tagged with the session
+    // that originally created them (originSessionId). The dominant one identifies
+    // the original conversation that this session continues / builds on — so
+    // sessions sharing it are the same logical conversation.
+    let originSessionId: string | undefined;
+    const om = content.match(/originSessionId:\s*([0-9a-f-]{36})/g);
+    if (om && om.length) {
+        const counts: Record<string, number> = {};
+        for (const x of om) { const id = x.replace(/originSessionId:\s*/, ""); counts[id] = (counts[id] || 0) + 1; }
+        originSessionId = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    }
+    return { title, cwd, gitBranch, originSessionId };
 }

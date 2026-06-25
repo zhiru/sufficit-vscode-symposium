@@ -72,6 +72,8 @@ export class ClaudeAdapter implements AgentAdapter {
                         sessionId: path.basename(file, ".jsonl"),
                         title: meta.title ?? dir,
                         cwd: meta.cwd,
+                        gitBranch: meta.gitBranch,
+                        lineageId: meta.originSessionId,
                         updatedAt: stat.mtime,
                         transcriptPath: fullPath,
                     });

@@ -84,6 +84,10 @@ export interface SessionInfo {
     sessionId: string;
     title: string;
     cwd?: string;
+    /** Git branch the session was working on (when the backend records it). Used to group sessions by task/feature. */
+    gitBranch?: string;
+    /** Original/root conversation id (claude-mem originSessionId). Sessions sharing it are the SAME logical conversation (continuations / re-runs). */
+    lineageId?: string;
     updatedAt?: Date;
     /** Path to the stored transcript, when the backend keeps one. */
     transcriptPath?: string;
