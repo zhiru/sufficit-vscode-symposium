@@ -98,7 +98,18 @@ export class CodexAdapter implements AgentAdapter {
             if (!line.trim()) {
                 continue;
             }
-            let entry: any;
+            interface CodexEntry {
+                type: string;
+                payload?: {
+                    type: string;
+                    role?: string;
+                    content?: Array<{
+                        type: string;
+                        text?: string;
+                    }>;
+                };
+            }
+            let entry: CodexEntry;
             try {
                 entry = JSON.parse(line);
             } catch {
@@ -112,8 +123,8 @@ export class CodexAdapter implements AgentAdapter {
                 continue; // skip developer/system scaffolding
             }
             const text = (entry.payload.content ?? [])
-                .filter((c: any) => c.type === "input_text" || c.type === "output_text" || c.type === "text")
-                .map((c: any) => c.text)
+                .filter((c: { type: string }) => c.type === "input_text" || c.type === "output_text" || c.type === "text")
+                .map((c: { text?: string }) => c.text)
                 .join("")
                 .trim();
             // Skip the large injected scaffolding messages (instructions, skills, etc.).
@@ -156,8 +167,8 @@ export class CodexAdapter implements AgentAdapter {
                 headers: { authorization: `Bearer ${apiKey}` },
             });
             if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
-            const json: any = await res.json();
-            const raw: any[] = json?.data ?? json?.models ?? [];
+            const json = await res.json() as { data?: unknown[]; models?: unknown[] };
+            const raw = json?.data ?? json?.models ?? [];
             const models: string[] = [];
             const labels: Record<string, string> = {};
             for (const m of raw) {

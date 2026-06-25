@@ -8,7 +8,7 @@ import type { ToolCompressor, CompressionLevel } from '../ToolRequestCompressor'
 export const memorySaveCompressor: ToolCompressor = {
     toolName: 'mcp__Sufficit_AI__memory_save',
 
-    compress(input: any, level: CompressionLevel): any | null {
+    compress(input: Record<string, unknown>, level: CompressionLevel): Record<string, unknown> | null {
         if (!input || typeof input !== 'object') {
             return input;
         }

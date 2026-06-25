@@ -102,7 +102,7 @@ export class CopilotSession extends EventEmitter implements AgentSession {
         if (!line.trim()) {
             return;
         }
-        let event: any;
+        let event: { type: string; [key: string]: unknown };
         try {
             event = JSON.parse(line);
         } catch {

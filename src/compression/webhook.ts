@@ -114,7 +114,7 @@ export class TokenBudgetCompressionStrategy implements CompressionStrategy {
 /**
  * Factory para criar estratégias de compressão baseadas no tipo.
  */
-export function createCompressionStrategy(strategyType: CompressionStrategyType, params?: any): CompressionStrategy {
+export function createCompressionStrategy(strategyType: CompressionStrategyType, params?: CompressionStrategyParams): CompressionStrategy {
     switch (strategyType) {
         case "none":
             return new NoneCompressionStrategy();
@@ -135,7 +135,7 @@ export function createCompressionStrategy(strategyType: CompressionStrategyType,
 export function compressMessages(
     messages: ChatMessage[],
     strategyType: CompressionStrategyType,
-    params?: any
+    params?: CompressionStrategyParams
 ): ChatMessage[] {
     const strategy = createCompressionStrategy(strategyType, params);
     return strategy.compress(messages);

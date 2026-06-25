@@ -125,8 +125,8 @@ export class ClaudeAdapter implements AgentAdapter {
                 },
             });
             if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
-            const json: any = await res.json();
-            const raw: any[] = json?.data ?? [];
+            const json = await res.json() as { data?: unknown[] };
+            const raw = json?.data ?? [];
             const models: string[] = [];
             const labels: Record<string, string> = {};
             for (const m of raw) {
@@ -143,8 +143,8 @@ export class ClaudeAdapter implements AgentAdapter {
                 const configured = cfg.model;
                 return { models: [...new Set([...(configured ? [configured] : []), ...models])], labels };
             }
-        } catch (err: any) {
-            cfg.log?.(`[claude] model refresh failed: ${err?.message ?? err}`);
+        } catch (err: unknown) {
+            cfg.log?.(`[claude] model refresh failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         return { models: this.models(), labels: { ...CLAUDE_FALLBACK_LABELS, ...(cached?.labels ?? {}) } };
     }

@@ -289,8 +289,8 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         }
         const res = await fetch(url, { headers });
         if (!res.ok) { return; }
-        const json: any = await res.json();
-        const raw: any[] = json?.data ?? json?.models ?? [];
+        const json = await res.json() as { data?: unknown[]; models?: unknown[] };
+        const raw = json?.data ?? json?.models ?? [];
         const list: string[] = [];
         const labels: Record<string, string> = {};
         const context: Record<string, number> = {};
@@ -380,7 +380,8 @@ export class OpenAISession extends EventEmitter implements AgentSession {
     private shellExecutionMode(): ShellExecutionMode {
         // Per-conversation choice from the composer wins over static config,
         // so the user can flip silent/inline/terminal without changing settings.
-        const v = String(this.options.execDisplay ?? (this.cfg as any).shellExecution ?? "silent");
+        const cfg = this.cfg as { shellExecution?: string };
+        const v = String(this.options.execDisplay ?? cfg.shellExecution ?? "silent");
         return v === "inline" || v === "terminal" ? v : "silent";
     }
 

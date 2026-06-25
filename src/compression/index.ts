@@ -44,5 +44,5 @@ export async function compressionWebhook(
 ): Promise<unknown[]> {
     // Importar os tipos de mensagem do OpenAI
     const { compressMessages: compress } = await import("./webhook");
-    return compress(messages as any, presetId as any, maxTokens);
+    return compress(messages as unknown[], presetId as string, maxTokens);
 }

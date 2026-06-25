@@ -43,7 +43,20 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
     if (!line.trim()) {
         return [];
     }
-    let entry: any;
+    interface TranscriptEntry {
+        isMeta?: boolean;
+        type: "user" | "assistant";
+        message?: {
+            content?: string | Array<{
+                type: "text" | "thinking" | "tool_use";
+                text?: string;
+                thinking?: string;
+                name?: string;
+                input?: unknown;
+            }>;
+        };
+    }
+    let entry: TranscriptEntry;
     try {
         entry = JSON.parse(line);
     } catch {
@@ -129,7 +142,7 @@ export async function readSessionMeta(file: string): Promise<{ title?: string; c
                 if (typeof c === "string" && c.trim() && !c.startsWith("<")) {
                     title = c.slice(0, 80);
                 } else if (Array.isArray(c)) {
-                    const text = c.find((b: any) => b.type === "text")?.text;
+                    const text = c.find((b: { type: string; text?: string }) => b.type === "text")?.text;
                     if (text) {
                         title = String(text).slice(0, 80);
                     }

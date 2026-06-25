@@ -15,7 +15,7 @@ export type ContentPart =
 
 export interface Message {
     role: "system" | "developer" | "user" | "assistant" | "tool";
-    content: string | null | ContentPart[] | Array<{ type: string; [key: string]: any }>;
+    content: string | null | ContentPart[] | Array<Record<string, unknown>>;
     tool_calls?: ToolCall[];
     tool_call_id?: string;
     name?: string;

@@ -179,8 +179,8 @@ export class OpenAIAdapter implements AgentAdapter {
         }
         const res = await fetch(url, { headers });
         if (!res.ok) { return; }
-        const json: any = await res.json();
-        const raw: any[] = json?.data ?? json?.models ?? [];
+        const json = await res.json() as { data?: unknown[]; models?: unknown[] };
+        const raw = json?.data ?? json?.models ?? [];
         const list: string[] = [];
         const labels: Record<string, string> = {};
         const context: Record<string, number> = {};

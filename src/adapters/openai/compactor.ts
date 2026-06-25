@@ -123,7 +123,7 @@ export class Compactor {
                 : { model: this.d.model(), messages: reqMessages, stream: false };
             const res = await fetch(url, { method: "POST", headers: this.d.headers(loginToken), body: JSON.stringify(body) });
             if (!res.ok) { return ""; }
-            const json: any = await res.json();
+            const json = await res.json() as { output_text?: string; output?: Array<{ text?: string }> };
             if (responses) {
                 if (typeof json.output_text === "string" && json.output_text.trim()) { return json.output_text.trim(); }
                 const parts: string[] = [];

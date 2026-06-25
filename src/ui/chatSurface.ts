@@ -127,7 +127,8 @@ export class ChatSurface {
     }
 
     private post(message: unknown): void {
-        symposiumLog(`[surface] -> webview: ${(message as any)?.type}${this.ready ? "" : " (queued)"}`);
+        const msg = message as Record<string, unknown> | null;
+        symposiumLog(`[surface] -> webview: ${msg?.type ?? ""}${this.ready ? "" : " (queued)"}`);
         if (this.ready) {
             void this.webview.postMessage(message);
         } else {

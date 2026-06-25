@@ -4,7 +4,7 @@ export type CompressionLevel = 'none' | 'low' | 'medium' | 'high';
 
 export interface ToolCompressor {
     toolName: string;
-    compress(input: any, level: CompressionLevel): any | null;
+    compress(input: Record<string, unknown>, level: CompressionLevel): Record<string, unknown> | null;
 }
 
 /**
@@ -41,9 +41,9 @@ export class ToolRequestCompressor {
                             return call;
                         }
 
-                        let parsedArgs: any;
+                        let parsedArgs: Record<string, unknown>;
                         try {
-                            parsedArgs = JSON.parse(call.function.arguments);
+                            parsedArgs = JSON.parse(call.function.arguments) as Record<string, unknown>;
                         } catch {
                             return call;
                         }
@@ -82,12 +82,13 @@ export class ToolRequestCompressor {
                         return block;
                     }
 
-                    const compressor = this.compressors.get((block as any).name);
+                    const toolBlock = block as { type: string; name: string; input: Record<string, unknown> };
+                    const compressor = this.compressors.get(toolBlock.name);
                     if (!compressor) {
                         return block;
                     }
 
-                    const compressed = compressor.compress((block as any).input, level);
+                    const compressed = compressor.compress(toolBlock.input, level);
 
                     // null = remove block entirely
                     if (compressed === null) {

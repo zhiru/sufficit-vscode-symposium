@@ -165,7 +165,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
         if (!line.trim()) {
             return;
         }
-        let event: any;
+        let event: { type: string; [key: string]: unknown };
         try {
             event = JSON.parse(line);
         } catch {
@@ -265,7 +265,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
     send(text: string, images?: string[]): void {
         this.turnActive = true;
         const child = this.ensureStarted();
-        const content: any[] = [];
+        const content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
         for (const img of images ?? []) {
             const block = imageBlock(img);
             if (block) { content.push(block); }
@@ -289,7 +289,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
 }
 
 /** Reads an image file into an Anthropic base64 image content block. */
-function imageBlock(file: string): any | undefined {
+function imageBlock(file: string): { type: string; source: { type: string; media_type: string; data: string } } | undefined {
     const ext = (file.split(".").pop() || "").toLowerCase();
     const media = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
         : ext === "gif" ? "image/gif" : ext === "webp" ? "image/webp" : ext === "png" ? "image/png" : "";

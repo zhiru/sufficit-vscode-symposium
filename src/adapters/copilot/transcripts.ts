@@ -52,7 +52,7 @@ function chatSessionTitle(file: string): string | undefined {
         const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
         for (const line of lines) {
             if (!line.trim()) { continue; }
-            let j: any;
+            let j: { kind: number; v?: { inputText?: string; inputState?: { inputText?: string } } };
             try { j = JSON.parse(line); } catch { continue; }
             // kind 0 = session snapshot: inputState.inputText may or may not be set.
             if (j && j.kind === 0 && j.v) {
@@ -122,7 +122,7 @@ function transcriptSummary(file: string): SessionInfo | undefined {
         const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
         for (const line of lines) {
             if (!line.trim()) { continue; }
-            let ev: any;
+            let ev: { timestamp?: string; type: string; data?: unknown };
             try { ev = JSON.parse(line); } catch { continue; }
             const ts = parseTimestamp(ev.timestamp);
             if (ts && ts > updated) { updated = ts; }
@@ -178,7 +178,7 @@ export function transcriptHistory(file: string): HistoryMessage[] {
     try {
         for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
             if (!line.trim()) { continue; }
-            let ev: any;
+            let ev: { timestamp?: string; type: string; data?: { content?: string } };
             try { ev = JSON.parse(line); } catch { continue; }
             const ts = parseTimestamp(ev.timestamp);
             if (ev.type === "user.message") {

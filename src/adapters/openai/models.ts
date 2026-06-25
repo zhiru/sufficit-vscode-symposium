@@ -33,7 +33,7 @@ export function setDiscovered(
 /** Context window (tokens) a /models entry advertises, across common shapes. */
 export function modelContextLength(m: unknown): number | undefined {
     if (!m || typeof m !== "object") { return undefined; }
-    const o = m as Record<string, any>;
+    const o = m as Record<string, unknown>;
     const n = Number(
         o.context_length ?? o.context_window ?? o.max_context_window_tokens ??
         o.max_context_length ?? o.max_input_tokens ?? o.context?.total ??

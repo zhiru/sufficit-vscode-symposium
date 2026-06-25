@@ -262,7 +262,7 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 if (!ctx.sessionId) { return JSON.stringify({ error: "no current session" }); }
                 if (!hub.configured()) { return JSON.stringify({ error: "memory hub not configured" }); }
                 const raw = Array.isArray(args.tasks) ? args.tasks : (args.title ? [args.title] : []);
-                const titles = raw.map((t) => (typeof t === "string" ? t : (t && typeof t === "object" ? (t as any).title : ""))).map((s) => String(s ?? "").trim()).filter(Boolean);
+                const titles = raw.map((t) => (typeof t === "string" ? t : (t && typeof t === "object" ? (t as { title?: string }).title : ""))).map((s) => String(s ?? "").trim()).filter(Boolean);
                 if (!titles.length) { return JSON.stringify({ error: "provide tasks: [\"step 1\", \"step 2\", …]" }); }
                 const userRequested = args.user_requested === true;
                 const creatorTag = userRequested ? "creator:user" : "creator:agent";
