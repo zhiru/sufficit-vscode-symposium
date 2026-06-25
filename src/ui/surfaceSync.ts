@@ -149,11 +149,12 @@ export class SurfaceSync {
     }
 
     /** Pushes the Sufficit account (or null) for the sessions-pane footer. */
-    async pushAccount(): Promise<void> {
+    pushAccount(): void {
         const account = this.d.getAccount();
         if (!account) { return; }
-        const profile = await account.get().catch(() => undefined);
-        this.d.setLoggedIn(!!profile);
-        this.d.post({ type: "account", profile: profile ?? null });
+        void account.get().then((profile) => {
+            this.d.setLoggedIn(!!profile);
+            this.d.post({ type: "account", profile: profile ?? null });
+        }).catch(() => undefined);
     }
 }
