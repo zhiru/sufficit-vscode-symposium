@@ -45,7 +45,7 @@ export class OpenAIAdapter implements AgentAdapter {
         return { ok: true, version: cfg.baseUrl };
     }
 
-    async listSessions(): Promise<SessionInfo[]> {
+    listSessions(): Promise<SessionInfo[]> {
         const dir = storeDir(this.backend);
         let files: string[] = [];
         try { files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")); } catch { /* store dir may not exist yet */ }
@@ -77,15 +77,15 @@ export class OpenAIAdapter implements AgentAdapter {
         return out;
     }
 
-    async history(info: SessionInfo): Promise<HistoryMessage[]> {
+    history(info: SessionInfo): Promise<HistoryMessage[]> {
         // Compacted sessions: the store holds only the summarized model context.
         // The lossless human transcript lives in the ledger — show that so the
         // chat still mirrors the full conversation (the model sees the summary).
         if (ledger.hasLedger(info.sessionId) && ledgerWasCompacted(info.sessionId)) {
-            return historyFromLedger(info.sessionId);
+            return Promise.resolve(historyFromLedger(info.sessionId));
         }
         const s = readStored(this.backend, info.sessionId);
-        if (!s) { return []; }
+        if (!s) { return Promise.resolve([]); }
         const labels = getDiscoveredLabels(this.getConfig().baseUrl) ?? {};
         // Pair each tool result back to the call that produced it.
         const results = new Map<string, string>();
@@ -123,10 +123,10 @@ export class OpenAIAdapter implements AgentAdapter {
                 }
             }
         }
-        return out;
+        return Promise.resolve(out);
     }
 
-    async deleteSession(info: SessionInfo): Promise<void> {
+    deleteSession(info: SessionInfo): Promise<void> {
         try { fs.rmSync(storePath(this.backend, info.sessionId), { force: true }); } catch { /* ignore */ }
         // Also remove the ledger repo so the session isn't left as an orphan
         // (listSessions only scans the store dir, so a ledger-only session is

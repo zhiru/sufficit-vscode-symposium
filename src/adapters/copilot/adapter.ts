@@ -47,7 +47,7 @@ export class CopilotAdapter implements AgentAdapter {
      * those as read/history sessions so Symposium's list matches the native
      * Copilot Chat sessions view (including code-server).
      */
-    async listSessions(): Promise<SessionInfo[]> {
+    listSessions(): Promise<SessionInfo[]> {
         const all = allCopilotSessions();
         const out: SessionInfo[] = [];
         for (const [id, e] of all) {
@@ -59,16 +59,16 @@ export class CopilotAdapter implements AgentAdapter {
                 transcriptPath: e.isTranscript ? copilotTranscriptFiles().find((f) => path.basename(f, ".jsonl") === id) : undefined,
             });
         }
-        return out.sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0));
+        return Promise.resolve(out.sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0)));
     }
 
-    async history(info: SessionInfo): Promise<HistoryMessage[]> {
+    history(info: SessionInfo): Promise<HistoryMessage[]> {
         const file = info.transcriptPath ?? copilotTranscriptFiles().find((p) => path.basename(p, ".jsonl") === info.sessionId);
-        return file ? transcriptHistory(file) : [];
+        return Promise.resolve(file ? transcriptHistory(file) : []);
     }
 
-    async deleteSession(info: SessionInfo): Promise<string[] | void> {
-        return deleteImportedCopilotSession(info);
+    deleteSession(info: SessionInfo): Promise<string[] | void> {
+        return Promise.resolve(deleteImportedCopilotSession(info));
     }
 
     start(options: SessionStartOptions): AgentSession {
