@@ -5,6 +5,7 @@ const TITLES_KEY = "symposium.sessionTitles";
 const ARCHIVED_KEY = "symposium.archivedSessions";
 const PINNED_KEY = "symposium.pinnedSessions";
 const PARENTS_KEY = "symposium.sessionParents";
+const COMPRESSION_KEY = "symposium.sessionCompression";
 
 /** Old keys were `backend:guid`; strip the backend prefix to the bare GUID. */
 function toGuid(key: string): string {
@@ -42,6 +43,8 @@ export class SessionStore {
     // known in-memory while running; this persists it across restarts).
     private parents: Record<string, string>;
 
+    private compressionPresets: Record<string, string>;
+
     constructor(private readonly memento: vscode.Memento) {
         const rawTitles = memento.get<Record<string, string>>(TITLES_KEY, {});
         const rawArchived = memento.get<string[]>(ARCHIVED_KEY, []);
@@ -49,6 +52,7 @@ export class SessionStore {
         this.archived = new Set(migrateList(rawArchived));
         this.pinned = migrateList(memento.get<string[]>(PINNED_KEY, []));
         this.parents = migrateKeys(memento.get<Record<string, string>>(PARENTS_KEY, {}));
+        this.compressionPresets = memento.get<Record<string, string>>(COMPRESSION_KEY, {}) || {};
         // Consolidate legacy `backend:guid` keys to the bare GUID on disk.
         if (Object.keys(rawTitles).some((k) => k.includes(":"))) {
             void memento.update(TITLES_KEY, this.titles);
@@ -138,10 +142,12 @@ export class SessionStore {
         this.archived.delete(this.key(info));
         this.pinned = this.pinned.filter((p) => p !== this.key(info));
         delete this.parents[this.key(info)];
+        delete this.compressionPresets[this.key(info)];
         await this.memento.update(TITLES_KEY, this.titles);
         await this.memento.update(ARCHIVED_KEY, [...this.archived]);
         await this.memento.update(PINNED_KEY, this.pinned);
         await this.memento.update(PARENTS_KEY, this.parents);
+        await this.memento.update(COMPRESSION_KEY, this.compressionPresets);
     }
 
     /** Applies titles, archived + pinned (with order), then filters by showArchived. */
@@ -158,8 +164,24 @@ export class SessionStore {
                     // Restore the persisted parent link so stored subagent
                     // sessions stay nested (live sessions already carry parentId).
                     parentId: this.parents[this.key(s)] ?? s.parentId,
+                    compressionPresetId: this.compressionPresets[this.key(s)],
                 };
             })
             .filter((s) => showArchived || !s.archived);
+    }
+
+    /** Obter o preset de compressão configurado para uma seção. */
+    getCompressionPreset(info: SessionInfo): string | undefined {
+        return this.compressionPresets[this.key(info)];
+    }
+
+    /** Definir o preset de compressão para uma seção. */
+    async setCompressionPreset(info: SessionInfo, presetId: string | undefined): Promise<void> {
+        if (presetId && presetId.trim()) {
+            this.compressionPresets[this.key(info)] = presetId.trim();
+        } else {
+            delete this.compressionPresets[this.key(info)];
+        }
+        await this.memento.update(COMPRESSION_KEY, this.compressionPresets);
     }
 }
