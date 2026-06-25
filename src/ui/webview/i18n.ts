@@ -30,6 +30,14 @@ const EN: Dict = {
     "sessions.scope.imported": "Imported",
     "sessions.scope.top": "Top-level",
     "sessions.scope.child": "Child sessions",
+    "sessions.group.label": "Group by",
+    "sessions.group.time": "Time",
+    "sessions.group.project": "Project",
+    "sessions.group.branch": "Branch",
+    "sessions.group.conversation": "Conversation",
+    "sessions.group.noProject": "(no project)",
+    "sessions.group.noBranch": "(no branch)",
+    "sessions.group.memoryObserver": "Memory observer",
     "backend.openai": "Cloud",
 };
 
@@ -55,6 +63,14 @@ const PT_BR: Dict = {
     "sessions.scope.imported": "Importadas/sem cwd",
     "sessions.scope.top": "Sessões principais",
     "sessions.scope.child": "Sessões filhas",
+    "sessions.group.label": "Agrupar por",
+    "sessions.group.time": "Tempo",
+    "sessions.group.project": "Projeto",
+    "sessions.group.branch": "Branch",
+    "sessions.group.conversation": "Conversa",
+    "sessions.group.noProject": "(sem projeto)",
+    "sessions.group.noBranch": "(sem branch)",
+    "sessions.group.memoryObserver": "Observador de memória",
     "backend.openai": "Nuvem",
 };
 

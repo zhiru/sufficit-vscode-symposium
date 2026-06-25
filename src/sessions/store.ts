@@ -4,6 +4,7 @@ import { SessionInfo } from "../adapters/types";
 const TITLES_KEY = "symposium.sessionTitles";
 const ARCHIVED_KEY = "symposium.archivedSessions";
 const PINNED_KEY = "symposium.pinnedSessions";
+const PARENTS_KEY = "symposium.sessionParents";
 
 /** Old keys were `backend:guid`; strip the backend prefix to the bare GUID. */
 function toGuid(key: string): string {
@@ -36,6 +37,10 @@ export class SessionStore {
     private archived: Set<string>;
     // Ordered list of pinned session ids (index = display order at the top).
     private pinned: string[];
+    // sessionId → parent (main) sessionId, so subagent sessions stay nested
+    // under their parent even after the live session ends (parentId is only
+    // known in-memory while running; this persists it across restarts).
+    private parents: Record<string, string>;
 
     constructor(private readonly memento: vscode.Memento) {
         const rawTitles = memento.get<Record<string, string>>(TITLES_KEY, {});
@@ -43,6 +48,7 @@ export class SessionStore {
         this.titles = migrateKeys(rawTitles);
         this.archived = new Set(migrateList(rawArchived));
         this.pinned = migrateList(memento.get<string[]>(PINNED_KEY, []));
+        this.parents = migrateKeys(memento.get<Record<string, string>>(PARENTS_KEY, {}));
         // Consolidate legacy `backend:guid` keys to the bare GUID on disk.
         if (Object.keys(rawTitles).some((k) => k.includes(":"))) {
             void memento.update(TITLES_KEY, this.titles);
@@ -113,14 +119,29 @@ export class SessionStore {
         await this.memento.update(PINNED_KEY, this.pinned);
     }
 
+    /**
+     * Remembers a session's parent (subagent → main conversation), so the
+     * subagent stays nested under its parent in the tree even after the live
+     * session ends. Idempotent; only writes when the value changes.
+     */
+    setParent(sessionId: string, parentId: string | undefined): void {
+        const id = toGuid(sessionId);
+        if (!parentId) { return; }
+        if (this.parents[id] === parentId) { return; }
+        this.parents[id] = parentId;
+        void this.memento.update(PARENTS_KEY, this.parents);
+    }
+
     /** Drops all stored metadata for a session (used after permanent delete). */
     async forget(info: SessionInfo): Promise<void> {
         delete this.titles[this.key(info)];
         this.archived.delete(this.key(info));
         this.pinned = this.pinned.filter((p) => p !== this.key(info));
+        delete this.parents[this.key(info)];
         await this.memento.update(TITLES_KEY, this.titles);
         await this.memento.update(ARCHIVED_KEY, [...this.archived]);
         await this.memento.update(PINNED_KEY, this.pinned);
+        await this.memento.update(PARENTS_KEY, this.parents);
     }
 
     /** Applies titles, archived + pinned (with order), then filters by showArchived. */
@@ -134,6 +155,9 @@ export class SessionStore {
                     archived: this.isArchived(s),
                     pinned: pinIndex >= 0,
                     pinIndex: pinIndex >= 0 ? pinIndex : undefined,
+                    // Restore the persisted parent link so stored subagent
+                    // sessions stay nested (live sessions already carry parentId).
+                    parentId: this.parents[this.key(s)] ?? s.parentId,
                 };
             })
             .filter((s) => showArchived || !s.archived);

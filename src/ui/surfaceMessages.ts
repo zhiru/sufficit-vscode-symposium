@@ -305,9 +305,35 @@ export class SurfaceMessages {
                         pinDown: "symposium.pinDown",
                         delete: "symposium.deleteSession",
                     }[message.action as string];
-                    if (command) {
-                        await vscode.commands.executeCommand(command, info);
+                    if (!command) {
+                        return;
                     }
+                    // Archive / unarchive / delete cascade across the whole
+                    // conversation lineage — a conversation (sessions sharing a
+                    // lineageId) is atomic, so the action hits all of its sessions.
+                    if (message.action === "archive" || message.action === "unarchive" || message.action === "delete") {
+                        const lineageKey = info.lineageId || info.sessionId;
+                        const targets = sessions.filter((s) => (s.lineageId || s.sessionId) === lineageKey);
+                        if (message.action === "delete" && targets.length > 1) {
+                            const confirm = await vscode.window.showWarningMessage(
+                                `Permanently delete this conversation and all ${targets.length} of its sessions? Every transcript is scrubbed from disk and it cannot be undone.`,
+                                { modal: true },
+                                "Delete all",
+                            );
+                            if (confirm !== "Delete all") {
+                                return;
+                            }
+                            for (const target of targets) {
+                                await vscode.commands.executeCommand("symposium.deleteSession", target, { skipConfirm: true });
+                            }
+                            return;
+                        }
+                        for (const target of targets) {
+                            await vscode.commands.executeCommand(command, target);
+                        }
+                        return;
+                    }
+                    await vscode.commands.executeCommand(command, info);
                     return;
                 }
                 case "session-list-backends": {

@@ -1,7 +1,7 @@
 // Sessions list + account footer rendering.
 import { vscode, saved, saveState } from "./vscode";
 import { sessionsList, root, ctxMenu, sessionFilterBtn } from "./dom";
-import { sessions, activeSessionId, showArchived, sessionSearchTerm, setActiveSessionId, sessionBackendFilter, sessionScopeFilter, sessionSort, sessionStatusFilter, setSessionBackendFilter, setSessionScopeFilter, setSessionSort, setSessionStatusFilter } from "./state";
+import { sessions, activeSessionId, showArchived, sessionSearchTerm, sessionGroupBy, setSessionGroupBy, setActiveSessionId, sessionBackendFilter, sessionScopeFilter, sessionSort, sessionStatusFilter, setSessionBackendFilter, setSessionScopeFilter, setSessionSort, setSessionStatusFilter } from "./state";
 import { setLoading } from "./status";
 import { showCtx } from "./menus";
 import { svgIcon } from "./icons";
@@ -25,6 +25,7 @@ function persistSessionFilters() {
     saveState({
         sessionFilters: {
             sort: sessionSort,
+            groupBy: sessionGroupBy,
             backends: [...sessionBackendFilter],
             statuses: [...sessionStatusFilter],
             scopes: [...sessionScopeFilter],
@@ -125,6 +126,13 @@ export function openSessionsFilterMenu(anchorEl: HTMLElement) {
     };
     ctxMenu.appendChild(head);
 
+    appendFilterSection(t("sessions.group.label"), [
+        { label: t("sessions.group.conversation"), active: sessionGroupBy === "conversation", onToggle: () => { setSessionGroupBy("conversation"); persistSessionFilters(); renderSessions(); } },
+        { label: t("sessions.group.time"), active: sessionGroupBy === "time", onToggle: () => { setSessionGroupBy("time"); persistSessionFilters(); renderSessions(); } },
+        { label: t("sessions.group.project"), active: sessionGroupBy === "project", onToggle: () => { setSessionGroupBy("project"); persistSessionFilters(); renderSessions(); } },
+        { label: t("sessions.group.branch"), active: sessionGroupBy === "branch", onToggle: () => { setSessionGroupBy("branch"); persistSessionFilters(); renderSessions(); } },
+    ]);
+
     appendFilterSection(t("sessions.filter.sort"), [
         { label: t("sessions.sort.newest"), active: sessionSort === "updated-desc", onToggle: () => { setSessionSort("updated-desc"); persistSessionFilters(); renderSessions(); } },
         { label: t("sessions.sort.oldest"), active: sessionSort === "updated-asc", onToggle: () => { setSessionSort("updated-asc"); persistSessionFilters(); renderSessions(); } },
@@ -175,6 +183,37 @@ export function groupHeader(label, count) {
     const gl = document.createElement("span"); gl.textContent = label;
     const gc = document.createElement("span"); gc.className = "gcount"; gc.textContent = String(count);
     gh.appendChild(gl); gh.appendChild(gc);
+    return gh;
+}
+
+// Project/branch groups (accordion): collapsed by default — only groups the
+// user explicitly expanded are open.
+const expandedGroups = new Set(saved.expandedSessionGroups || []);
+function toggleGroup(key) {
+    if (expandedGroups.has(key)) { expandedGroups.delete(key); } else { expandedGroups.add(key); }
+    saveState({ expandedSessionGroups: [...expandedGroups] });
+    renderSessions();
+}
+/** Friendly name for a cwd: the claude-mem observer dir is special-cased, else the last path segment. */
+function projectName(cwd) {
+    if (!cwd) { return t("sessions.group.noProject"); }
+    if (String(cwd).indexOf(".claude-mem") >= 0) { return t("sessions.group.memoryObserver"); }
+    const parts = String(cwd).replace(/[\\/]+$/, "").split(/[\\/]/);
+    return parts[parts.length - 1] || String(cwd);
+}
+/** Collapsible group header (caret + label + count) for project/branch grouping. */
+function collapsibleGroupHeader(key, label, count, expanded) {
+    const gh = document.createElement("div");
+    gh.className = "groupHeader collapsible" + (expanded ? " expanded" : "");
+    const cv = svgIcon("chevron");
+    cv.classList.add("groupCaret");
+    cv.style.transform = expanded ? "rotate(0deg)" : "rotate(-90deg)";
+    cv.style.transition = "transform 150ms ease";
+    gh.appendChild(cv);
+    const gl = document.createElement("span"); gl.className = "glabel"; gl.textContent = label; gl.title = label;
+    const gc = document.createElement("span"); gc.className = "gcount"; gc.textContent = String(count);
+    gh.appendChild(gl); gh.appendChild(gc);
+    gh.onclick = () => toggleGroup(key);
     return gh;
 }
 export function renderAccount(profile) {
@@ -245,15 +284,61 @@ export function renderSessions() {
         sessionsList.appendChild(groupHeader("Pinned", pinned.length));
         for (const s of pinned) { appendTree(s, 0); }
     }
-    let lastBucket = null;
-    for (const s of rest) {
-        const bk = bucket(s.updatedAt);
-        if (bk !== lastBucket) {
-            lastBucket = bk;
-            const count = rest.filter((x) => bucket(x.updatedAt) === bk).length;
-            sessionsList.appendChild(groupHeader(bk, count));
+    if (sessionGroupBy === "time") {
+        let lastBucket = null;
+        for (const s of rest) {
+            const bk = bucket(s.updatedAt);
+            if (bk !== lastBucket) {
+                lastBucket = bk;
+                const count = rest.filter((x) => bucket(x.updatedAt) === bk).length;
+                sessionsList.appendChild(groupHeader(bk, count));
+            }
+            appendTree(s, 0);
         }
-        appendTree(s, 0);
+    } else if (sessionGroupBy === "conversation") {
+        // Conversation lineage: ONE logical conversation = one entry (the latest
+        // session as head), with its older sessions nested below in descending
+        // order (accordion, collapsed by default). Sessions sharing a lineageId
+        // (claude-mem originSessionId) are the same conversation; the rest are
+        // their own single-session lineage.
+        const lineageOf = (s) => s.lineageId || s.sessionId;
+        const lin = new Map();
+        for (const s of rest) {
+            const k = lineageOf(s);
+            if (!lin.has(k)) { lin.set(k, []); }
+            lin.get(k).push(s);
+        }
+        const byRecent = (a, b) => (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) - (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
+        const lineages = [...lin.values()].map((arr) => [...arr].sort(byRecent));
+        lineages.sort((a, b) => byRecent(a[0], b[0]));
+        for (const arr of lineages) {
+            const head = arr[0];
+            const older = arr.slice(1);
+            sessionsList.appendChild(renderSessionItem(head, 0, older.length));
+            if (older.length && expandedParents.has(head.sessionId)) {
+                for (const o of older) { sessionsList.appendChild(renderSessionItem(o, 1, 0)); }
+            }
+        }
+    } else {
+        // Group by project (cwd) or git branch — collapsible accordion, closed by default.
+        const keyOf = (s) => sessionGroupBy === "branch" ? (s.gitBranch || "__nobranch__") : (s.cwd || "__noproject__");
+        const labelOf = (s) => sessionGroupBy === "branch" ? (s.gitBranch || t("sessions.group.noBranch")) : projectName(s.cwd);
+        const groups = new Map();
+        for (const s of rest) {
+            const k = keyOf(s);
+            if (!groups.has(k)) { groups.set(k, { label: labelOf(s), items: [], recent: 0 }); }
+            const g = groups.get(k);
+            g.items.push(s);
+            const ts = s.updatedAt ? new Date(s.updatedAt).getTime() : 0;
+            if (ts > g.recent) { g.recent = ts; }
+        }
+        const keys = [...groups.keys()].sort((a, b) => groups.get(b).recent - groups.get(a).recent);
+        for (const k of keys) {
+            const g = groups.get(k);
+            const expanded = expandedGroups.has(k);
+            sessionsList.appendChild(collapsibleGroupHeader(k, g.label, g.items.length, expanded));
+            if (expanded) { for (const s of g.items) { appendTree(s, 0); } }
+        }
     }
 }
 export function dropPinnedOn(targetId) {

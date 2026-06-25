@@ -80,7 +80,7 @@ export function registerSessionCommands(ctx: CommandContext): void {
             refreshAll();
         }),
 
-        vscode.commands.registerCommand("symposium.deleteSession", async (item: { info?: SessionInfo } | SessionInfo) => {
+        vscode.commands.registerCommand("symposium.deleteSession", async (item: { info?: SessionInfo } | SessionInfo, opts?: { skipConfirm?: boolean }) => {
             const info = infoOf(item);
             const adapter = adapterByBackend.get(info.backend);
             if (!adapter?.deleteSession) {
@@ -94,15 +94,17 @@ export function registerSessionCommands(ctx: CommandContext): void {
             // instant feedback that the click registered. Reverted if cancelled.
             deleting.add(info.sessionId);
             refreshAll();
-            const confirm = await vscode.window.showWarningMessage(
-                `Permanently delete "${info.title}"?\n\nThis scrubs the transcript and all history/index entries for this session (${info.sessionId}) from the ${info.backend} CLI on disk. It cannot be undone.`,
-                { modal: true },
-                "Delete permanently",
-            );
-            if (confirm !== "Delete permanently") {
-                deleting.delete(info.sessionId);
-                refreshAll();
-                return;
+            if (!opts?.skipConfirm) {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Permanently delete "${info.title}"?\n\nThis scrubs the transcript and all history/index entries for this session (${info.sessionId}) from the ${info.backend} CLI on disk. It cannot be undone.`,
+                    { modal: true },
+                    "Delete permanently",
+                );
+                if (confirm !== "Delete permanently") {
+                    deleting.delete(info.sessionId);
+                    refreshAll();
+                    return;
+                }
             }
             runtime.disposeBySessionId(info.sessionId); // stop it if running
             // Close the conversation pane now if it's showing this session.
