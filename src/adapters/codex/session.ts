@@ -145,13 +145,15 @@ export class CodexSession extends EventEmitter implements AgentSession {
                 this.emitUsage(event);
                 this.emit("event", { kind: "turn-end" });
                 break;
-            case "turn.failed":
+            case "turn.failed": {
                 this.reportedError = true;
-                this.emit("event", { kind: "error", message: event.error?.message ?? "codex turn failed" });
+                const error = typeof event.error === "object" && event.error !== null ? event.error as Record<string, unknown> : {};
+                this.emit("event", { kind: "error", message: "message" in error && typeof error.message === "string" ? error.message : "codex turn failed" });
                 this.emit("event", { kind: "turn-end" });
                 break;
+            }
             case "error": {
-                const message = event.message ?? "codex error";
+                const message = typeof event.message === "string" ? event.message : "codex error";
                 // "Reconnecting... N/5" are transient retry notices, not failures;
                 // the terminal error (or turn.failed) is surfaced separately.
                 if (/^Reconnecting\.\.\./.test(message)) {

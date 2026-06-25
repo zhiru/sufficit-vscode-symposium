@@ -94,7 +94,7 @@ export async function loadSlashCommands(root: string): Promise<SlashCommand[]> {
                 cmds.push({
                     name: meta.name,
                     description: meta.description ?? `Skill from ${entry.name}`,
-                    file,
+                    kind: "skill",
                 });
             }
         }

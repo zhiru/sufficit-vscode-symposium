@@ -295,10 +295,18 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         const labels: Record<string, string> = {};
         const context: Record<string, number> = {};
         for (const m of raw) {
-            const id = typeof m === "string" ? m : m?.id ?? m?.name;
-            if (typeof id !== "string") { continue; }
+            let id: string;
+            if (typeof m === "string") {
+                id = m;
+            } else if (typeof m === "object" && m !== null) {
+                const obj = m as Record<string, unknown>;
+                id = typeof obj.id === "string" ? obj.id : (typeof obj.name === "string" ? obj.name : "");
+            } else {
+                continue;
+            }
+            if (!id) { continue; }
             list.push(id);
-            const name = typeof m === "object" ? (m?.name ?? m?.title) : undefined;
+            const name = typeof m === "object" ? (typeof (m as Record<string, unknown>).name === "string" ? (m as Record<string, unknown>).name : typeof (m as Record<string, unknown>).title === "string" ? (m as Record<string, unknown>).title : undefined) : undefined;
             if (typeof name === "string" && name && name !== id) { labels[id] = name; }
             const ctx = modelContextLength(m);
             if (ctx) { context[id] = ctx; }

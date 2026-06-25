@@ -28,6 +28,7 @@ export async function readCodexMeta(file: string): Promise<{ id?: string; cwd?: 
         interface CodexEntry {
             type: string;
             payload?: {
+                type?: string;
                 id?: string;
                 cwd?: string;
                 role?: string;

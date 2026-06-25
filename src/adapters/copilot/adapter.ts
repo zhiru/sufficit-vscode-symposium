@@ -154,11 +154,13 @@ export class CopilotAdapter implements AgentAdapter {
     async commands(): Promise<SlashCommand[]> {
         const root = path.join(os.homedir(), ".copilot");
         const pluginSkills = await findNamedDirs(path.join(root, "plugins"), "skills");
-        const discovered = await discoverSlashCommands(
-            [path.join(root, "skills"), ...pluginSkills],
-            [path.join(root, "prompts"), path.join(root, "commands")],
-        );
+        const discovered = await Promise.all([
+            loadSlashCommands(path.join(root, "skills")),
+            loadSlashCommands(path.join(root, "prompts")),
+            loadSlashCommands(path.join(root, "commands")),
+            ...pluginSkills.map((r) => loadSlashCommands(r)),
+        ]);
         const version = (await this.available()).version;
-        return mergeCommands(builtinCommands("copilot", version), discovered);
+        return mergeCommands(builtinCommands("copilot", version), ...discovered);
     }
 }
