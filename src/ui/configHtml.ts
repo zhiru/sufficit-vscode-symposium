@@ -184,6 +184,8 @@ export function renderConfigHtml(lang: string): string {
         const toolbar = '<div class="toolbar"><button id="new-res">' + esc(t("config.btn.new." + kind)) + "</button>"
             + (kind === "agent" ? '<button class="secondary" id="import-agents">' + esc(t("config.btn.importAgents")) + '</button>' : "")
             + (kind === "skill" ? '<button class="secondary" id="import-skills">' + esc(t("config.btn.importSkills")) + '</button><button class="secondary" id="install-skill-sh">' + esc(t("config.btn.installSkillSh")) + '</button>' : "")
+            + (kind === "tool" ? '<button class="secondary" id="import-tools">' + esc(t("config.btn.importTools")) + '</button>' : "")
+            + (kind === "instruction" ? '<button class="secondary" id="import-instructions">' + esc(t("config.btn.importInstructions")) + '</button>' : "")
             + "</div>";
         if (!items.length) {
             return toolbar + '<div class="empty">' + esc(t("config.empty.resources")) + '</div>';
@@ -418,6 +420,10 @@ export function renderConfigHtml(lang: string): string {
         if (ia) { ia.onclick = () => vscode.postMessage({ type: "import-agents" }); }
         const isk = document.getElementById("import-skills");
         if (isk) { isk.onclick = () => vscode.postMessage({ type: "import-skills" }); }
+        const itl = document.getElementById("import-tools");
+        if (itl) { itl.onclick = () => vscode.postMessage({ type: "import-tools" }); }
+        const iin = document.getElementById("import-instructions");
+        if (iin) { iin.onclick = () => vscode.postMessage({ type: "import-instructions" }); }
         const ish = document.getElementById("install-skill-sh");
         if (ish) { ish.onclick = () => vscode.postMessage({ type: "install-skill-sh" }); }
     }

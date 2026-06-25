@@ -106,6 +106,28 @@ export class ConfigPanel {
                 await this.pushState();
                 return;
             }
+            case "import-tools": {
+                const r = api.resources.importTools();
+                void vscode.window.showInformationMessage(
+                    r.created > 0
+                        ? this.tr("msg.import.tools.done", { n: r.created }) + (r.skipped ? this.tr("msg.import.tools.skippedSuffix", { n: r.skipped }) : "")
+                        : (r.skipped > 0
+                            ? this.tr("msg.import.tools.allExisted", { n: r.skipped })
+                            : this.tr("msg.import.tools.none")));
+                await this.pushState();
+                return;
+            }
+            case "import-instructions": {
+                const r = api.resources.importInstructions();
+                void vscode.window.showInformationMessage(
+                    r.created > 0
+                        ? this.tr("msg.import.instructions.done", { n: r.created }) + (r.skipped ? this.tr("msg.import.instructions.skippedSuffix", { n: r.skipped }) : "")
+                        : (r.skipped > 0
+                            ? this.tr("msg.import.instructions.allExisted", { n: r.skipped })
+                            : this.tr("msg.import.instructions.none")));
+                await this.pushState();
+                return;
+            }
             case "import-skills": {
                 const found = api.resources.scanForeignSkills();
                 if (!found.length) {
