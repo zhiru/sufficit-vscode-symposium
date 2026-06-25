@@ -111,11 +111,11 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
         // history keeps the same red styling it had when it happened live.
         const msg = (typeof entry.result === "string" && entry.result.trim())
             ? entry.result.trim()
-            : (entry.subtype ?? "unknown error");
+            : (typeof entry.subtype === "string" ? entry.subtype : "unknown error");
         messages.push({ role: "error", text: msg });
     }
     // Stamp the transcript time so history shows real timestamps on hover.
-    const ts = entry.timestamp ? Date.parse(entry.timestamp) : NaN;
+    const ts = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
     if (!Number.isNaN(ts)) { for (const m of messages) { m.ts = ts; } }
     return messages;
 }

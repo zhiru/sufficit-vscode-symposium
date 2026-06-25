@@ -108,7 +108,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
                 break;
             case "item.started":
             case "item.completed": {
-                const item = typeof event.item === "object" && event.item !== null ? event.item : {};
+                const item = typeof event.item === "object" && event.item !== null ? event.item as Record<string, unknown> : {};
                 const itemType = typeof item.type === "string" ? item.type : (typeof item.item_type === "string" ? item.item_type : undefined);
                 // Codex's plan/todo updates (e.g. update_plan / todo_list).
                 const todos = parseNativeTodos(itemType ?? "", item);
@@ -122,11 +122,11 @@ export class CodexSession extends EventEmitter implements AgentSession {
                     }
                     break;
                 }
-                if (itemType === "agent_message" && item.text) {
+                if (itemType === "agent_message" && typeof item.text === "string") {
                     this.emit("event", { kind: "text", text: item.text });
-                } else if (itemType === "reasoning" && item.text) {
+                } else if (itemType === "reasoning" && typeof item.text === "string") {
                     this.emit("event", { kind: "text", text: item.text });
-                } else if (itemType === "command_execution") {
+                } else if (itemType === "command_execution" && typeof item.command === "string") {
                     this.emit("event", { kind: "tool-end", toolName: "exec", detail: item.command });
                 } else if (itemType === "file_change" || itemType === "mcp_tool_call" || itemType === "web_search") {
                     this.emit("event", { kind: "tool-end", toolName: itemType });
