@@ -45,7 +45,7 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
     }
     interface TranscriptEntry {
         isMeta?: boolean;
-        type: "user" | "assistant";
+        type: "user" | "assistant" | "result";
         message?: {
             content?: string | Array<{
                 type: "text" | "thinking" | "tool_use";
@@ -55,6 +55,10 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
                 input?: unknown;
             }>;
         };
+        is_error?: boolean;
+        result?: unknown;
+        subtype?: unknown;
+        timestamp?: string;
     }
     let entry: TranscriptEntry;
     try {
@@ -73,7 +77,7 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
             if (t) { messages.push({ role: "user", text: t }); }
         } else if (Array.isArray(content)) {
             for (const block of content) {
-                if (block.type === "text" && block.text?.trim()) {
+                if (typeof block === "object" && block !== null && block.type === "text" && typeof block.text === "string") {
                     const t = cleanUserText(block.text);
                     if (t) { messages.push({ role: "user", text: t }); }
                 }
@@ -81,21 +85,24 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
             }
         }
     } else if (entry.type === "assistant") {
-        for (const block of entry.message?.content ?? []) {
-            if (block.type === "thinking" && block.thinking?.trim()) {
-                messages.push({ role: "thinking", text: block.thinking });
-            } else if (block.type === "text" && block.text?.trim()) {
-                messages.push({ role: "assistant", text: block.text });
-            } else if (block.type === "tool_use") {
-                const counts = diffCounts(block.name, block.input);
-                messages.push({
-                    role: "tool", text: block.name, toolName: block.name,
-                    detail: summarizeToolInput(block.input), input: prettyJson(block.input),
-                    added: counts?.added, removed: counts?.removed,
-                    todos: extractTodos(block.name, block.input),
-                    path: toolFilePath(block.input),
-                    diff: editDiff(block.name, block.input),
-                });
+        const assistantContent = entry.message?.content;
+        for (const block of Array.isArray(assistantContent) ? assistantContent : []) {
+            if (typeof block === "object" && block !== null) {
+                if (block.type === "thinking" && typeof block.thinking === "string") {
+                    messages.push({ role: "thinking", text: block.thinking });
+                } else if (block.type === "text" && typeof block.text === "string") {
+                    messages.push({ role: "assistant", text: block.text });
+                } else if (block.type === "tool_use") {
+                    const counts = diffCounts(block.name ?? "", block.input);
+                    messages.push({
+                        role: "tool", text: block.name ?? "", toolName: block.name ?? "",
+                        detail: summarizeToolInput(block.input), input: prettyJson(block.input),
+                        added: counts?.added, removed: counts?.removed,
+                        todos: extractTodos(block.name ?? "", block.input),
+                        path: toolFilePath(block.input),
+                        diff: editDiff(block.name ?? "", block.input),
+                    });
+                }
             }
         }
     } else if (entry.type === "result" && entry.is_error) {

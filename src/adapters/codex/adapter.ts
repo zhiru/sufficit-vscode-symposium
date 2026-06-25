@@ -5,7 +5,7 @@ import * as path from "path";
 import { builtinCommands } from "../builtins";
 import { resolveExecutable } from "../exec";
 import { scrubJsonlLines, scrubSqliteRows } from "../scrub";
-import { discoverSlashCommands, findNamedDirs, mergeCommands } from "../skills";
+import { findNamedDirs, loadSlashCommands, mergeCommands } from "../skills";
 import {
     AgentAdapter,
     AgentSession,
@@ -172,7 +172,8 @@ export class CodexAdapter implements AgentAdapter {
             const models: string[] = [];
             const labels: Record<string, string> = {};
             for (const m of raw) {
-                const id: string = typeof m === "string" ? m : (m?.id ?? "");
+                if (typeof m !== "object" || m === null) { continue; }
+                const id = "id" in m && typeof m.id === "string" ? m.id : "";
                 if (!id) { continue; }
                 // Only include models relevant to Codex (codex/gpt/o-series)
                 if (!/codex|gpt|o\d/i.test(id)) { continue; }
@@ -200,13 +201,13 @@ export class CodexAdapter implements AgentAdapter {
     async commands(): Promise<SlashCommand[]> {
         const root = path.join(os.homedir(), ".codex");
         const pluginSkills = await findNamedDirs(path.join(root, "plugins"), "skills");
-        const discovered = await discoverSlashCommands(
-            // Codex's bundled skills live under skills/.system/<name>/SKILL.md.
-            [path.join(root, "skills"), path.join(root, "skills", ".system"), ...pluginSkills],
-            [path.join(root, "prompts")],
-        );
+        const discovered = await Promise.all([
+            loadSlashCommands(path.join(root, "skills")),
+            loadSlashCommands(path.join(root, "prompts")),
+            ...pluginSkills.map((r) => loadSlashCommands(r)),
+        ]);
         const version = (await this.available()).version;
-        return mergeCommands(builtinCommands("codex", version), discovered);
+        return mergeCommands(builtinCommands("codex", version), ...discovered);
     }
 
     /**

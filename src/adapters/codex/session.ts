@@ -101,24 +101,24 @@ export class CodexSession extends EventEmitter implements AgentSession {
         }
         switch (event.type) {
             case "thread.started":
-                if (event.thread_id && !this.sessionId) {
+                if (typeof event.thread_id === "string" && !this.sessionId) {
                     this.sessionId = event.thread_id;
                     this.emit("event", { kind: "session", sessionId: event.thread_id });
                 }
                 break;
             case "item.started":
             case "item.completed": {
-                const item = event.item ?? {};
-                const itemType = item.type ?? item.item_type;
+                const item = typeof event.item === "object" && event.item !== null ? event.item : {};
+                const itemType = typeof item.type === "string" ? item.type : (typeof item.item_type === "string" ? item.item_type : undefined);
                 // Codex's plan/todo updates (e.g. update_plan / todo_list).
-                const todos = parseNativeTodos(String(itemType ?? ""), item);
+                const todos = parseNativeTodos(itemType ?? "", item);
                 if (todos) {
                     this.emit("event", { kind: "tool-start", toolName: "TodoWrite", detail: "", todos });
                     break;
                 }
                 if (event.type !== "item.completed") {
-                    if (itemType === "command_execution" && item.command) {
-                        this.emit("event", { kind: "tool-start", toolName: "exec", detail: String(item.command).slice(0, 120) });
+                    if (itemType === "command_execution" && typeof item.command === "string") {
+                        this.emit("event", { kind: "tool-start", toolName: "exec", detail: item.command.slice(0, 120) });
                     }
                     break;
                 }
