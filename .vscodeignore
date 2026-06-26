@@ -1,5 +1,7 @@
 src/**
-out/**
+out/test/**
+out/_webview-check.js
+out/**/*.map
 node_modules/**
 .gitignore
 .gitattributes
@@ -7,7 +9,6 @@ tsconfig.json
 tsconfig.webview.json
 ARCHITECTURE.md
 docs/**
-**/*.map
 .vscode/**
 .github/**
 eslint.config.mjs
