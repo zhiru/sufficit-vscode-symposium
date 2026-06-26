@@ -1,10 +1,10 @@
 src/**
-out/test/**
-out/_webview-check.js
+out/**
 node_modules/**
 .gitignore
 .gitattributes
 tsconfig.json
+tsconfig.webview.json
 ARCHITECTURE.md
 docs/**
 **/*.map
@@ -13,3 +13,9 @@ docs/**
 eslint.config.mjs
 .prettierrc.json
 .prettierignore
+*.tsbuildinfo
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+scripts/**
+.mjs-cache/**
