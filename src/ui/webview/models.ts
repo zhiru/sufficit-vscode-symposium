@@ -3,6 +3,7 @@
 import { vscode } from "./vscode";
 import { modelPicker, reasoningPicker } from "./dom";
 import { openChoiceMenu, hideCtx, showToast } from "./menus";
+import { currentBackend, currentBackendName, setPendingSwitchAnchor } from "./state";
 
 export let modelValue = "", reasoningValue = "default";
 export let modelList: any[] = [], reasoningList: any[] = [];
@@ -45,6 +46,7 @@ modelPicker.addEventListener("click", (ev) => {
     // Always offer manual entry so the user is never stuck when remote discovery
     // (GET /models) returned nothing — e.g. not logged in, or gateway 401.
     openChoiceMenu(modelPicker, buildModelMenuOpts(), modelValue, (v: any) => { modelValue = v; setModelLabel(); }, {
+        switchAction: { label: "Switch backend…", detail: currentBackendName || currentBackend || "", onClick: () => { setPendingSwitchAnchor(modelPicker); vscode.postMessage({ type: "list-backends" }); } },
         refreshAction: { label: "Refresh models", detail: "Re-run GET /models", onClick: () => { showToast("Refreshing models…"); vscode.postMessage({ type: "refresh-models" }); } },
         manualEntry: { label: "Type a model…", placeholder: "e.g. gpt-4o, claude-3-5-sonnet", onSubmit: (v: any) => { if (v && v.trim()) { modelValue = v.trim(); setModelLabel(); } } },
     });
