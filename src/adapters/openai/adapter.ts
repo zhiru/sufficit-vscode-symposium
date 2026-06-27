@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import {
     AgentAdapter,
@@ -13,9 +14,7 @@ import { diffCounts, editDiff, prettyJson } from "../parse";
 import * as ledger from "../../ledger";
 import { buildOpenAIModelList } from "../openaiModels";
 import { getCached, setCached, isFresh } from "../modelCache";
-import { scanKind } from "../../config/root";
 import { OpenAIAdapterConfig } from "./types";
-import { scanKind } from "../../config/root";
 import { readStored, storeDir, storePath } from "./store";
 import { contentText } from "./transform";
 import {
@@ -149,12 +148,28 @@ export class OpenAIAdapter implements AgentAdapter {
      *  popover's "Compact Conversation" button (gated on a `compact` command). */
     commands(): Promise<SlashCommand[]> {
         const builtin = [{ name: "compact", description: "Summarize older turns to shrink the model context (full history is preserved)", kind: "builtin" as const }];
+        // Inline scan for skills to avoid tree-shaking in bundled extension
         try {
-            const skills = scanKind("skill").map((s) => ({
-                name: s.name,
-                description: s.description,
-                kind: "skill" as const,
-            }));
+            const skillsDir = path.join(os.homedir(), ".symposium", "repo", "skills");
+            let entries: fs.Dirent[] = [];
+            try {
+                entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+            } catch { return Promise.resolve(builtin); }
+            const skills: SlashCommand[] = [];
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    const skillCard = path.join(skillsDir, entry.name, "skill-card.md");
+                    try {
+                        const content = fs.readFileSync(skillCard, "utf8");
+                        const match = content.match(/^#\s+(\S+)\s+?\n+(.+?)(?:\n---|\n\n|$)/ms);
+                        if (match) {
+                            const name = match[1].replace(/^\/+/, ""); // strip leading slashes
+                            const description = match[2].split("\n")[0].trim();
+                            skills.push({ name, description, kind: "skill" as const });
+                        }
+                    } catch { /* skip invalid skills */ }
+                }
+            }
             return Promise.resolve([...builtin, ...skills]);
         } catch (e) {
             // Fallback to builtin if scanning fails

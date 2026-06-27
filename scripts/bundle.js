@@ -31,7 +31,7 @@ async function build() {
     external: ['vscode'],
     sourcemap: isDev ? 'inline' : false,
     minify: !isDev,
-    treeShaking: true,
+    treeShaking: false,  // Disable tree-shaking to keep scanKind and its dependencies
     logLevel: 'info',
   });
 

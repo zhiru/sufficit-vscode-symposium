@@ -50,7 +50,7 @@ ${chatStyles}
         <div id="chatHeader">
             <button id="listToggle" class="iconBtn" title="Sessions" aria-label="Sessions"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 4h12v1H2V4Zm0 4h12v1H2V8Zm0 4h12v1H2v-1Z"/></svg></button>
             <span id="chatTitle"></span>
-            <button id="switchAgentBtn" class="iconBtn" title="Switch to another model" aria-label="Switch to another model" style="display:none">
+            <button id="switchAgentBtn" class="iconBtn" title="Switch adapter" aria-label="Switch adapter" style="display:none">
                 <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.5 1 6l3.5 3.5V7H10V5H4.5V2.5Zm7 4L15 10l-3.5 3.5V11H6V9h5.5V6.5Z"/></svg>
             </button>
             <button id="copySessionBtn" class="iconBtn" title="Copy session id + title" aria-label="Copy session id and title" style="display:none">

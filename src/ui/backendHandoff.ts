@@ -168,17 +168,17 @@ export class BackendHandoff {
     }
 
     /** Hand off from a stored session to another backend (branching). */
-    async switchFromSession(sessionId: string, backend: string): Promise<void> {
+    async switchFromSession(sessionId: string, sourceBackend: string, targetBackend: string): Promise<void> {
         const sessions = await this.d.listSessions();
-        const info = sessions.find((s) => s.sessionId === sessionId);
+        const info = sessions.find((s) => s.sessionId === sessionId && s.backend === sourceBackend);
         if (!info) { return; }
         const fromName = this.displayName(info.backend);
-        const adapter = this.d.getAdapter(backend);
+        const adapter = this.d.getAdapter(targetBackend);
         if (!adapter) { return; }
         // TODO: read transcript from storage when available
         const transcript = "";
-        this.openDialogueSeeded(backend, this.d.cwdFor(info), transcript, info.title, fromName);
-        this.carry([], transcript, fromName, backend);
+        this.openDialogueSeeded(targetBackend, this.d.cwdFor(info), transcript, info.title, fromName);
+        this.carry([], transcript, fromName, targetBackend);
     }
 
     /** Alias for switchTerminal (used by surfaceMessages). */
@@ -187,7 +187,7 @@ export class BackendHandoff {
     }
 
     /** Alias for switchFromSession (used by surfaceMessages). */
-    forSession(sessionId: string, backend: string, _targetBackend: string): Promise<void> {
-        return this.switchFromSession(sessionId, backend);
+    forSession(sessionId: string, backend: string, targetBackend: string): Promise<void> {
+        return this.switchFromSession(sessionId, backend, targetBackend);
     }
 }

@@ -179,7 +179,7 @@ export function actionsFor(s) {
     if (cli) {
         list.push({ id: "watch", icon: "eye", label: "Watch live (read-only)" });
     }
-    list.push({ id: "switchAgent", icon: "arrow-swap", label: "Switch model →" });
+    list.push({ id: "switchAgent", icon: "arrow-swap", label: "Switch adapter →" });
     if (s.pinned) {
         list.push({ id: "pinUp", icon: "up", label: "Move pin up" });
         list.push({ id: "pinDown", icon: "down", label: "Move pin down" });
@@ -258,4 +258,3 @@ export function showFileMenu(ev, path) {
     ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - w - 4) + "px";
     ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
 }
-

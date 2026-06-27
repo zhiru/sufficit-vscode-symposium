@@ -261,7 +261,7 @@ window.addEventListener("message", ({ data }) => {
             break;
         }
         case "session-backends": {
-            // Reply to "Continue with another agent" from a session's
+            // Reply to "Switch adapter" from a session's
             // right-click menu: show the candidate backends as a submenu at
             // the spot the context menu was, then hand the session off.
             const ctx = pendingSessionSwitch;
@@ -271,7 +271,7 @@ window.addEventListener("message", ({ data }) => {
             ctxMenu.textContent = "";
             const head = document.createElement("div");
             head.className = "menuGroup";
-            head.textContent = "Switch to model…";
+            head.textContent = "Switch to adapter…";
             ctxMenu.appendChild(head);
             for (const b of items) {
                 const mi = document.createElement("div"); mi.className = "mi";

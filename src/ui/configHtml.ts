@@ -175,6 +175,7 @@ export function renderConfigHtml(lang: string): string {
         { id: "skill", label: t("config.tab.skills"), key: "skill" },
         { id: "tool", label: t("config.tab.tools"), key: "tool" },
         { id: "instruction", label: t("config.tab.instructions"), key: "instruction" },
+        { id: "mcpServers", label: t("config.tab.mcpServers") },
         { id: "backends", label: t("config.tab.backends") },
         { id: "prefs", label: t("config.tab.preferences") },
         { id: "compaction", label: t("config.tab.compaction") },
@@ -252,6 +253,35 @@ export function renderConfigHtml(lang: string): string {
                 '<div class="bk-cfg">' + execCtl + modelCtl + "</div>" +
             "</div>";
         }).join("");
+    }
+
+    function mcpServersView() {
+        const servers = state?.mcpServers || [];
+        const serverItems = servers.map(s => {
+            const toolsCount = s.tools?.length || 0;
+            const promptsCount = s.prompts?.length || 0;
+            const resourcesCount = s.resources?.length || 0;
+            const counts = [];
+            if (toolsCount) counts.push(toolsCount + " " + t("config.mcpServers.toolsCount"));
+            if (promptsCount) counts.push(promptsCount + " " + t("config.mcpServers.promptsCount"));
+            if (resourcesCount) counts.push(resourcesCount + " " + t("config.mcpServers.resourcesCount"));
+            const countsStr = counts.join(", ") || "";
+            return '<div class="resource-item">'
+                + '<div class="resource-header">'
+                + '<span class="resource-name">' + esc(s.name) + '</span>'
+                + '<button class="secondary delete-server" data-name="' + esc(s.name) + '">' + esc(t("config.btn.delete")) + '</button>'
+                + '</div>'
+                + (s.description ? '<div class="resource-desc">' + esc(s.description) + '</div>' : '')
+                + (countsStr ? '<div class="resource-meta">' + esc(countsStr) + '</div>' : '')
+                + '</div>';
+        }).join("");
+        const empty = servers.length === 0
+            ? '<div class="empty">' + esc(t("config.mcpServers.noServers")) + '</div>'
+            : "";
+        return '<h2>' + esc(t("config.tab.mcpServers")) + '</h2>'
+            + '<div class="toolbar"><button id="import-mcp-servers">' + esc(t("config.btn.importMcpServers")) + '</button></div>'
+            + '<div class="desc">' + esc(t("config.mcpServers.desc")) + '</div>'
+            + '<div class="resources">' + serverItems + empty + '</div>';
     }
 
     function syncView() {
@@ -450,6 +480,18 @@ export function renderConfigHtml(lang: string): string {
         const main = document.getElementById("content");
         const page = (h) => '<div class="page">' + h + "</div>";
         if (!state) { main.innerHTML = page('<div class="empty">' + esc(t("config.loading")) + '</div>'); return; }
+        if (active === "mcpServers") {
+            main.innerHTML = page(mcpServersView());
+            main.querySelector("#import-mcp-servers")?.addEventListener("click", () => vscode.postMessage({ type: "import-mcp-servers" }));
+            main.querySelectorAll(".delete-server").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    const name = e.currentTarget.getAttribute("data-name");
+                    vscode.postMessage({ type: "delete-mcp-server", payload: { name } });
+                });
+            });
+            renderTabs();
+            return;
+        }
         if (active === "prefs" || active === "compression") {
             main.innerHTML = page(
                 active === "compression" ? compressionView() :

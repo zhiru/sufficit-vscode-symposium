@@ -8,7 +8,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { ensureScaffold, repoDir, sanitize } from "./root";
+import { repoDir, sanitize } from "./root";
 
 /** Location of servers repository */
 export function serversDir(): string {

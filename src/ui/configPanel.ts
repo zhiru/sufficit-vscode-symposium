@@ -5,6 +5,7 @@ import { SufficitAuth } from "../auth/identity";
 import { renderConfigHtml } from "./configHtml";
 import { tr } from "./configI18n";
 import type { CompressionPreset, CompressionStrategyType } from "../compression/types";
+import { listServers, ensureSufficitNativeServer, deleteServer, importServersFromConfig } from "../config/servers";
 
 export interface ConfigPanelDeps {
     api: SymposiumApi;
@@ -73,7 +74,7 @@ export class ConfigPanel {
     }
 
     private async onMessage(message: {
-        type: string; path?: string; kind?: ResourceKind; name?: string; backend?: string; value?: string; key?: string;
+        type: string; path?: string; kind?: ResourceKind; name?: string; backend?: string; value?: string; key?: string; payload?: { name?: string };
     }): Promise<void> {
         const api = this.deps.api;
         switch (message.type) {
@@ -159,6 +160,33 @@ export class ConfigPanel {
                     this.tr("msg.import.skills.done", { n: r.imported }) +
                     (r.skipped ? this.tr("msg.import.skills.skippedSuffix", { n: r.skipped }) : "") +
                     (r.errors.length ? this.tr("msg.import.skills.failedSuffix", { n: r.errors.length, errors: r.errors.join(", ") }) : "") + ".");
+                await this.pushState();
+                return;
+            }
+            case "import-mcp-servers": {
+                const r = importServersFromConfig();
+                void vscode.window.showInformationMessage(
+                    r.serversCreated > 0
+                        ? `${r.serversCreated} ${r.serversCreated === 1 ? "MCP server" : "MCP servers"} imported`
+                        : (r.serversSkipped > 0
+                            ? `${r.serversSkipped} ${r.serversSkipped === 1 ? "server" : "servers"} already exist`
+                            : "No MCP servers found in config files"));
+                await this.pushState();
+                return;
+            }
+            case "delete-mcp-server": {
+                const serverName = message.payload?.name;
+                if (!serverName) { return; }
+                const confirmed = await vscode.window.showWarningMessage(
+                    `Are you sure you want to remove MCP server "${serverName}"?`,
+                    "Delete",
+                    "Cancel"
+                );
+                if (confirmed !== "Delete") { return; }
+                const deleted = deleteServer(serverName);
+                if (deleted) {
+                    void vscode.window.showInformationMessage(`MCP server "${serverName}" deleted`);
+                }
                 await this.pushState();
                 return;
             }
@@ -603,6 +631,15 @@ export class ConfigPanel {
     private async pushState(): Promise<void> {
         const api = this.deps.api;
         const profile = this.deps.auth ? await this.deps.auth.getProfile().catch(() => undefined) : undefined;
+
+        // Ensure Sufficit native MCP server exists when logged in
+        if (profile) {
+            try {
+                ensureSufficitNativeServer();
+            } catch (e) {
+                console.error("Failed to ensure Sufficit native MCP server:", e);
+            }
+        }
         const chat = vscode.workspace.getConfiguration("symposium.chat");
         const root = vscode.workspace.getConfiguration("symposium");
         const { CompressionManager } = await import("../compression");
@@ -610,6 +647,8 @@ export class ConfigPanel {
         const state = {
             root: api.resources.root(),
             resources: api.resources.scan(),
+            // MCP servers (Model Context Protocol)
+            mcpServers: listServers(),
             // A failing backends list (e.g. the gateway rejecting a stale token)
             // must not abort the whole refresh — render the rest of the panel.
             backends: await api.backends.list().catch(() => []),
