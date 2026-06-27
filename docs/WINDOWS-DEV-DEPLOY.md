@@ -4,6 +4,23 @@ Guia para qualquer agente (Claude/Codex/Copilot) instalar e atualizar uma build
 de desenvolvimento do Symposium na instância do **VS Code nativo do Windows**,
 sem derrubar a sessão de chat que roda no host **WSL**.
 
+## ⚠️ Pull Requests: SEMPRE para o upstream (este repo é um fork)
+`origin` aponta para o **fork do usuário** (`zhiru/sufficit-vscode-symposium`).
+O **upstream** é `sufficit/sufficit-vscode-symposium` (parent; branch padrão
+`main`). Quando o usuário pedir "abrir PR" no desenvolvimento local, **abra
+contra o upstream**, não contra o fork:
+
+```bash
+gh pr create --repo sufficit/sufficit-vscode-symposium \
+  --base main --head zhiru:<sua-branch> --title "..." --body-file <arquivo>
+```
+
+- Confirme o fork: `gh repo view zhiru/sufficit-vscode-symposium --json isFork,parent`.
+- Se a branch depende de outra branch local ainda não-mergeada no upstream
+  (estado `diverged`/`behind`), o PR carrega commits extras e pode conflitar —
+  avise o usuário e/ou leve a branch base ao upstream primeiro.
+- Abrir PR só no fork não serve ao usuário (ele contribui para o upstream).
+
 > **Fonte do repo:** `~/projetos/docker/sufficit-vscode-symposium` (disco
 > persistente). **Nunca** trabalhe a partir de `/tmp` — é volátil e some no
 > reboot (já custou um WIP inteiro não-commitado). Mantenha o trabalho
