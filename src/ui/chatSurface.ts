@@ -24,6 +24,11 @@ export interface ChatSurfaceDeps {
         get(): { backend: string; sessionId: string } | undefined;
         set(value: { backend: string; sessionId: string } | undefined): void;
     };
+    /** Remembers the last chosen working directory so it survives restarts. */
+    lastCwd: {
+        get(): string | undefined;
+        set(value: string | undefined): void;
+    };
     /** Sufficit account for the sessions-pane footer (avatar + login/logout). */
     account?: {
         get(): Promise<{ name?: string; email?: string; picture?: string } | undefined>;

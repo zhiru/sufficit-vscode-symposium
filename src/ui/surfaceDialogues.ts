@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as vscode from "vscode";
 import { FollowHandle, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatController } from "./chatController";
@@ -68,7 +69,12 @@ export class SurfaceDialogues {
             void this.d.webview.postMessage({ type: "boot", complete: true });
             return;
         }
-        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+        // Prefer the last directory picked via the footer (survives restart),
+        // falling back to the workspace folder.
+        const saved = this.d.deps.lastCwd.get();
+        const cwd = (saved && fs.existsSync(saved))
+            ? saved
+            : (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd());
         this.openDialogue(backend, { cwd }, "New dialogue");
     }
 
@@ -76,6 +82,7 @@ export class SurfaceDialogues {
     startInDir(cwd: string): void {
         const backend = this.d.deps.adapterByBackend.keys().next().value;
         if (!backend) { return; }
+        this.d.deps.lastCwd.set(cwd);   // persist so restart reopens here
         this.openDialogue(backend, { cwd }, "New dialogue");
     }
 

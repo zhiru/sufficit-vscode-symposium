@@ -77,6 +77,11 @@ export function buildChatSurfaceDeps(args: SurfaceDepsArgs): ChatSurfaceDeps {
             get: () => context.workspaceState.get("symposium.lastActive"),
             set: (value) => void context.workspaceState.update("symposium.lastActive", value),
         },
+        lastCwd: {
+            // Per-workspace: the working directory picked via the footer survives restart.
+            get: () => context.workspaceState.get<string>("symposium.lastCwd"),
+            set: (value) => void context.workspaceState.update("symposium.lastCwd", value),
+        },
         account: {
             get: () => auth.getProfile(),
             onDidChange: auth.onDidChange,

@@ -1187,6 +1187,9 @@
     #send svg { width: 15px; height: 15px; }
     #send #sendIcon { display: inline-flex; }
     #sendCaret svg { width: 12px; height: 12px; }
+    #mic { padding: 0 8px; }
+    #mic svg { width: 15px; height: 15px; }
+    #mic.recording { color: var(--vscode-charts-red, #e26d6d); }
     #ctxMenu .mi .mikbd {
         flex-shrink: 0; opacity: 0.6; font-size: 0.82em; margin-left: 10px;
         font-family: var(--vscode-editor-font-family, monospace);
