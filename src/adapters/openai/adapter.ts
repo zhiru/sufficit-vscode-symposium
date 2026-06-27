@@ -13,6 +13,7 @@ import { diffCounts, editDiff, prettyJson } from "../parse";
 import * as ledger from "../../ledger";
 import { buildOpenAIModelList } from "../openaiModels";
 import { getCached, setCached, isFresh } from "../modelCache";
+import { scanKind } from "../../config/root";
 import { OpenAIAdapterConfig } from "./types";
 import { scanKind } from "../../config/root";
 import { readStored, storeDir, storePath } from "./store";
