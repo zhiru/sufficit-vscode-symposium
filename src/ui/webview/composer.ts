@@ -387,7 +387,8 @@ if (SpeechRecognition) {
         }
     });
 } else {
-    micBtn.style.display = 'none';
+    micBtn.disabled = true;
+    micBtn.title = 'Voice input not supported in this browser';
     console.warn('Web Speech API not supported in this browser');
 }
 input.addEventListener("blur", () => { setTimeout(() => { slash.style.display = "none"; }, 120); });

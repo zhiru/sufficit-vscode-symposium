@@ -1140,8 +1140,8 @@
     }
     #input::placeholder { color: var(--vscode-input-placeholderForeground, rgba(128,128,128,0.7)); }
     /* toolbar: pickers grouped left, send pinned right, uniform controls */
-    #toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 6px 8px; }
-    #toolbar .grow { flex: 1; }
+    #toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 6px 8px; position: relative; }
+    #toolbar .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* one consistent control style for all dropdowns (.ctl) */
     .ctl {
         height: 24px; box-sizing: border-box;
@@ -1158,7 +1158,7 @@
     #presencePicker .picon svg { width: 12px; height: 12px; }
     #presencePicker.away { color: var(--vscode-charts-orange, #d18616); }
     #presencePicker.away .lbl { font-weight: 600; }
-    .menubtn .lbl { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .menubtn .lbl { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
     .menubtn svg { width: 11px; height: 11px; opacity: 0.7; flex-shrink: 0; }
     #status { opacity: 0.55; font-size: 0.82em; padding: 0 6px; white-space: nowrap; }
     .iconBtn {
@@ -1176,7 +1176,14 @@
     }
     .iconBtn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     /* Send = primary filled split button (send + mode caret) */
-    #sendGroup { display: inline-flex; height: 26px; border-radius: 5px; overflow: hidden; flex-shrink: 0; }
+    #sendGroup { display: inline-flex; height: 26px; min-width: auto; border-radius: 5px; overflow: hidden; flex-shrink: 0; align-self: center; margin-left: auto; position: relative; gap: 0; }
+    
+    /* Force mic button visibility with fallback */
+    #mic { display: inline-flex !important; padding: 0 8px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); align-items: center; justify-content: center; border: none; cursor: pointer; }
+    #mic:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
+    #mic svg { width: 14px; height: 14px; flex-shrink: 0; }
+    #mic:disabled { opacity: 0.5; cursor: not-allowed; }
+    
     /* Stop sits attached as the first segment of the send pill while busy. */
     #stopBtn {
         padding: 0 8px; flex: 0 0 auto;
