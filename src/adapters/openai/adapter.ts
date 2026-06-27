@@ -14,6 +14,7 @@ import * as ledger from "../../ledger";
 import { buildOpenAIModelList } from "../openaiModels";
 import { getCached, setCached, isFresh } from "../modelCache";
 import { OpenAIAdapterConfig } from "./types";
+import { scanKind } from "../../config/root";
 import { readStored, storeDir, storePath } from "./store";
 import { contentText } from "./transform";
 import {
@@ -146,7 +147,18 @@ export class OpenAIAdapter implements AgentAdapter {
      *  (summarize + shrink the model context); it also re-enables the context
      *  popover's "Compact Conversation" button (gated on a `compact` command). */
     commands(): Promise<SlashCommand[]> {
-        return Promise.resolve([{ name: "compact", description: "Summarize older turns to shrink the model context (full history is preserved)", kind: "builtin" }]);
+        const builtin = [{ name: "compact", description: "Summarize older turns to shrink the model context (full history is preserved)", kind: "builtin" as const }];
+        try {
+            const skills = scanKind("skill").map((s) => ({
+                name: s.name,
+                description: s.description,
+                kind: "skill" as const,
+            }));
+            return Promise.resolve([...builtin, ...skills]);
+        } catch (e) {
+            // Fallback to builtin if scanning fails
+            return Promise.resolve(builtin);
+        }
     }
 
     /**
