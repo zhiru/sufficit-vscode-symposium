@@ -251,7 +251,7 @@ export class SurfaceMessages {
                         // A terminal session has no ChatController transcript, so
                         // its handoff reads the CLI transcript instead.
                         if (this.d.getTerminalSession() && !this.d.getController()) {
-                            await this.d.handoff.fromTerminal(message.backend);
+                            await this.d.handoff.fromTerminal();
                         } else {
                             this.d.handoff.switch(message.backend);
                         }

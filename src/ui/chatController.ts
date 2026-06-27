@@ -8,7 +8,7 @@ import { fetchSessionGuardrails } from "../sync/guardrails";
 import { WebviewToHost } from "./protocol";
 import { RenderStream } from "./renderStream";
 import * as renderLog from "../renderLog";
-import { transcriptText, transcriptMessages, transcriptMessagesUpTo, transcriptUpTo } from "./controllerTranscript";
+import { transcriptText, transcriptMessages, transcriptMessagesUpTo } from "./controllerTranscript";
 import { ChatQueue, PendingMessage, SendMode } from "./controllerQueue";
 import { ChangedFilesState } from "./changedFilesState";
 import { handleControllerMessage } from "./controllerMessageHandler";
@@ -134,7 +134,7 @@ export class ChatController {
 
     /** Plain-text transcript up to and including `index` (0-based). */
     transcriptUpTo(index: number): string {
-        return transcriptUpTo(this.stream.messages, index);
+        return transcriptText(this.stream.messages.slice(0, index));
     }
 
     get attached(): boolean {
