@@ -285,7 +285,7 @@ function importFromToml(tomlPath: string, result: ImportServersResult): void {
     const lines = content.split("\n");
 
     let currentServer: string | null = null;
-    let serverConfig: Record<string, any> = {};
+    let serverConfig: Record<string, string> = {};
 
     for (const line of lines) {
         const trimmed = line.trim();
@@ -316,19 +316,24 @@ function importFromToml(tomlPath: string, result: ImportServersResult): void {
     }
 }
 
+interface JsonConfig {
+    mcpServers?: Record<string, Partial<ServerManifest>>;
+    servers?: Record<string, Partial<ServerManifest>>;
+}
+
 function importFromJson(jsonPath: string, result: ImportServersResult): void {
     const content = fs.readFileSync(jsonPath, "utf8");
-    const config = JSON.parse(content) as Record<string, any>;
+    const config = JSON.parse(content) as JsonConfig;
 
     const servers = config.mcpServers || config.servers || {};
     for (const [name, serverConfig] of Object.entries(servers)) {
-        createServerFromConfig(name, serverConfig as Record<string, any>, result);
+        createServerFromConfig(name, serverConfig as Record<string, string>, result);
     }
 }
 
 function createServerFromConfig(
     name: string,
-    config: Record<string, any>,
+    config: Record<string, string | undefined>,
     result: ImportServersResult
 ): void {
     // Check if server already exists
@@ -343,9 +348,9 @@ function createServerFromConfig(
         description: `MCP server: ${name}`,
         source: "imported",
         transport: "stdio",
-        command: config.command,
-        args: Array.isArray(config.args) ? config.args : [],
-        env: config.env || {},
+        command: config.command || "",
+        args: config.args ? config.args.split(/\s+/).filter(Boolean) : [],
+        env: {},
     };
 
     writeManifest(name, manifest);
