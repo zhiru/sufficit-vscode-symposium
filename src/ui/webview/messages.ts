@@ -223,8 +223,20 @@ export function streamDelta(text) {
 export function endStream() { streamMsg = null; streamBody = null; streamText = ""; endThinkingStream(); }
 
 // Streaming thinking blocks (extended reasoning).
+// Gerencia o estado de streaming de thinking blocks, incluindo:
+// - renderThinkBlock(): cria um novo thinking block element
+// - streamThinkingDelta(): anexa conteúdo ao thinking block atual
+// - endThinkingStream(): finaliza e limpa o estado do thinking block
 let streamThink = null, streamThinkBody = null, streamThinkLen = null, streamThinkText = "";
 const THINK_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5A5.5 5.5 0 1 0 13.5 7c0-.67-.12-1.32-.35-1.92A2 2 0 0 1 11 6.5a2 2 0 0 1-2-2c0-.31.07-.6.19-.86A5.5 5.5 0 0 0 8 1.5ZM1 7a7 7 0 1 1 7.96 6.94 1.5 1.5 0 1 1-1.33-2.67A7 7 0 0 1 1 7Z"/></svg>';
+/**
+ * Renderiza um novo thinking block element e o anexa ao chat log.
+ * Cria uma estrutura de details/summary com icone, label, contador de caracteres
+ * e corpo do thinking content.
+ * 
+ * @param text - O conteúdo inicial do thinking block
+ * @returns Objeto contendo referências aos elementos DOM criados (wrap, body, len)
+ */
 export function renderThinkBlock(text) {
     const stick = nearBottom();
     const wrap = document.createElement("div"); wrap.className = "msg thinkWrap";
@@ -240,9 +252,29 @@ export function renderThinkBlock(text) {
     log.appendChild(wrap); refreshEmpty(); autoScroll(stick);
     return { wrap, body, len };
 }
+/**
+ * Stream thinking block deltas - appends text to the current thinking block.
+ * Handles multiple thinking blocks by detecting when consecutive thinking events
+ * arrive, which indicates a new thinking block should be created.
+ * 
+ * @param text - The thinking content delta to append
+ */
 export function streamThinkingDelta(text) {
     const stick = nearBottom();
+    
+    // Se estamos continuando um thinking block existente e recebemos texto vazio,
+    // isso pode indicar o início de um novo thinking block separado
+    if (streamThink && text.trim() === "" && streamThinkText.length > 0) {
+        // Finaliza o thinking block atual para permitir criar um novo
+        streamThink = null; streamThinkBody = null; streamThinkLen = null; streamThinkText = "";
+    }
+    
+    // Não cria thinking blocks vazios - aguarda conteúdo real
     if (!streamThink) {
+        // Só cria o thinking block se tiver conteúdo não-vazio
+        if (text.trim() === "") {
+            return; // Skip creating empty thinking blocks
+        }
         const { wrap, body, len } = renderThinkBlock("");
         streamThink = wrap; streamThinkBody = body; streamThinkLen = len; streamThinkText = "";
     }
@@ -251,6 +283,10 @@ export function streamThinkingDelta(text) {
     streamThinkLen.textContent = streamThinkText.length + " chars";
     autoScroll(stick);
 }
+/**
+ * Finaliza o stream de thinking atual e limpa o estado de thinking block.
+ * Chamado quando o thinking block é encerrado ou quando um novo thinking block deve começar.
+ */
 export function endThinkingStream() { streamThink = null; streamThinkBody = null; streamThinkLen = null; streamThinkText = ""; }
 
 

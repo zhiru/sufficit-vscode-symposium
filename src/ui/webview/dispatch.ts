@@ -354,8 +354,11 @@ window.addEventListener("message", ({ data }) => {
         }
         case "event": {
             const ev = data.event;
+            // Processamento de thinking events: forçar separação de thinking blocks consecutivos
+            // chamando endThinkingStream() antes de cada thinking delta para garantir
+            // que múltiplos thinking blocks sejam exibidos como elementos separados
             if (ev.kind === "thinking") {
-                // Thinkings consecutivos devem ser agrupados no mesmo bloco
+                endThinkingStream(); // Força finalização do thinking block anterior
                 streamThinkingDelta(ev.text);
             }
             else if (ev.kind === "text") streamDelta(ev.text);

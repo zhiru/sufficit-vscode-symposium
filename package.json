@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.628.8",
+  "version": "2026.628.9",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -320,7 +320,13 @@
         },
         "symposium.voice.engine": {
           "type": "string",
-          "enum": ["auto", "webspeech", "whisper-cpp", "faster-whisper", "vosk"],
+          "enum": [
+            "auto",
+            "webspeech",
+            "whisper-cpp",
+            "faster-whisper",
+            "vosk"
+          ],
           "enumDescriptions": [
             "Web Speech in the browser (code-server); local whisper.cpp on desktop.",
             "Browser Web Speech API only (works in code-server, not VS Code desktop).",
@@ -413,13 +419,21 @@
         },
         "symposium.voice.fasterWhisper.device": {
           "type": "string",
-          "enum": ["cpu", "cuda"],
+          "enum": [
+            "cpu",
+            "cuda"
+          ],
           "default": "cpu",
           "description": "faster-whisper compute device."
         },
         "symposium.voice.fasterWhisper.computeType": {
           "type": "string",
-          "enum": ["int8", "int8_float16", "float16", "float32"],
+          "enum": [
+            "int8",
+            "int8_float16",
+            "float16",
+            "float32"
+          ],
           "default": "int8",
           "description": "faster-whisper compute precision (int8 = fastest/CPU, float16 = GPU)."
         },
