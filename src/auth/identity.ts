@@ -41,6 +41,9 @@ export class SufficitAuth {
     private profileCache: SufficitProfile | undefined;
     private readonly onChangeEmitter = new vscode.EventEmitter<void>();
     readonly onDidChange = this.onChangeEmitter.event;
+    // Guards the "session expired" notification so a flapping token or repeated
+    // requests don't spam the user with the same prompt.
+    private expiredNoticeShown = false;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -168,11 +171,25 @@ export class SufficitAuth {
         await this.context.secrets.store(SECRET_KEY, JSON.stringify(t));
     }
 
-    /** Valid access token (refreshes when possible); null if not logged in. */
+    /**
+     * Valid access token, refreshing automatically when it has expired. Returns
+     * null when not logged in. When the access token has expired AND cannot be
+     * refreshed (no refresh token, or the refresh was rejected), the stored
+     * tokens are cleared, the cached profile is dropped (so the UI stops showing
+     * a logged-in avatar), the user is notified once with an action to sign in
+     * again, and null is returned — so callers fail cleanly instead of sending
+     * a dead token that the gateway answers with a cryptic HTTP 401.
+     */
     async getAccessToken(): Promise<string | null> {
         let t = await this.readTokens();
         if (!t) { return null; }
-        if (Date.now() < t.expiresAtMs - 60_000) { return t.accessToken; }
+        // Still valid — return it, and clear any prior expired notice flag so a
+        // future re-expiry can notify again.
+        if (Date.now() < t.expiresAtMs - 60_000) {
+            this.expiredNoticeShown = false;
+            return t.accessToken;
+        }
+        // Expired: try to refresh transparently.
         if (t.refreshToken) {
             try {
                 const disco = await this.discovery();
@@ -181,26 +198,60 @@ export class SufficitAuth {
                     headers: { "content-type": "application/x-www-form-urlencoded" },
                     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refreshToken, client_id: this.clientId() }).toString(),
                 });
-                if (res.ok) { t = this.toStored(await res.json() as { access_token?: string; token_type?: string; expires_in?: number; refresh_token?: string; scope?: string; id_token?: string }); await this.writeTokens(t); return t.accessToken; }
+                if (res.ok) {
+                    t = this.toStored(await res.json() as { access_token?: string; token_type?: string; expires_in?: number; refresh_token?: string; scope?: string; id_token?: string });
+                    await this.writeTokens(t);
+                    this.expiredNoticeShown = false;
+                    return t.accessToken;
+                }
+                this.log(`[auth] refresh rejected: HTTP ${res.status}`);
             } catch (err) {
                 this.log(`[auth] refresh failed: ${err}`);
             }
         }
-        return t.accessToken;
+        // Cannot recover: clear the dead session and tell the user once.
+        await this.clearExpiredSession();
+        return null;
+    }
+
+    /** Clears tokens + profile and surfaces the "session expired" notice once. */
+    private async clearExpiredSession(): Promise<void> {
+        await this.context.secrets.delete(SECRET_KEY);
+        const hadProfile = !!this.profileCache;
+        this.profileCache = undefined;
+        await this.context.globalState.update(PROFILE_KEY, undefined);
+        this.onChangeEmitter.fire();
+        if (hadProfile && !this.expiredNoticeShown) {
+            this.expiredNoticeShown = true;
+            void vscode.window
+                .showWarningMessage(
+                    "Sua sessão do Sufficit expirou e não pôde ser renovada automaticamente.",
+                    "Entrar novamente",
+                )
+                .then((choice) => {
+                    if (choice === "Entrar novamente") {
+                        void vscode.commands.executeCommand("symposium.login");
+                    }
+                });
+        }
     }
 
     async getProfile(force = false): Promise<SufficitProfile | undefined> {
         if (this.profileCache && !force) { return this.profileCache; }
         // Instant restore after a window reload: a persisted profile lets the UI
-        // show the logged-in account immediately, even before the network call
-        // (and even if userinfo/refresh hiccups). Background-refresh once.
+        // show the logged-in account immediately. But only when the access token
+        // is still usable — getAccessToken() refreshes on demand, and clears the
+        // session (profile included) when the token has expired for good, so we
+        // never restore a profile for a session that can no longer authenticate.
         if (!force) {
             const saved = this.context.globalState.get<SufficitProfile>(PROFILE_KEY);
-            if (saved && (await this.readTokens())) {
+            const token = await this.getAccessToken();
+            if (saved && token) {
                 this.profileCache = saved;
                 void this.getProfile(true).then((p) => { if (p) { this.onChangeEmitter.fire(); } });
                 return saved;
             }
+            return undefined;
         }
         const token = await this.getAccessToken();
         if (!token) { return undefined; }

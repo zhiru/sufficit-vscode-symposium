@@ -111,10 +111,12 @@ export async function runLocalTool(name: string, args: Record<string, unknown>, 
         const cwd = args.cwd ? resolvePath(ctx.cwd, String(args.cwd)) : ctx.cwd;
         // Timeout: default 30s. 0 (or negative) means UNLIMITED — the model
         // must opt into that explicitly for long-running services. A bounded
-        // value is clamped to [1s, 1h].
+        // value is clamped to [1s, 1h]. "Unlimited" is capped at 2^31-1 ms
+        // (~24.8 days): setTimeout clamps larger delays to 1ms (Node emits a
+        // TimeoutOverflowWarning), which would kill the command immediately.
         const rawTimeout = args.timeout_ms === undefined ? 30000 : Number(args.timeout_ms);
         const unlimited = !(rawTimeout > 0);
-        const timeout = unlimited ? Number.MAX_SAFE_INTEGER : Math.min(Math.max(rawTimeout, 1000), 3600000);
+        const timeout = unlimited ? 2147483647 : Math.min(Math.max(rawTimeout, 1000), 3600000);
         const notify = args.notify === true;
         const mode = ctx.shellExecution ?? "silent";
         const terminalId = mode === "terminal" ? normalizeTerminalId(args.terminal_id) : undefined;
@@ -190,7 +192,11 @@ export async function runLocalTool(name: string, args: Record<string, unknown>, 
         if (occurrences > 1 && !replaceAll) {
             return JSON.stringify({ error: `old_string is not unique (${occurrences} matches); add surrounding context or set replace_all: true` });
         }
-        const updated = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
+        // split/join instead of String.replace: replace() interprets $&, $', $$
+        // etc. in the replacement string, silently corrupting written code. With
+        // a single occurrence (guaranteed here when !replaceAll) split/join is
+        // equivalent and literal-safe, so use it for both paths.
+        const updated = content.split(oldStr).join(newStr);
         fs.writeFileSync(p, updated, "utf8");
         return JSON.stringify({ path: p, replaced: replaceAll ? occurrences : 1 });
     }

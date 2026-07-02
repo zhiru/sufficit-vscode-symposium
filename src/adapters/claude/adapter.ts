@@ -17,6 +17,7 @@ import {
 } from "../types";
 import { getCached, setCached, ModelCacheEntry } from "../modelCache";
 import { ClaudeAdapterConfig, ClaudeSession } from "./session";
+import { claudeOAuthToken } from "./credentials";
 import { parseTranscriptLine, rawLineType, readSessionMeta } from "./transcript";
 
 export class ClaudeAdapter implements AgentAdapter {
@@ -99,29 +100,31 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     /**
-     * Fetch current Claude models from Anthropic API (requires ANTHROPIC_API_KEY
-     * in adapter env or process env). Falls back to file cache only.
-     * Updates file cache on success.
+     * Fetch current Claude models from the Anthropic API. Credentials are
+     * resolved in order: ANTHROPIC_API_KEY (adapter env → process env), then the
+     * Claude Code CLI OAuth tokens in ~/.claude/.credentials.json (refreshed on
+     * demand). Falls back to the file cache only when neither is available.
+     * Updates the file cache on success.
      */
     async refreshModels(): Promise<{ models: string[]; labels?: Record<string, string> }> {
         const cfg = this.getConfig();
         const apiKey = cfg.env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
         const baseUrl = (cfg.env?.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
 
-        const cached = getCached("claude");
-        if (!apiKey) {
-            cfg.log?.("[claude] no ANTHROPIC_API_KEY — using file cache for models");
-            return { models: this.models(), labels: cached?.labels ?? {} };
+        // OAuth bearer (Claude Code login) as a fallback so model discovery works
+        // for users authenticated via the CLI without a separate API key.
+        const bearer = apiKey ? "" : await claudeOAuthToken();
+        if (!apiKey && !bearer) {
+            cfg.log?.("[claude] no ANTHROPIC_API_KEY or Claude Code login — using file cache for models");
+            return { models: this.models(), labels: getCached("claude")?.labels ?? {} };
         }
 
-        // Skip if cache is fresh and caller didn't force a refresh
+        const cached = getCached("claude");
         try {
-            const res = await fetch(`${baseUrl}/v1/models`, {
-                headers: {
-                    "x-api-key": apiKey,
-                    "anthropic-version": "2023-06-01",
-                },
-            });
+            const headers: Record<string, string> = { "anthropic-version": "2023-06-01" };
+            if (apiKey) { headers["x-api-key"] = apiKey; }
+            else { headers["authorization"] = `Bearer ${bearer}`; }
+            const res = await fetch(`${baseUrl}/v1/models`, { headers });
             if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
             const json = await res.json() as { data?: unknown[] };
             const raw = json?.data ?? [];

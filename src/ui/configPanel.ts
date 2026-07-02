@@ -338,16 +338,11 @@ export class ConfigPanel {
                 openIn: chat.get<string>("openIn", "editor"),
                 preferredLanguage: chat.get<string>("preferredLanguage", ""),
                 systemInstruction: chat.get<string>("systemInstruction", ""),
-                memoryInstruction: (() => {
-                    const insp = chat.inspect<string>("memoryInstruction");
-                    if (!insp) { return ""; }
-                    // Use the default from package.json when the user hasn't set
-                    // an explicit value (globalValue/workspaceValue). This makes
-                    // the default visible in the textarea.
-                    if (insp.globalValue !== undefined) { return insp.globalValue; }
-                    if (insp.workspaceValue !== undefined) { return insp.workspaceValue; }
-                    return insp.defaultValue ?? "";
-                })(),
+                // No explicit default arg: get() returns the package.json default
+                // when the user hasn't set the key, so the textarea shows the
+                // built-in hint instead of being empty. An explicitly-cleared
+                // field (value "") still reads back as "".
+                memoryInstruction: chat.get<string>("memoryInstruction"),
                 lmTools: root.get<string>("lmTools", "terminal"),
                 maxToolHops: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxToolHops", 50),
                 noProgressStop: vscode.workspace.getConfiguration("symposium.openai").get<number>("noProgressStop", 0),

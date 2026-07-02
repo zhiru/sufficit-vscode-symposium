@@ -178,7 +178,7 @@ export function renderConfigScript(dict: Record<string, string>): string {
             const fetchModelsBtn = document.getElementById("fetch-ollama-models");
             if (fetchModelsBtn) {
                 fetchModelsBtn.onclick = () => {
-                    const urlInput = document.getElementById("gitlens-ai-ollama-url") as HTMLInputElement;
+                    const urlInput = document.getElementById("gitlens-ai-ollama-url");
                     const ollamaUrl = urlInput?.value || "";
                     vscode.postMessage({ type: "fetch-ollama-models", value: ollamaUrl });
                 };
@@ -345,11 +345,11 @@ export function renderConfigScript(dict: Record<string, string>): string {
             return;
         }
         if (e.data?.type === "ollama-models-list") {
-            const select = document.getElementById("ollama-models-select") as HTMLSelectElement;
+            const select = document.getElementById("ollama-models-select");
             if (!select) return;
             
             select.innerHTML = '<option value="">Selecione um modelo...</option>';
-            e.data.models?.forEach((m: { id: string; name: string; digest: string }) => {
+            e.data.models?.forEach((m) => {
                 const option = document.createElement("option");
                 option.value = m.id;
                 option.textContent = m.name + " (" + (m.digest ? m.digest.substring(0, 12) : "") + ")";
@@ -362,7 +362,7 @@ export function renderConfigScript(dict: Record<string, string>): string {
                 const selected = select.value;
                 if (selected) {
                     // Preencher o campo de modelo selecionado
-                    const modelInput = document.querySelector("input[data-key=\"gitlens.ai.ollama.model\"]") as HTMLInputElement;
+                    const modelInput = document.querySelector('input[data-key="gitlens.ai.ollama.model"]');
                     if (modelInput) {
                         modelInput.value = selected;
                         modelInput.dispatchEvent(new Event("change"));
