@@ -12,6 +12,20 @@ import type { WebviewToHost } from "./protocol";
  * openDialogue callback.
  */
 
+/** CLI backends keep their own lineage via the CLI transcript; API backends share it. */
+const CLI_BACKENDS = new Set(["claude", "codex", "copilot"]);
+
+/**
+ * Lineage the branched session should inherit so it groups under the same
+ * conversation as its predecessor. For API/stateless backends (Sufficit AI and
+ * custom OpenAI-compatible endpoints) we carry the current session's lineage
+ * (falling back to its id) so edit&retry/restart stay in one conversation in
+ * the sidebar. CLI backends manage lineage themselves, so they get none here.
+ */
+function inheritedLineage(backend: string, current: { lineageId?: string; sessionId?: string }): string | undefined {
+    if (CLI_BACKENDS.has(backend)) { return undefined; }
+    return current.lineageId || current.sessionId;
+}
 /** Signature of SurfaceDialogues.openDialogue (the new/resumed-dialogue entry point). */
 type OpenDialogue = (
     backend: string,
@@ -77,7 +91,7 @@ export function restartFromMessage(
     const title = from.title;
     const cwd = from.cwd;
 
-    openDialogue(backend, { cwd, seedHistory }, title);
+    openDialogue(backend, { cwd, seedHistory, lineageId: inheritedLineage(backend, from) }, title);
     d.post({
         type: "history",
         messages,
@@ -126,7 +140,7 @@ export function editResend(
     const messages = from.transcriptMessagesUpTo(keepTo);
     const transcript = from.transcriptUpTo(keepTo);
     const seedHistory = buildSeedHistory(transcript);
-    openDialogue(from.backend, { cwd: from.cwd, seedHistory }, from.title);
+    openDialogue(from.backend, { cwd: from.cwd, seedHistory, lineageId: inheritedLineage(from.backend, from) }, from.title);
     if (messages.length) {
         d.post({ type: "history", messages, carried: true });
     }

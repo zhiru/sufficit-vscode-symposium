@@ -11,6 +11,8 @@ export interface StoredSession {
     model: string;
     updatedAt: string;
     messages: ChatMsg[];
+    /** Conversation lineage inherited at branch time (see SessionStartOptions.lineageId). */
+    lineageId?: string;
 }
 
 /** Per-backend store dir for API-adapter transcripts (no CLI to persist them). */

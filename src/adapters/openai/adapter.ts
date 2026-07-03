@@ -56,7 +56,7 @@ export class OpenAIAdapter implements AgentAdapter {
             const s = readStored(this.backend, f.slice(0, -5));
             if (s) {
                 seen.add(s.id);
-                out.push({ backend: this.backend, sessionId: s.id, title: s.title || "Session", cwd: s.cwd, updatedAt: new Date(s.updatedAt), model: s.model });
+                out.push({ backend: this.backend, sessionId: s.id, title: s.title || "Session", cwd: s.cwd, updatedAt: new Date(s.updatedAt), model: s.model, lineageId: s.lineageId });
             }
         }
         // Recover orphans: sessions that have a ledger but no store file (created

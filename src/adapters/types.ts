@@ -165,6 +165,14 @@ export interface SessionStartOptions {
     /** ID do preset de compressão para esta seção (vazio usa padrão global). */
     compressionPresetId?: string;
     /**
+     * Conversation lineage to inherit (branching). When set, the new session is
+     * treated as a continuation of the same logical conversation as the session
+     * that owns this id — the sidebar groups them under one expandable head and
+     * delete/archive cascade across the lineage. Empty/undefined = a brand-new
+     * conversation. (Mirrors `SessionInfo.lineageId`.)
+     */
+    lineageId?: string;
+    /**
      * Prior conversation transcript to seed a brand-new session with, used when
      * handing a dialogue off from one backend to another so the new agent can
      * continue "as if nothing happened". Injected once, prepended to the first

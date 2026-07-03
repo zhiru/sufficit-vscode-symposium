@@ -99,6 +99,8 @@ export class ChatController {
     get cwd(): string { return this.options.cwd; }
     /** Parent session id when this controller drives a spawned subagent. */
     get parentId(): string | undefined { return this.options.parentId; }
+    /** Conversation lineage this session belongs to (sidebar grouping; undefined = own). */
+    get lineageId(): string | undefined { return this.options.lineageId; }
     /** First user message, used as a title for a not-yet-persisted live session. */
     get title(): string { return this.firstTitle || "New session"; }
 

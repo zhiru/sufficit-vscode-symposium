@@ -26,6 +26,8 @@ export class OpenAISession extends EventEmitter implements AgentSession {
     readonly sessionId: string;
     private readonly messages: ChatMessage[] = [];
     private title = "";
+    /** Conversation lineage inherited at branch time (groups sidebar entries). */
+    private lineageId: string | undefined;
     private readonly hub = new HubClient();
     private turnNo = 0;
     // Continuous follow-up anchor (small-context guardrail). `objective` is the
@@ -67,6 +69,9 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         } else {
             this.sessionId = resumed?.id ?? randomUUID();
         }
+        // Lineage: an explicit branch option wins; else inherit the resumed
+        // session's lineage; else this session starts a fresh conversation.
+        this.lineageId = options.lineageId ?? resumed?.lineageId;
         this.compactor = new Compactor({
             cfg: this.cfg,
             sessionId: this.sessionId,
@@ -148,7 +153,7 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         writeStored({
             id: this.sessionId, backend: this.backend, title: this.title,
             cwd: this.options.cwd, model: this.model(), updatedAt: new Date().toISOString(),
-            messages: this.messages,
+            messages: this.messages, lineageId: this.lineageId,
         });
     }
 
@@ -159,6 +164,9 @@ export class OpenAISession extends EventEmitter implements AgentSession {
             this.emit("event", { kind: "error", message: `failed to persist session: ${error instanceof Error ? error.message : String(error)}` });
         }
     }
+
+    /** Conversation lineage (groups sidebar entries; undefined = own lineage). */
+    get lineage(): string | undefined { return this.lineageId; }
 
     private ledgerMeta(): import("../../ledger").LedgerMeta {
         return {
