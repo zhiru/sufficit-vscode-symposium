@@ -100,6 +100,23 @@ export class SufficitAuth {
         return (await this.readTokens()) !== undefined;
     }
 
+    /**
+     * Surfaces the device-flow verification URL + user code when the external
+     * browser opener is unavailable (code-server, headless hosts). Offers a
+     * "Copy URL" action so the user can paste it into their browser manually.
+     */
+    private async showLoginUrlModal(url: string, userCode: string): Promise<void> {
+        const action = await vscode.window.showInformationMessage(
+            `Sufficit login — open this URL in your browser and authorize code: ${userCode}`,
+            { modal: true },
+            "Copy URL",
+        );
+        if (action === "Copy URL") {
+            await vscode.env.clipboard.writeText(url);
+            void vscode.window.showInformationMessage("Sufficit: login URL copied to clipboard.");
+        }
+    }
+
     /** Interactive device-code login. Returns the profile on success. */
     async login(): Promise<SufficitProfile | undefined> {
         const clientId = this.clientId();
@@ -124,10 +141,22 @@ export class SufficitAuth {
         }
 
         const verifyUrl: string = dev.verification_uri_complete ?? dev.verification_uri ?? "";
+        // In code-server (and other headless/web hosts) vscode.env.openExternal
+        // cannot launch the user's browser and fails silently — so we always
+        // offer a copyable URL too. Try the external opener first; if it fails
+        // (or we're in a web UI), surface the URL and user code in a modal with
+        // a copy action so the user can open it manually.
         const pick = await vscode.window.showInformationMessage(
-            `Sufficit: open the browser and confirm the code ${dev.user_code}`, "Open browser");
-        if (pick) {
-            await vscode.env.openExternal(vscode.Uri.parse(verifyUrl));
+            `Sufficit: open the browser and confirm the code ${dev.user_code}`, "Open browser", "Copy URL");
+        if (pick === "Open browser") {
+            try {
+                const opened = await vscode.env.openExternal(vscode.Uri.parse(verifyUrl));
+                if (!opened) { await this.showLoginUrlModal(verifyUrl, dev.user_code); }
+            } catch {
+                await this.showLoginUrlModal(verifyUrl, dev.user_code);
+            }
+        } else if (pick === "Copy URL") {
+            await this.showLoginUrlModal(verifyUrl, dev.user_code);
         }
 
         // 2. Poll the token endpoint until the user approves (or timeout).
