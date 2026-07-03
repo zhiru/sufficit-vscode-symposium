@@ -47,7 +47,7 @@ export const CONFIG_EN: Dict = {
     "config.sufficit.section.vault": "Vault",
     "config.sufficit.auth.signedIn": "Signed in as",
     "config.sufficit.auth.notSignedIn": "Not signed in",
-    "config.sufficit.auth.noKeyring": "This environment does not persist credentials in the system keyring (VS Code via snap, isolated from the host keyring). Your Sufficit login is kept in the extension's global storage and survives restarts, but it is less isolated than the keyring. For native keyring protection, install VS Code via .deb instead of snap.",
+    "config.sufficit.auth.noKeyring": "This environment has no system keyring available, so your Sufficit login is saved in the extension's local storage instead. It is kept across restarts — it works normally — it is just less isolated than an OS keyring would be.",
     "config.sufficit.memory.desc": "Hint injected into the system prompt for logged-in users, guiding them to search Sufficit shared memory before asking you for context. Clear the field to disable injection entirely.",
     "config.sufficit.vault.desc": "Tools bound to secrets via credentialRef. Secrets are resolved at runtime through the Sufficit vault (hub API) and injected into the tool's env — never stored on disk.",
     "config.sufficit.vault.empty": "No tools are bound to vault secrets.",

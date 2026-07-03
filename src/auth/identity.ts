@@ -140,13 +140,16 @@ export class SufficitAuth {
         this.profileCache = undefined;
         const profile = await this.getProfile(true);
         this.onChangeEmitter.fire();
-        // If SecretStorage does not persist (e.g. VS Code snap, isolated from
-        // the host keyring), tell the user once: the login is kept via the
-        // globalState fallback, but the keyring is not actually protecting it.
+        // If SecretStorage does not persist (no system keyring available — e.g.
+        // code-server on a headless server, a container, or the VS Code snap),
+        // reassure the user once: the login still works and is saved locally.
+        // This is informational, not an error — the globalState fallback keeps
+        // the tokens across restarts. The Sufficit tab shows a standing banner
+        // with the same note.
         if (this.secretStoragePersists === false && !this.persistNoticeShown) {
             this.persistNoticeShown = true;
-            void vscode.window.showWarningMessage(
-                "Sufficit: este ambiente não persiste credenciais no chaveiro do sistema (provável VS Code via snap). Seu login está salvo no armazenamento da extensão e será mantido entre reinícios, mas é menos isolado que o chaveiro. Para usar o chaveiro nativo, instale o VS Code via .deb.",
+            void vscode.window.showInformationMessage(
+                "Sufficit: login salvo. Este ambiente não tem chaveiro do sistema, então suas credenciais ficam no armazenamento local da extensão (mantidas entre reinícios, menos isoladas que um chaveiro).",
             );
         }
         return profile;

@@ -56,12 +56,12 @@ export const configViewsSufficit = `
                 '</div>';
         }
 
-        // Warning banner when the OS keyring does not persist the login (VS Code
-        // snap and similar). The login still works via the extension global
-        // storage fallback, but it is less isolated — warn so it is not a silent
-        // surprise that the credentials are not in the keyring.
+        // Notice banner (warning tone, not error) when this environment has no
+        // usable system keyring — e.g. code-server on a headless server, a
+        // container, or the VS Code snap. Reassuring, not alarming: the login
+        // is still saved in the extension's local storage and survives restarts.
         const banner = state?.secretStorageWorking === false
-            ? '<div class="mcp-form-error" style="margin-bottom:14px">' + esc(t("config.sufficit.auth.noKeyring")) + '</div>'
+            ? '<div style="margin-bottom:14px;padding:8px 11px;border-radius:7px;color:var(--sym-warn);background:color-mix(in srgb, var(--sym-warn) 14%, transparent);border:1px solid color-mix(in srgb, var(--sym-warn) 35%, transparent);line-height:1.5">' + esc(t("config.sufficit.auth.noKeyring")) + '</div>'
             : "";
 
         return '<h2>' + esc(t("config.tab.sufficit")) + '</h2>' +
