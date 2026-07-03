@@ -318,8 +318,13 @@ export class SurfaceDialogues {
             if (ev?.kind === "tool-end" && typeof ev.toolName === "string") {
                 const n = ev.toolName;
                 if (n === "add_guardrail" || n === "clear_guardrails") {
+                    // The memory hub indexes asynchronously, so the just-saved
+                    // guardrail may not be visible to search for a moment.
+                    // Retry a few times with backoff so the panel reliably
+                    // shows the change even on a high-latency hub (code-server).
                     const repaint = () => void this.d.getController()?.reloadGuardrails().then(() => this.d.sync.refreshGuardrails());
-                    repaint(); setTimeout(repaint, 700);
+                    void repaint();
+                    for (const delay of [400, 1000, 2000]) { setTimeout(repaint, delay); }
                 } else if (n === "add_task" || n === "task_complete" || (n === "memory_save")) {
                     void this.d.sync.refreshTasks(); setTimeout(() => void this.d.sync.refreshTasks(), 700);
                 }

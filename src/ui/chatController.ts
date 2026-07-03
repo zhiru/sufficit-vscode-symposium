@@ -232,8 +232,11 @@ export class ChatController {
     }
 
     private async dispatch(msg: PendingMessage): Promise<void> {
-        // Guardrails: load once (cached), then inject on every message below.
-        if (!this.hubState.guardrailsLoaded && this.adapter.roleAware?.() === true && this.sessionId && this.hub.configured()) {
+        // Guardrails: refresh on EVERY dispatch (like tasks) so a guardrail
+        // added mid-conversation (agent or UI) reaches the next outbound and a
+        // transiently-empty first read doesn't cache empty forever. Injected on
+        // every message below.
+        if (this.adapter.roleAware?.() === true && this.sessionId && this.hub.configured()) {
             await this.reloadGuardrails();
         }
         // Tasks: refresh on EVERY dispatch to catch newly created tasks.

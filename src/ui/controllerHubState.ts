@@ -22,13 +22,20 @@ export interface HubStateContext {
     state: HubState;
 }
 
-/** (Re)loads the session's user guardrails into the per-message cache. */
+/**
+ * (Re)loads the session's user guardrails into the per-message cache. Called on
+ * EVERY dispatch (like tasks) so a guardrail added mid-conversation — by the
+ * agent via add_guardrail, or by the user via the UI — is reflected on the next
+ * outbound message, and so a transiently-empty first read (eventual indexing on
+ * the memory hub) doesn't cache an empty list forever.
+ */
 export async function reloadGuardrails(ctx: HubStateContext): Promise<void> {
-    ctx.state.guardrailsLoaded = true;
     const id = ctx.sessionId();
-    if (!id || !ctx.hub().configured()) { ctx.state.guardrails = []; return; }
-    try { ctx.state.guardrails = (await fetchSessionGuardrails(ctx.hub(), id)).map((g) => g.text).filter(Boolean); }
-    catch { /* keep the prior cache */ }
+    if (!id || !ctx.hub().configured()) { ctx.state.guardrails = []; ctx.state.guardrailsLoaded = true; return; }
+    try {
+        ctx.state.guardrails = (await fetchSessionGuardrails(ctx.hub(), id)).map((g) => g.text).filter(Boolean);
+        ctx.state.guardrailsLoaded = true;
+    } catch { /* keep the prior cache; flag stays as-is so the next dispatch retries */ }
 }
 
 /** (Re)loads pending tasks and caches the non-done ones. */
