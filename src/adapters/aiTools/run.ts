@@ -106,7 +106,7 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 // Bind task observations to the current Symposium chat session so
                 // they can be listed in the Tasks panel and removed with it.
                 const type = String(args.type ?? "note");
-                let tags = args.tags ? String(args.tags) : "";
+                const tags = args.tags ? String(args.tags) : "";
                 // Session-bound types (tasks) are scoped via the native sessionId
                 // field + privacy level internal, so they never leak outside the
                 // session; no need for a symposium-session: tag.

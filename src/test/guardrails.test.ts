@@ -12,27 +12,26 @@ import type { HubStateContext } from "../ui/controllerHubState";
 
 /** Minimal hub stub: records saves (with sessionId/privacyLevel) and serves them back. */
 function hubStub(opts: { records?: any[]; configured?: boolean; searchThrows?: boolean } = {}) {
-    let store: any[] = opts.records ? [...opts.records] : [];
+    const store: any[] = opts.records ? [...opts.records] : [];
+    const filter = (rows: any[], p: { sessionId?: string }) =>
+        p.sessionId ? rows.filter((r) => (r.sessionId ?? "") === p.sessionId) : rows;
     return {
         configured: () => opts.configured !== false,
-        async searchMemory(p: { query?: string; type?: string; limit?: number; sessionId?: string }) {
-            if (opts.searchThrows) { throw new Error("hub down"); }
-            // Server-side filter by sessionId is simulated here so the test mirrors reality.
-            let rows = store.slice(0, p.limit ?? store.length);
-            if (p.sessionId) { rows = rows.filter((r) => (r.sessionId ?? "") === p.sessionId); }
-            return rows;
+        searchMemory(p: { query?: string; type?: string; limit?: number; sessionId?: string }): Promise<any[]> {
+            if (opts.searchThrows) { return Promise.reject(new Error("hub down")); }
+            return Promise.resolve(filter(store.slice(0, p.limit ?? store.length), p));
         },
-        async getByIds(ids: string[]) {
-            return store.filter((r) => ids.includes(String(r.id)));
+        getByIds(ids: string[]): Promise<any[]> {
+            return Promise.resolve(store.filter((r) => ids.includes(String(r.id))));
         },
-        async save(obs: any) {
+        save(obs: any): Promise<string> {
             if (obs.id) {
                 const i = store.findIndex((r) => String(r.id) === String(obs.id));
-                if (i >= 0) { store[i] = { ...store[i], ...obs }; return String(store[i].id); }
+                if (i >= 0) { store[i] = { ...store[i], ...obs }; return Promise.resolve(String(store[i].id)); }
             }
             const id = "g" + (store.length + 1) + "-" + Date.now();
             store.push({ id, createdAtUtc: new Date().toISOString(), ...obs });
-            return id;
+            return Promise.resolve(id);
         },
     } as any;
 }
@@ -60,8 +59,8 @@ test("fetchSessionGuardrails: empty when hub not configured or no session", asyn
 test("saveGuardrail: stores with sessionId + privacyLevel internal", async () => {
     const hub = hubStub();
     const sid = "sess-R";
-    let saved: any;
-    (hub as any).save = async (obs: any) => { saved = obs; return "id-1"; };
+    let saved: any;   // reassigned inside the save stub below
+    (hub as any).save = (obs: any) => { saved = obs; return Promise.resolve("id-1"); };
     await saveGuardrail(hub, sid, "  never edit the Razor markup  ");
     assert.equal(saved.sessionId, sid, "sessionId field set");
     assert.equal(saved.privacyLevel, "internal", "privacyLevel internal (session-scoped)");
@@ -74,7 +73,7 @@ test("removeGuardrail: soft-deletes (past expiry) so the item drops from the lis
     const hub = hubStub();
     const sid = "sess-D";
     const id = await saveGuardrail(hub, sid, "rule to remove");
-    let items = await fetchSessionGuardrails(hub, sid);
+    const items = await fetchSessionGuardrails(hub, sid);
     assert.equal(items.length, 1);
     const removed = await removeGuardrail(hub, id);
     assert.equal(removed, true);
