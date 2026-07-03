@@ -29,11 +29,22 @@ export const configViewsVoice = `
         }
         const s = stt.settings;
         const avail = stt.availability || {};
-        const badge = (ok) => '<span class="badge ' + (ok ? "badge-default" : "danger") + '">' + (ok ? "available" : "not found") + '</span>';
+        const badge = (ok) => '<span class="badge ' + (ok ? "badge-default" : "danger") + '">' + (ok ? t("config.voice.badge.available") : t("config.voice.badge.notFound")) + '</span>';
+
+        // Setup wizard / diagnostic: runs the static checks (ffmpeg + engine
+        // binary + model) and renders a checklist inline with fixes. Sits above
+        // the per-engine config so a broken setup is obvious before tuning.
+        const diagSection = section(t("config.voice.diagnose.section"),
+            '<div class="desc" style="margin-bottom:8px">' + esc(t("config.voice.diagnose.hint")) + '</div>' +
+            '<div class="pref-block">' +
+                '<button class="primary" id="stt-diagnose">' + esc(t("config.voice.diagnose.btn")) + '</button>' +
+                '<div id="stt-diag-result"></div>' +
+            '</div>'
+        );
 
         // Engine + global capture settings.
         const engineOpts = (stt.engines || []).map(e => ({ v: e.id, l: e.label }));
-        let html =
+        let html = diagSection +
             section("Engine",
                 item("Speech-to-text engine", "Web Speech works only in the browser (code-server). Local engines work in VS Code desktop too.",
                     sel("symposium.voice.engine", s.engine, engineOpts)) +

@@ -10,6 +10,7 @@ import { handleCompressionMessage } from "./configCompressionHandler";
 import { handleBackendsMessage } from "./configBackendsHandler";
 import { handleMcpMessage, McpFormPayload } from "./configMcpHandler";
 import { handleResourcesMessage } from "./configResourcesHandler";
+import { handleVoiceMessage } from "./configVoiceHandler";
 
 export interface ConfigPanelDeps {
     api: SymposiumApi;
@@ -127,6 +128,7 @@ export class ConfigPanel {
         if (await handleBackendsMessage(message, ctx)) { return; }
         if (await handleMcpMessage(message, ctx)) { return; }
         if (await handleResourcesMessage(message, ctx)) { return; }
+        if (await handleVoiceMessage(message, ctx)) { return; }
 
         switch (message.type) {
             case "ready":

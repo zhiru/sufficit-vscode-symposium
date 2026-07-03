@@ -14,6 +14,7 @@ import { SurfaceMessages } from "./surfaceMessages";
 import { HubClient } from "../sync/hubClient";
 import { activeEditorContext, isSimpleBrowserOpen } from "./chatSurfaceContext";
 import { canUseLocalStt } from "../voice/sttRouting";
+import { isLocalSttReady } from "../voice/sttService";
 
 export interface ChatSurfaceDeps {
     adapterByBackend: Map<string, AgentAdapter>;
@@ -173,6 +174,20 @@ export class ChatSurface {
             hostCapture: vscode.env.uiKind !== vscode.UIKind.Web,
         };
         void this.webview.postMessage({ type: "setVoicePreferences", preferences: voicePreferences });
+
+        // The initial localStt above is a cheap string-only gate so the mic
+        // button appears without flicker. Re-validate against the real world
+        // (binary on PATH + model installed for the resolved engine) and post a
+        // corrected preference: if the engine is configured but its binary or
+        // model is missing/incompatible, hide the mic instead of letting the
+        // user click into a cryptic transcription failure.
+        void isLocalSttReady().then((ready) => {
+            if (ready === voicePreferences.localStt) { return; }
+            void this.webview.postMessage({
+                type: "setVoicePreferences",
+                preferences: { ...voicePreferences, localStt: ready },
+            });
+        });
 
         for (const queued of this.queue) {
             void this.webview.postMessage(queued);

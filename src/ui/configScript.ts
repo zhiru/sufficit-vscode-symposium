@@ -8,6 +8,8 @@
  */
 import { configViews } from "./configViews";
 import { configScriptMcp } from "./configScriptMcp";
+import { configScriptOllama } from "./configScriptOllama";
+import { configScriptStt } from "./configScriptStt";
 export function renderConfigScript(dict: Record<string, string>): string {
     const i18n = JSON.stringify(dict).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
     return `
@@ -156,6 +158,14 @@ export function renderConfigScript(dict: Record<string, string>): string {
             main.querySelectorAll("button.stt-delete").forEach(el => {
                 el.onclick = () => vscode.postMessage({ type: "stt-delete-model", modelId: el.getAttribute("data-model") });
             });
+            const diagnoseBtn = document.getElementById("stt-diagnose");
+            if (diagnoseBtn) {
+                diagnoseBtn.onclick = () => {
+                    const out = document.getElementById("stt-diag-result");
+                    if (out) { out.innerHTML = '<div class="desc">' + esc(t("config.voice.diagnose.running")) + '</div>'; }
+                    vscode.postMessage({ type: "stt-diagnose" });
+                };
+            }
             return;
         }
         if (active === "vscode") {
@@ -334,45 +344,13 @@ export function renderConfigScript(dict: Record<string, string>): string {
 
     window.addEventListener("message", (e) => {
         if (e.data?.type === "state") { applyState(e.data.state); return; }
-        if (e.data?.type === "stt-progress") {
-            const bar = document.getElementById("stt-prog-" + e.data.modelId);
-            if (bar) {
-                const ratio = typeof e.data.ratio === "number" ? e.data.ratio : -1;
-                if (e.data.phase === "done") { bar.textContent = ""; }
-                else if (ratio >= 0) { bar.textContent = Math.round(ratio * 100) + "%"; }
-                else { bar.textContent = t("config.voice.downloading"); }
-            }
-            return;
-        }
+        if (applySttHostMessage(e.data)) { return; }
         if (e.data?.type === "ollama-models-list") {
-            const select = document.getElementById("ollama-models-select");
-            if (!select) return;
-            
-            select.innerHTML = '<option value="">Selecione um modelo...</option>';
-            e.data.models?.forEach((m) => {
-                const option = document.createElement("option");
-                option.value = m.id;
-                option.textContent = m.name + " (" + (m.digest ? m.digest.substring(0, 12) : "") + ")";
-                select.appendChild(option);
-            });
-            select.style.display = "block";
-            
-            // Handler para quando um modelo é selecionado
-            select.onchange = () => {
-                const selected = select.value;
-                if (selected) {
-                    // Preencher o campo de modelo selecionado
-                    const modelInput = document.querySelector('input[data-key="gitlens.ai.ollama.model"]');
-                    if (modelInput) {
-                        modelInput.value = selected;
-                        modelInput.dispatchEvent(new Event("change"));
-                    }
-                }
-            };
+            applyOllamaModels(e.data.models);
             return;
         }
     });
     vscode.postMessage({ type: "ready" });
 `
-    + configScriptMcp;
+    + configScriptMcp + configScriptOllama + configScriptStt;
 }

@@ -71,9 +71,45 @@ function resolvedRoot(s: SttSettings): string {
 }
 
 /** Picks the concrete local engine to run. "auto"/"webspeech" fall back to whisper.cpp on the host. */
-function resolveLocalEngine(s: SttSettings): SttEngineId {
+export function resolveLocalEngine(s: SttSettings): SttEngineId {
     if (s.engine === "whisper-cpp" || s.engine === "faster-whisper" || s.engine === "vosk") { return s.engine; }
     return "whisper-cpp";
+}
+
+/**
+ * Whether local STT is genuinely ready to transcribe on this host — not just
+ * whether the configured engine string is a local id, but whether the resolved
+ * engine's binary is available AND a compatible model is installed. This is the
+ * gate the chat composer uses to show/hide the mic button, so it must reflect
+ * real readiness (a binaryPath pointing at an incompatible tool, or a missing
+ * model, must hide the mic instead of letting the user click into a failure).
+ *
+ * Cheap static checks: reuses the same commandAvailable + isInstalled probes as
+ * getSttState(); no test transcription is run.
+ */
+export async function isLocalSttReady(): Promise<boolean> {
+    const s = readSettings();
+    const root = resolvedRoot(s);
+    const engine = resolveLocalEngine(s);
+    // ffmpeg is required for every local path (capture → 16 kHz mono WAV).
+    const cmd = (fallback: string, override: string) => (override && override.trim() ? override.trim() : fallback);
+    const probes: Promise<boolean>[] = [
+        commandAvailable(s.ffmpegPath && s.ffmpegPath.trim() ? s.ffmpegPath.trim() : "ffmpeg"),
+    ];
+    if (engine === "whisper-cpp") {
+        probes.push(commandAvailable(cmd("whisper-cli", s.whisper.binaryPath)));
+    } else if (engine === "faster-whisper") {
+        probes.push(commandAvailable(cmd("whisper-ctranslate2", s.fasterWhisper.binaryPath)));
+    } else if (engine === "vosk") {
+        probes.push(commandAvailable(cmd("vosk-transcriber", s.vosk.binaryPath)));
+    }
+    const results = await Promise.all(probes);
+    if (!results.every(Boolean)) { return false; }
+    // At least one installed model for this engine. faster-whisper fetches its
+    // own models on first use (no managed download), so it counts as ready on
+    // binary presence alone; whisper-cpp and vosk need a managed model file.
+    if (engine === "faster-whisper") { return true; }
+    return ALL_MODELS.some((m) => m.engine === engine && isInstalled(m, root));
 }
 
 /** Snapshot for the config panel: engines, models (with installed flag), and tool availability. */
