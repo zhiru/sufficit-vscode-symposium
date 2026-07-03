@@ -32,12 +32,11 @@ const hasTag = (tags: unknown, tag: string): boolean => String(tags ?? "").split
 /** Lists the task observations bound to a Symposium session (newest first). */
 export async function fetchSessionTasks(hub: HubClient, sessionId: string): Promise<TaskItem[]> {
     if (!hub.configured() || !sessionId) { return []; }
-    const tag = sessionTag(sessionId);
-    // Tag search isn't guaranteed server-side, so pull recent tasks and filter
-    // by the session tag locally.
-    const recs = await hub.searchMemory({ limit: 100 });
-    return (recs as Array<{ type: string; tags?: string | string[]; id: unknown; title?: string; summary?: string; createdAtUtc?: string | number }>)
-        .filter((r) => isTask(r.type) && hasTag(r.tags, tag))
+    // Search is scoped to the session by the native sessionId field on the
+    // server; keep only task-type records for this session, newest first.
+    const recs = await hub.searchMemory({ limit: 100, sessionId });
+    return (recs as Array<{ type: string; sessionId?: string; tags?: string | string[]; id: unknown; title?: string; summary?: string; createdAtUtc?: string | number }>)
+        .filter((r) => isTask(r.type) && (r.sessionId ?? "") === sessionId)
         .sort((a, b) => Date.parse(String(b.createdAtUtc || "0")) - Date.parse(String(a.createdAtUtc || "0")))
         .slice(0, 30)
         .map((r) => ({ id: String(r.id), type: r.type, title: r.title ?? "", summary: r.summary ?? "", ts: String(r.createdAtUtc || ""), tags: Array.isArray(r.tags) ? r.tags.join(",") : r.tags ?? "", done: hasTag(r.tags, DONE_TAG) }));
@@ -78,9 +77,8 @@ export async function fetchLatestCheckpoint(hub: HubClient, sessionId: string): 
 /** Expires (soft-deletes) every task observation bound to a session. Returns count. */
 export async function expireSessionTasks(hub: HubClient, sessionId: string): Promise<number> {
     if (!hub.configured() || !sessionId) { return 0; }
-    const tag = sessionTag(sessionId);
-    const recs = await hub.searchMemory({ limit: 200 });
-    const ids = (recs as Array<{ type: string; tags?: string | string[]; id: unknown }>).filter((r) => isTask(r.type) && hasTag(r.tags, tag)).map((r) => String(r.id)).filter(Boolean);
+    const recs = await hub.searchMemory({ limit: 200, sessionId });
+    const ids = (recs as Array<{ type: string; sessionId?: string; id: unknown }>).filter((r) => isTask(r.type) && (r.sessionId ?? "") === sessionId).map((r) => String(r.id)).filter(Boolean);
     if (!ids.length) { return 0; }
     const full = await hub.getByIds(ids);
     const past = new Date(Date.now() - 1000).toISOString();

@@ -1,11 +1,11 @@
 import { HubClient } from "./hubClient";
-import { sessionTag } from "./tasks";
 
 /**
  * Guardrails are "absolute rules" for a Symposium chat session, stored as
- * Sufficit-memory observations (type "guardrail") bound to the session via the
- * same symposium-session:<id> tag as tasks, and injected into EVERY outbound
- * message so the agent cannot drift from or ignore them.
+ * Sufficit-memory observations (type "guardrail") scoped to the session via the
+ * native `sessionId` field (privacy level "internal", so they never leak outside
+ * the session that created them). They are injected into EVERY outbound message
+ * so the agent cannot drift from or ignore them.
  *
  * Ownership: the AGENT adds them (`add_guardrail`) to lock in a hard constraint
  * the user gave it or a commitment it makes, and can clear them all on request
@@ -21,33 +21,29 @@ export interface GuardrailItem {
     ts?: string;
 }
 
-const hasTag = (tags: unknown, tag: string): boolean =>
-    String(tags ?? "").split(",").map((t) => t.trim()).includes(tag);
-
 /** Lists a session's guardrails, oldest first (definition order). */
 export async function fetchSessionGuardrails(hub: HubClient, sessionId: string): Promise<GuardrailItem[]> {
     if (!hub.configured() || !sessionId) { return []; }
-    const tag = sessionTag(sessionId);
-    // Mirror fetchSessionTasks: the server-side `type` filter on /api/memory/search
-    // is unreliable (same reason tasks pulls untyped and filters locally), which is
-    // why the typed query left the Guardrails panel empty on reopen. Pull recent
-    // records and filter by type + session tag locally. Limit 200 keeps a margin so
+    // Search is scoped to the session by the native sessionId field on the
+    // server (EFMemoryService filters by session_id). Pull recent records and
+    // keep only the guardrail type for this session. Limit 200 keeps a margin so
     // the (few) guardrails aren't diluted out by the many task-checkpoints.
-    const recs = await hub.searchMemory({ limit: 200 });
-    return (recs as Array<{ type: string; tags?: string | string[]; id: unknown; summary?: string; title?: string; createdAtUtc?: string | number }>)
-        .filter((r) => r.type === GUARDRAIL_TYPE && hasTag(r.tags, tag))
+    const recs = await hub.searchMemory({ limit: 200, sessionId });
+    return (recs as Array<{ type: string; sessionId?: string; id: unknown; summary?: string; title?: string; createdAtUtc?: string | number }>)
+        .filter((r) => r.type === GUARDRAIL_TYPE && (r.sessionId ?? "") === sessionId)
         .sort((a, b) => Date.parse(String(a.createdAtUtc || "0")) - Date.parse(String(b.createdAtUtc || "0")))
         .map((r) => ({ id: String(r.id), text: r.summary || r.title || "", ts: String(r.createdAtUtc || "") }));
 }
 
-/** Adds a guardrail for the session. Returns the new id. */
+/** Adds a guardrail for the session (privacy level internal, session-scoped). Returns the new id. */
 export async function saveGuardrail(hub: HubClient, sessionId: string, text: string): Promise<string> {
     const t = text.trim();
     return hub.save({
         type: GUARDRAIL_TYPE,
         title: t.slice(0, 60),
         summary: t,
-        tags: `${GUARDRAIL_TYPE},${sessionTag(sessionId)}`,
+        sessionId,
+        privacyLevel: "internal",
     });
 }
 

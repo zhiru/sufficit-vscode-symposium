@@ -20,6 +20,8 @@ export interface CompactRecord {
     title: string;
     summary: string;
     tags?: string;
+    /** Caller session id (when the observation was scoped to a session). */
+    sessionId?: string;
 }
 
 export interface Observation {
@@ -29,6 +31,10 @@ export interface Observation {
     summary: string;
     payload?: string;
     tags?: string;
+    /** Caller session id; scopes the observation to a single chat session. */
+    sessionId?: string;
+    /** Privacy level: "public" | "tenant" | "private" | "internal". Defaults to tenant. */
+    privacyLevel?: string;
     /** ISO-8601 expiry; set in the past to soft-delete on the next save (upsert). */
     expiresAtUtc?: string;
 }
@@ -131,7 +137,7 @@ export class HubClient {
     }
 
     /** Free-form memory search (query/type/limit). Returns compact records. */
-    async searchMemory(params: { query?: string; type?: string; limit?: number }): Promise<CompactRecord[]> {
+    async searchMemory(params: { query?: string; type?: string; limit?: number; sessionId?: string }): Promise<CompactRecord[]> {
         const res = await fetch(`${this.base()}/api/memory/search`, {
             method: "POST",
             headers: await this.headers(),

@@ -1,4 +1,4 @@
-import { fetchSessionTasks, markTaskDone, sessionTag } from "../../sync/tasks";
+import { fetchSessionTasks, markTaskDone } from "../../sync/tasks";
 import { saveGuardrail, clearSessionGuardrails } from "../../sync/guardrails";
 import { ToolContext } from "./types";
 import { LocalMemory } from "./localMemory";
@@ -105,14 +105,12 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
             case "memory_save": {
                 // Bind task observations to the current Symposium chat session so
                 // they can be listed in the Tasks panel and removed with it.
-                let tags = args.tags ? String(args.tags) : "";
                 const type = String(args.type ?? "note");
-                if (ctx.sessionId && type.startsWith("task")) {
-                    const tag = `symposium-session:${ctx.sessionId}`;
-                    if (!tags.split(",").map((t) => t.trim()).includes(tag)) {
-                        tags = tags ? `${tags},${tag}` : tag;
-                    }
-                }
+                let tags = args.tags ? String(args.tags) : "";
+                // Session-bound types (tasks) are scoped via the native sessionId
+                // field + privacy level internal, so they never leak outside the
+                // session; no need for a symposium-session: tag.
+                const sessionScoped = ctx.sessionId && type.startsWith("task");
                 try {
                     const id = await hub.save({
                         type,
@@ -120,6 +118,8 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                         summary: String(args.summary ?? ""),
                         payload: args.payload ? String(args.payload) : undefined,
                         tags: tags || undefined,
+                        sessionId: sessionScoped ? ctx.sessionId : undefined,
+                        privacyLevel: sessionScoped ? "internal" : undefined,
                     });
                     return JSON.stringify({ id });
                 } catch (e: unknown) {
@@ -151,10 +151,10 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 if (!titles.length) { return JSON.stringify({ error: "provide tasks: [\"step 1\", \"step 2\", …]" }); }
                 const userRequested = args.user_requested === true;
                 const creatorTag = userRequested ? "creator:user" : "creator:agent";
-                const tags = `task-anchor,${sessionTag(ctx.sessionId)},${creatorTag}`;
+                const tags = `task-anchor,${creatorTag}`;
                 const ids: string[] = [];
                 for (const title of titles) {
-                    const id = await hub.save({ type: "task-anchor", title: title.slice(0, 80), summary: title, tags });
+                    const id = await hub.save({ type: "task-anchor", title: title.slice(0, 80), summary: title, tags, sessionId: ctx.sessionId, privacyLevel: "internal" });
                     if (id) { ids.push(id); }
                 }
                 const reminder = userRequested
