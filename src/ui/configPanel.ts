@@ -306,6 +306,12 @@ export class ConfigPanel {
     private async pushState(): Promise<void> {
         const api = this.deps.api;
         const profile = this.deps.auth ? await this.deps.auth.getProfile().catch(() => undefined) : undefined;
+        // Whether the OS keyring actually persists the Sufficit login. False on
+        // VS Code-via-snap (isolated from the host keyring) and similar setups;
+        // surfaced as a warning banner in the Sufficit tab so the user knows
+        // the credentials aren't protected by the keyring (they fall back to the
+        // extension's global storage).
+        const secretStorageWorking = this.deps.auth ? await this.deps.auth.isSecretStorageWorking().catch(() => true) : true;
 
         // Ensure Sufficit native MCP server exists when logged in
         if (profile) {
@@ -335,6 +341,7 @@ export class ConfigPanel {
             sync: api.sync.status(),
             hubConfigured: api.sync.configured(),
             profile: profile ?? null,
+            secretStorageWorking,
             prefs: {
                 sessionsSide: chat.get<string>("sessionsSide", "auto"),
                 openIn: chat.get<string>("openIn", "editor"),

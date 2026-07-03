@@ -36,6 +36,16 @@ interface Discovery {
 
 const SECRET_KEY = "sufficit.identity.tokens";
 const PROFILE_KEY = "sufficit.identity.profile";
+/**
+ * Fallback home for the tokens when SecretStorage does not persist (most often
+ * the VS Code snap, which is isolated from the host keyring and silently falls
+ * back to an in-memory store that is lost on restart). Stored in globalState,
+ * which is backed by a per-extension SQLite DB that survives restarts and is
+ * NOT covered by Settings Sync — so credentials persist locally but never roam
+ * to other machines. Less isolated than the OS keyring, but strictly better
+ * than losing the login every restart.
+ */
+const FALLBACK_KEY = "sufficit.identity.tokens.fallback";
 
 export class SufficitAuth {
     private profileCache: SufficitProfile | undefined;
@@ -44,6 +54,16 @@ export class SufficitAuth {
     // Guards the "session expired" notification so a flapping token or repeated
     // requests don't spam the user with the same prompt.
     private expiredNoticeShown = false;
+    // Guards the "credentials not persisted to keyring" notice (shown once per
+    // login that landed in the globalState fallback).
+    private persistNoticeShown = false;
+    /**
+     * Whether SecretStorage actually persists. Probed once on the first write
+     * via a read-back round-trip; while it stays `undefined` we don't know yet,
+     * and once probed the value is cached so the config panel's banner reflects
+     * the real situation without re-probing on every read.
+     */
+    private secretStoragePersists: boolean | undefined;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -120,6 +140,15 @@ export class SufficitAuth {
         this.profileCache = undefined;
         const profile = await this.getProfile(true);
         this.onChangeEmitter.fire();
+        // If SecretStorage does not persist (e.g. VS Code snap, isolated from
+        // the host keyring), tell the user once: the login is kept via the
+        // globalState fallback, but the keyring is not actually protecting it.
+        if (this.secretStoragePersists === false && !this.persistNoticeShown) {
+            this.persistNoticeShown = true;
+            void vscode.window.showWarningMessage(
+                "Sufficit: este ambiente não persiste credenciais no chaveiro do sistema (provável VS Code via snap). Seu login está salvo no armazenamento da extensão e será mantido entre reinícios, mas é menos isolado que o chaveiro. Para usar o chaveiro nativo, instale o VS Code via .deb.",
+            );
+        }
         return profile;
     }
 
@@ -164,11 +193,54 @@ export class SufficitAuth {
 
     private async readTokens(): Promise<StoredTokens | undefined> {
         const raw = await this.context.secrets.get(SECRET_KEY);
-        if (!raw) { return undefined; }
-        try { return JSON.parse(raw) as StoredTokens; } catch { return undefined; }
+        if (raw) {
+            try { return JSON.parse(raw) as StoredTokens; } catch { /* malformed */ }
+        }
+        // Fallback (VS Code snap and other keyring-less setups): tokens kept in
+        // globalState so the login survives a restart even when SecretStorage is
+        // backed by an in-memory store. Same shape as the secret payload.
+        const fallback = this.context.globalState.get<string>(FALLBACK_KEY);
+        if (fallback) {
+            try { return JSON.parse(fallback) as StoredTokens; } catch { /* malformed */ }
+        }
+        return undefined;
     }
     private async writeTokens(t: StoredTokens): Promise<void> {
-        await this.context.secrets.store(SECRET_KEY, JSON.stringify(t));
+        const payload = JSON.stringify(t);
+        await this.context.secrets.store(SECRET_KEY, payload);
+        // Probe persistence once: read it straight back. If the secret is gone
+        // (the snap's in-memory SecretStorage doesn't survive even within the
+        // session, or the keyring silently dropped it), fall back to globalState
+        // and remember the verdict so the config banner can warn the user.
+        if (this.secretStoragePersists === undefined) {
+            const readBack = await this.context.secrets.get(SECRET_KEY);
+            this.secretStoragePersists = readBack === payload;
+        }
+        if (this.secretStoragePersists) {
+            // Keep the fallback clean while the keyring works, so we never leave
+            // a stale copy behind.
+            await this.context.globalState.update(FALLBACK_KEY, undefined);
+        } else {
+            await this.context.globalState.update(FALLBACK_KEY, payload);
+        }
+    }
+
+    /**
+     * Whether SecretStorage actually persists across restarts on this machine.
+     * Undefined until probed (the first token write), then true/false. The
+     * config panel shows a warning banner and the login flow warns when this is
+     * false — typically the VS Code snap (isolated from the host keyring) where
+     * tokens would otherwise vanish on every restart.
+     */
+    async isSecretStorageWorking(): Promise<boolean> {
+        if (this.secretStoragePersists === undefined) {
+            // Probe with a throwaway marker so the verdict is known even before
+            // the first real login (the banner should show on first install too).
+            const marker = "symposium-probe";
+            await this.context.secrets.store(SECRET_KEY, marker);
+            this.secretStoragePersists = (await this.context.secrets.get(SECRET_KEY)) === marker;
+        }
+        return this.secretStoragePersists;
     }
 
     /**
@@ -217,6 +289,7 @@ export class SufficitAuth {
     /** Clears tokens + profile and surfaces the "session expired" notice once. */
     private async clearExpiredSession(): Promise<void> {
         await this.context.secrets.delete(SECRET_KEY);
+        await this.context.globalState.update(FALLBACK_KEY, undefined);
         const hadProfile = !!this.profileCache;
         this.profileCache = undefined;
         await this.context.globalState.update(PROFILE_KEY, undefined);
@@ -274,6 +347,7 @@ export class SufficitAuth {
 
     async logout(): Promise<void> {
         await this.context.secrets.delete(SECRET_KEY);
+        await this.context.globalState.update(FALLBACK_KEY, undefined);
         await this.context.globalState.update(PROFILE_KEY, undefined);
         this.profileCache = undefined;
         this.onChangeEmitter.fire();

@@ -285,6 +285,22 @@ export class OpenAIAdapter implements AgentAdapter {
         return ["default", "minimal", "low", "medium", "high"];
     }
 
+    // Permission/approval modes for the composer menu. The OpenAI-compatible
+    // backend executes tools on the host itself (shell/fs/etc), so the same
+    // spectrum as the CLI backends makes sense. Default to bypassPermissions
+    // (run everything without prompts) — the Sufficit AI gateway is trusted to
+    // act, and the per-session tool picker above still gates WHICH tools exist.
+    permissionModes(): string[] {
+        return ["default", "acceptEdits", "bypassPermissions", "plan"];
+    }
+
+    defaultPermission(): string {
+        // No per-backend setting today: Sufficit AI trusts the gateway to act,
+        // so default to running everything without prompts. The composer menu
+        // still lets the user pick a stricter mode per session (default/plan).
+        return "bypassPermissions";
+    }
+
     // No native plan tool over the raw API: inject one and parse a ```todo block.
     hasNativeTodo(): boolean { return false; }
     todoInjection(): string { return TODO_INJECTION; }

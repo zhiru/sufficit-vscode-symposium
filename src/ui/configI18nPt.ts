@@ -46,6 +46,7 @@ export const CONFIG_PT: Dict = {
     "config.sufficit.section.vault": "Cofre",
     "config.sufficit.auth.signedIn": "Conectado como",
     "config.sufficit.auth.notSignedIn": "Não conectado",
+    "config.sufficit.auth.noKeyring": "Este ambiente não persiste credenciais no chaveiro do sistema (VS Code via snap, isolado do chaveiro do host). Seu login do Sufficit fica salvo no armazenamento global da extensão e sobrevive a reinícios, mas é menos isolado que o chaveiro. Para proteção via chaveiro nativo, instale o VS Code via .deb em vez de snap.",
     "config.sufficit.memory.desc": "Dica injetada no prompt de sistema para usuários logados, orientando a buscar na memória compartilhada Sufficit antes de pedir contexto a você. Limpe o campo para desabilitar a injeção.",
     "config.sufficit.vault.desc": "Ferramentas vinculadas a segredos via credentialRef. Os segredos são resolvidos em tempo de execução através do vault Sufficit (API do hub) e injetados no env da ferramenta — nunca armazenados em disco.",
     "config.sufficit.vault.empty": "Nenhuma ferramenta está vinculada a segredos do vault.",
