@@ -180,7 +180,10 @@ export function renderConfigScript(dict: Record<string, string>): string {
                     // showing the friendly name). The URL field never matches a preset.
                     if (key && key.endsWith(".model")) {
                         const guid = __presetGuidForName(value);
-                        if (guid) { value = guid; }
+                        // "ollama:<guid>": the ollama: prefix selects the provider;
+                        // the client strips it and sends <guid>, which /api/show and
+                        // /api/chat resolve (the name 404s on /api/show).
+                        if (guid) { value = "ollama:" + guid; }
                     }
                     vscode.postMessage({ type: "set-vscode-config", key, value });
                     __maybeAutoConfigSufficit(el);   // Sufficit preset → auto-set endpoint

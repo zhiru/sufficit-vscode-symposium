@@ -104,7 +104,8 @@ export const configScriptOllama = `
             var el = inputs[i];
             var key = el.getAttribute("data-key") || "";
             if (key.slice(-6) === ".model") {
-                var name = __presetNameForGuid(el.value);
+                var v = el.value.indexOf("ollama:") === 0 ? el.value.slice(7) : el.value;
+                var name = __presetNameForGuid(v);
                 if (name) { el.value = name; }
             }
         }
