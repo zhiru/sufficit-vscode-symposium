@@ -261,19 +261,12 @@ export class SufficitAuth {
         }
     }
 
-    /**
-     * Whether SecretStorage actually persists across restarts on this machine.
-     * Undefined until probed (the first token write), then true/false. The
-     * config panel shows a warning banner and the login flow warns when this is
-     * false — typically the VS Code snap (isolated from the host keyring) where
-     * tokens would otherwise vanish on every restart.
-     */
+    /** Whether SecretStorage persists across restarts (false on snap/code-server);
+     *  drives the config warning banner. Probed once, then cached. */
     async isSecretStorageWorking(): Promise<boolean> {
         if (this.secretStoragePersists === undefined) {
-            // Probe with a throwaway marker under a DEDICATED key (never SECRET_KEY,
-            // which would clobber a real token). Web hosts (code-server) are treated
-            // as non-persistent: SecretStorage is in-memory there, so a same-session
-            // readback lies and the token would vanish on reload.
+            // Throwaway marker under a dedicated key (never SECRET_KEY). Web hosts
+            // are non-persistent (in-memory SecretStorage; same-session readback lies).
             const probeKey = SECRET_KEY + ".probe";
             const marker = "symposium-probe";
             await this.context.secrets.store(probeKey, marker);
@@ -285,46 +278,54 @@ export class SufficitAuth {
     }
 
     /**
-     * Valid access token, refreshing automatically when it has expired. Returns
-     * null when not logged in. When the access token has expired AND cannot be
-     * refreshed (no refresh token, or the refresh was rejected), the stored
-     * tokens are cleared, the cached profile is dropped (so the UI stops showing
-     * a logged-in avatar), the user is notified once with an action to sign in
-     * again, and null is returned — so callers fail cleanly instead of sending
-     * a dead token that the gateway answers with a cryptic HTTP 401.
+     * Valid access token, auto-refreshing when expired. Returns null when not
+     * logged in or when the refresh fails — in which case the dead session is
+     * cleared and the user is notified once, so callers never send a dead token.
      */
     async getAccessToken(): Promise<string | null> {
-        let t = await this.readTokens();
+        const t = await this.readTokens();
         if (!t) { return null; }
-        // Still valid — return it, and clear any prior expired notice flag so a
-        // future re-expiry can notify again.
         if (Date.now() < t.expiresAtMs - 60_000) {
             this.expiredNoticeShown = false;
             return t.accessToken;
         }
-        // Expired: try to refresh transparently.
-        if (t.refreshToken) {
+        // Expired: refresh, serialized so concurrent callers share ONE refresh
+        // (rotating refresh tokens 400 on a parallel second use, killing the session).
+        const refreshed = await this.refreshOnce();
+        if (refreshed) { return refreshed.accessToken; }
+        await this.clearExpiredSession();
+        return null;
+    }
+
+    private refreshInFlight?: Promise<StoredTokens | undefined>;
+    private async refreshOnce(): Promise<StoredTokens | undefined> {
+        if (this.refreshInFlight) { return this.refreshInFlight; }
+        this.refreshInFlight = (async () => {
+            // Re-read: another caller may have refreshed while we queued.
+            const cur = await this.readTokens();
+            if (cur && Date.now() < cur.expiresAtMs - 60_000) { return cur; }
+            const rt = cur?.refreshToken;
+            if (!rt) { return undefined; }
             try {
                 const disco = await this.discovery();
                 const res = await fetch(disco.token_endpoint, {
                     method: "POST",
                     headers: { "content-type": "application/x-www-form-urlencoded" },
-                    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refreshToken, client_id: this.clientId() }).toString(),
+                    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: rt, client_id: this.clientId() }).toString(),
                 });
                 if (res.ok) {
-                    t = this.toStored(await res.json() as { access_token?: string; token_type?: string; expires_in?: number; refresh_token?: string; scope?: string; id_token?: string });
-                    await this.writeTokens(t);
+                    const nt = this.toStored(await res.json() as { access_token?: string; expires_in?: number; refresh_token?: string; id_token?: string });
+                    await this.writeTokens(nt);
                     this.expiredNoticeShown = false;
-                    return t.accessToken;
+                    return nt;
                 }
                 this.log(`[auth] refresh rejected: HTTP ${res.status}`);
             } catch (err) {
                 this.log(`[auth] refresh failed: ${err}`);
             }
-        }
-        // Cannot recover: clear the dead session and tell the user once.
-        await this.clearExpiredSession();
-        return null;
+            return undefined;
+        })();
+        try { return await this.refreshInFlight; } finally { this.refreshInFlight = undefined; }
     }
 
     /** Clears tokens + profile and surfaces the "session expired" notice once. */
