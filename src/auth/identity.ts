@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { readFallbackToken, writeFallbackToken } from "./tokenStore";
 
 /**
  * Sufficit Identity login for Symposium via OAuth 2.0 Device Authorization Grant
@@ -228,10 +229,9 @@ export class SufficitAuth {
         if (raw) {
             try { return JSON.parse(raw) as StoredTokens; } catch { /* malformed */ }
         }
-        // Fallback (VS Code snap and other keyring-less setups): tokens kept in
-        // globalState so the login survives a restart even when SecretStorage is
-        // backed by an in-memory store. Same shape as the secret payload.
-        const fallback = this.context.globalState.get<string>(FALLBACK_KEY);
+        // Fallback (keyring-less): globalStorage file (survives reload; globalState
+        // can be 0-byte on code-server), with globalState as secondary.
+        const fallback = readFallbackToken(this.context) ?? this.context.globalState.get<string>(FALLBACK_KEY);
         if (fallback) {
             try { return JSON.parse(fallback) as StoredTokens; } catch { /* malformed */ }
         }
@@ -240,10 +240,7 @@ export class SufficitAuth {
     private async writeTokens(t: StoredTokens): Promise<void> {
         const payload = JSON.stringify(t);
         await this.context.secrets.store(SECRET_KEY, payload);
-        // Probe persistence once: read it straight back. If the secret is gone
-        // (the snap's in-memory SecretStorage doesn't survive even within the
-        // session, or the keyring silently dropped it), fall back to globalState
-        // and remember the verdict so the config banner can warn the user.
+        // Probe persistence once so the config banner can warn the user.
         if (this.secretStoragePersists === undefined) {
             const readBack = await this.context.secrets.get(SECRET_KEY);
             // A same-session readback can't prove cross-reload persistence: in
@@ -254,10 +251,12 @@ export class SufficitAuth {
                 && vscode.env.uiKind !== vscode.UIKind.Web;
         }
         if (this.secretStoragePersists) {
-            // Keep the fallback clean while the keyring works, so we never leave
-            // a stale copy behind.
+            // Keep the fallback clean while the keyring works.
+            writeFallbackToken(this.context, undefined);
             await this.context.globalState.update(FALLBACK_KEY, undefined);
         } else {
+            // File fallback is the reliable one on code-server; globalState too.
+            writeFallbackToken(this.context, payload);
             await this.context.globalState.update(FALLBACK_KEY, payload);
         }
     }
@@ -331,6 +330,7 @@ export class SufficitAuth {
     /** Clears tokens + profile and surfaces the "session expired" notice once. */
     private async clearExpiredSession(): Promise<void> {
         await this.context.secrets.delete(SECRET_KEY);
+        writeFallbackToken(this.context, undefined);
         await this.context.globalState.update(FALLBACK_KEY, undefined);
         const hadProfile = !!this.profileCache;
         this.profileCache = undefined;
@@ -389,6 +389,7 @@ export class SufficitAuth {
 
     async logout(): Promise<void> {
         await this.context.secrets.delete(SECRET_KEY);
+        writeFallbackToken(this.context, undefined);
         await this.context.globalState.update(FALLBACK_KEY, undefined);
         await this.context.globalState.update(PROFILE_KEY, undefined);
         this.profileCache = undefined;
