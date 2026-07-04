@@ -174,13 +174,13 @@ export function renderConfigScript(dict: Record<string, string>): string {
                 el.onchange = () => {
                     const key = el.getAttribute("data-key");
                     let value = el.value;
-                    // GitLens/Copilot route a model to the Ollama gateway via the
-                    // "ollama:<model>" provider prefix. When a model field holds a
-                    // Sufficit preset, store it prefixed so the tool actually calls
-                    // the gateway. (The URL field never matches a preset.)
-                    if (key && key.endsWith(".model") && !value.startsWith("ollama:") && __isSufficitPreset(value)) {
-                        value = "ollama:" + value;
-                        el.value = value;
+                    // GitLens/Copilot call /api/show to validate a model, which the
+                    // gateway resolves by preset GUID (the name 404s). So when a model
+                    // field holds a Sufficit preset name, SAVE its GUID (the field keeps
+                    // showing the friendly name). The URL field never matches a preset.
+                    if (key && key.endsWith(".model")) {
+                        const guid = __presetGuidForName(value);
+                        if (guid) { value = guid; }
                     }
                     vscode.postMessage({ type: "set-vscode-config", key, value });
                     __maybeAutoConfigSufficit(el);   // Sufficit preset → auto-set endpoint

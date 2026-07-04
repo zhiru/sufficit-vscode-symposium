@@ -71,6 +71,7 @@ export const configScriptOllama = `
         __sufficitEndpoint = endpoint || "";
         __rebuildModelsDatalist();
         __setModelsStatus();
+        __remapModelFieldsToNames();   // show names for fields storing a preset GUID
         // Proactively point GitLens at the gateway: fill the Ollama URL when empty
         // or still holding a non-gateway URL (e.g. the openai/v1 base). Persists it.
         if (__sufficitEndpoint) {
@@ -83,8 +84,30 @@ export const configScriptOllama = `
         }
     }
 
-    function __isSufficitPreset(name) {
-        return __sufficitPresets.some(function (m) { return (m.name || m.id) === name; });
+    function __isSufficitPreset(v) {
+        return __sufficitPresets.some(function (m) { return m.name === v || m.id === v; });
+    }
+    // preset name -> GUID (m.id is the preset GUID from /api/tags 'model').
+    function __presetGuidForName(name) {
+        var m = __sufficitPresets.filter(function (p) { return p.name === name; })[0];
+        return m ? m.id : "";
+    }
+    function __presetNameForGuid(guid) {
+        var m = __sufficitPresets.filter(function (p) { return p.id === guid; })[0];
+        return m ? m.name : "";
+    }
+    // Model fields store the GUID but should DISPLAY the friendly name. After the
+    // presets load, swap any GUID currently shown in a model field for its name.
+    function __remapModelFieldsToNames() {
+        var inputs = document.querySelectorAll("input.vscode-input");
+        for (var i = 0; i < inputs.length; i++) {
+            var el = inputs[i];
+            var key = el.getAttribute("data-key") || "";
+            if (key.slice(-6) === ".model") {
+                var name = __presetNameForGuid(el.value);
+                if (name) { el.value = name; }
+            }
+        }
     }
 
     function setOllamaModelsLoading() {
