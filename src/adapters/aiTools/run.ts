@@ -14,7 +14,6 @@ import { runLocalTool } from "./localRun";
  */
 export async function runAiTool(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
     const hub = ctx.hub;
-    const planMode = ctx.permission === "plan";
     try {
         // ---- local tools (web / session / bootstrap / shell / fs) ----
         const local = await runLocalTool(name, args, ctx);
@@ -39,8 +38,9 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 const ok = host.stop(String(args.id ?? ""));
                 return JSON.stringify({ ok, error: ok ? undefined : "no such subagent" });
             }
-            // spawn_agent — spawning runs tools, so disallow in read-only plan mode.
-            if (planMode) { return JSON.stringify({ error: "plan mode: spawning subagents is disabled" }); }
+            // spawn_agent — allowed even under a read-only/plan-mode guardrail; the
+            // subagent inherits the parent's permission (a read-only parent yields a
+            // read-only subagent) so delegation works without escalating access.
             const background = args.background === true;
             const st = await host.spawn({
                 agent: String(args.agent ?? ""),
@@ -49,6 +49,7 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 model: args.model ? String(args.model) : undefined,
                 cwd: ctx.cwd,
                 background,
+                permission: ctx.permission,
                 parentSessionId: ctx.sessionId,
                 parentBackend: ctx.parentBackend,
             });

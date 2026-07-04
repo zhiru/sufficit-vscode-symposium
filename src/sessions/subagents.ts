@@ -1,7 +1,7 @@
 import { AgentAdapter, SessionStartOptions } from "../adapters/types";
 import { aiToolsForAgent } from "../adapters/aiTools/defs";
 import { SubagentHandle, SubagentHost, SubagentStatus } from "../adapters/aiTools/types";
-import { readAgentBackend, readAgentBody, readAgentModel, readAgentTools } from "../config/root";
+import { readAgentBackend, readAgentBody, readAgentModel, readAgentTools, agentExists } from "../config/root";
 import { ChatController } from "../ui/chatController";
 import { LiveSessions } from "./runtime";
 
@@ -77,18 +77,27 @@ export class SubagentManager implements SubagentHost {
     constructor(
         private readonly live: LiveSessions,
         private readonly adapterByBackend: Map<string, AgentAdapter>,
-        /** Foreground wait ceiling; past it the run keeps going in the background. */
-        private readonly timeoutMs: () => number = () => 300000,
+        /** Foreground wait ceiling; past it the run keeps going in the background
+         *  and the caller polls agent_status. Kept under the host's ~5 min
+         *  no-activity turn cap so a slow foreground spawn degrades to background
+         *  instead of stalling (and killing) the parent turn. */
+        private readonly timeoutMs: () => number = () => 120000,
     ) { }
 
     async spawn(opts: {
         agent: string; task: string; backend?: string; model?: string;
-        cwd: string; background: boolean; parentSessionId?: string; parentBackend?: string;
+        cwd: string; background: boolean; permission?: string; parentSessionId?: string; parentBackend?: string;
     }): Promise<SubagentStatus> {
         const agent = String(opts.agent ?? "").trim();
         const task = String(opts.task ?? "").trim();
         if (!agent) { return this.err("", agent, "", "agent name is required"); }
         if (!task) { return this.err("", agent, "", "task is required"); }
+        // The agent-def must exist locally; otherwise readAgentBody() silently
+        // returns "" and we'd run a hollow, prompt-less session. Fail loudly and
+        // point at Sync → Pull / Configuration → Agents instead.
+        if (!agentExists(agent)) {
+            return this.err("", agent, "", `agent '${agent}' not found under ~/.symposium/repo/agents — run Sync → Pull or check Configuration → Agents`);
+        }
 
         // Depth + concurrency guards keep a delegation tree bounded.
         const parentDepth = opts.parentSessionId ? (this.recs.get(opts.parentSessionId)?.depth ?? 0) : 0;
@@ -125,6 +134,9 @@ export class SubagentManager implements SubagentHost {
             aiTools: aiToolsForAgent(readAgentTools(agent)),
             agentName: agent,
             parentId: opts.parentSessionId,
+            // Inherit the parent's permission so a read-only/plan-mode session
+            // spawns a read-only subagent (no privilege escalation via delegation).
+            ...(opts.permission ? { permission: opts.permission } : {}),
             ...(model ? { model } : {}),
         };
         const { key, controller } = this.live.createWithKey(adapter, options);

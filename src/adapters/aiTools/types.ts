@@ -70,6 +70,7 @@ export interface SubagentHost {
         model?: string;
         cwd: string;
         background: boolean;
+        permission?: string;
         parentSessionId?: string;
         parentBackend?: string;
     }): Promise<SubagentStatus>;

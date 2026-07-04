@@ -90,6 +90,16 @@ export function readAgentBackend(name: string): string {
 }
 
 /** Returns an agent-def's body (the markdown after frontmatter) = its instructions. */
+/** True when a local agent-def file exists for this name (used to reject
+ *  spawning an agent that hasn't been synced/created locally yet). */
+export function agentExists(name: string): boolean {
+    try {
+        return fs.statSync(resourcePath("agent", name)).isFile();
+    } catch {
+        return false;
+    }
+}
+
 export function readAgentBody(name: string): string {
     try {
         const text = fs.readFileSync(resourcePath("agent", name), "utf8");
