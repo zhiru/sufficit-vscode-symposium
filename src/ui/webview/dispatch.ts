@@ -16,7 +16,8 @@ import { hideCtx, openChoiceMenu, showToast } from "./menus";
 import { modelLabels, modelValue, modelList, modelDefault, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, buildModelMenuOpts } from "./models";
 import { armStickyUserMessage, layout, refreshEmpty, scrollToBottom, nearBottom, autoScroll } from "./scroll";
 import { svgIcon } from "./icons";
-import { log, composerEl, status, switchAgentBtn, copySessionBtn, sendBtn, input, presencePicker, ctxMenu, modelPicker } from "./dom";
+import { renderAgentPicker, hideAgentPicker } from "./agentPicker";
+import { log, composerEl, status, switchAgentBtn, copySessionBtn, sendBtn, input, presencePicker, ctxMenu, modelPicker, agentBadge } from "./dom";
 import { sessions, busy, activeModel, attachments, activeFile, commands, conversationRows, setActiveFile, setActiveFileDismissed, setActiveFilePinned, setActiveFilePreview, setActiveFileRange, setActiveModel, setBusy, setCommands, setConversationRows, setPendingSessionSwitch, setQueued, setSessions, setSideMode, pendingSessionSwitch, permissionModes, permissionValue, permissionDefault, aiToolsAvailable, aiToolsEnabled, pendingSwitchAnchor, setPendingSwitchAnchor } from "./state";
 
 window.addEventListener("message", ({ data }) => {
@@ -27,6 +28,7 @@ window.addEventListener("message", ({ data }) => {
             break;
         }
         case "setLang": { setLang(String(data.lang || "en")); applyStaticI18n(); break; }
+        case "agent-picker": { renderAgentPicker(Array.isArray(data.agents) ? data.agents : []); break; }
         case "meta": { applyMeta(data); break; }
         case "browser-state": {
             setBrowserOpen(!!data.open);
@@ -48,9 +50,11 @@ window.addEventListener("message", ({ data }) => {
             break;
         }
         case "clear": {
+            hideAgentPicker();   // a session/dialogue is taking over the surface
             setConversationRows([]);
             log.textContent = "";
             copySessionBtn.style.display = "none";
+            agentBadge.style.display = "none";
             setActiveModel(""); setBusy(false); setQueued(0);
             resetWorkingState();
             refreshEmpty();

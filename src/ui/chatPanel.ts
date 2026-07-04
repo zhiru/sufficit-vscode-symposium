@@ -59,6 +59,10 @@ export class ChatPanel {
         this.surface.openDialogue(backend, options, title);
     }
 
+    showAgentPicker(agents: import("./protocol").AgentPickerEntry[]): void {
+        this.surface.showAgentPicker(agents);
+    }
+
     openTerminalDialogue(backend: string, options: SessionStartOptions & { env?: Record<string, string>; tmuxName?: string; reasoning?: string }, title: string): void {
         this.surface.openTerminalDialogue(backend, options, title);
     }

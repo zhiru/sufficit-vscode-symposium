@@ -100,7 +100,9 @@ export function renderAccount(profile) {
         }
         el.appendChild(txt);
         const out = document.createElement("span");
-        out.className = "acc-out"; out.title = "Sair"; out.textContent = "⎋";
+        out.className = "acc-out"; out.title = "Sair";
+        out.setAttribute("role", "button"); out.setAttribute("aria-label", "Sair");
+        out.appendChild(svgIcon("logout"));
         out.onclick = (e) => { e.stopPropagation(); vscode.postMessage({ type: "account-logout" }); };
         el.appendChild(out);
         el.onclick = null;
@@ -297,7 +299,7 @@ export function renderSessionItem(s, depth, childCount) {
             sub.textContent = "deleting…";
         } else {
             const statusText = s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : "");
-            sub.textContent = statusText + s.backend + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
+            sub.textContent = statusText + backendLabel(s.backend) + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
         }
         sub.title = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "";
         body.appendChild(ttl);

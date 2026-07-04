@@ -18,6 +18,17 @@ export interface AttachmentRef {
     name: string;
 }
 
+/** One agent row in the in-chat new-session picker (replaces the QuickPick). */
+export interface AgentPickerEntry {
+    backend: string;
+    name: string;
+    /** Version string when available, else the unavailability reason. */
+    version: string;
+    ok: boolean;
+    /** Install command when the CLI is missing but installable, else undefined. */
+    installCmd?: string;
+}
+
 /** A raw dropped/pasted file payload (base64 data + metadata). */
 export interface DroppedFilePayload {
     name?: string;
@@ -79,6 +90,8 @@ export type WebviewToHost =
     | { type: "compression-preset-set"; presetId: string }
     | { type: "list-backends" }
     | { type: "switch-backend"; backend: string }
+    | { type: "pick-agent"; backend: string }
+    | { type: "install-agent"; backend: string }
     | { type: "restart-from-message"; index: number }
     | { type: "open-settings" }
     | { type: "inspect"; target: "context" | "request" }

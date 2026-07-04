@@ -59,6 +59,33 @@
        history has a real scrollHeight and the pin lands at the bottom BEFORE the
        log is revealed — no visible jump on open. */
     #root.loading #log { visibility: hidden; }
+
+    /* In-chat agent picker (new session): replaces the native QuickPick. */
+    #agentPicker {
+        display: none; flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px; flex: 1; padding: 20px; overflow-y: auto;
+    }
+    #root.picking #agentPicker { display: flex; animation: ldFadeIn 0.22s ease; }
+    #root.picking #log,
+    #root.picking #emptyState,
+    #root.picking #loadingState { display: none; visibility: hidden; }
+    #agentPicker .apTitle { font-size: 0.98em; font-weight: 600; opacity: 0.9; text-align: center; }
+    #agentPicker .apList { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 380px; }
+    #agentPicker .apCard {
+        display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+        width: 100%; padding: 10px 12px; text-align: left; cursor: pointer;
+        border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25));
+        border-radius: 8px; background: var(--vscode-editorWidget-background, transparent);
+        color: inherit; font: inherit; transition: border-color 0.12s, background 0.12s;
+    }
+    #agentPicker .apCard:hover:not(.disabled) {
+        border-color: var(--vscode-focusBorder, #7C3AED);
+        background: var(--vscode-list-hoverBackground, rgba(124,58,237,0.08));
+    }
+    #agentPicker .apCard.disabled { cursor: default; opacity: 0.5; }
+    #agentPicker .apCard.installable .apMeta { color: var(--vscode-textLink-foreground, #3B82F6); }
+    #agentPicker .apName { font-size: 0.92em; font-weight: 600; }
+    #agentPicker .apMeta { font-size: 0.78em; opacity: 0.7; }
     #loadingState .ldLogo {
         width: 56px; height: 56px; border-radius: 16px; display: inline-flex;
         align-items: center; justify-content: center; position: relative;
@@ -243,8 +270,12 @@
     #accountFooter .acc-text { flex: 1; overflow: hidden; }
     #accountFooter .acc-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #accountFooter .acc-sub { opacity: 0.6; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #accountFooter .acc-out { opacity: 0; padding: 2px 6px; }
-    #accountFooter:hover .acc-out { opacity: 0.7; }
+    #accountFooter .acc-out {
+        display: inline-flex; align-items: center; flex: 0 0 auto;
+        opacity: 0.6; padding: 2px 6px; cursor: pointer; border-radius: 4px;
+    }
+    #accountFooter .acc-out svg { width: 15px; height: 15px; }
+    #accountFooter .acc-out:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .groupHeader {
         display: flex; align-items: center; justify-content: space-between;
         padding: 10px 12px 4px 12px; font-size: 0.8em; text-transform: uppercase;
@@ -421,6 +452,22 @@
         min-height: 26px;
     }
     #chatTitle { flex: 1; opacity: 0.75; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .agentBadge {
+        display: none; align-items: center; gap: 4px; flex: none;
+        max-width: 40%; padding: 1px 8px 1px 6px; border-radius: 10px;
+        font-size: 0.78em; font-weight: 600; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+        color: var(--vscode-badge-foreground, inherit);
+        background: var(--vscode-badge-background, rgba(128,128,128,0.2));
+        border-left: 3px solid var(--vscode-descriptionForeground, #888);
+    }
+    .agentBadge .agentBadgeIcon { width: 11px; height: 11px; flex: none; opacity: 0.9; }
+    /* Per-backend accent so each agent reads at a glance. */
+    .agentBadge[data-backend="claude"]  { border-left-color: #D97757; }
+    .agentBadge[data-backend="openai"]  { border-left-color: #10A37F; }
+    .agentBadge[data-backend="codex"]   { border-left-color: #10A37F; }
+    .agentBadge[data-backend="copilot"] { border-left-color: #6E40C9; }
+    .agentBadge[data-backend="sufficit"]{ border-left-color: #7C3AED; }
     #listToggle { display: none; }
     #root.narrow #listToggle { display: inline-flex; }
     /* Message area wrapper: holds the scrollable log + the floating

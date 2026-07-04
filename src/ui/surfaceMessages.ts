@@ -240,6 +240,22 @@ export class SurfaceMessages {
                     }
                     return;
                 }
+                case "pick-agent": {
+                    // Selection from the in-chat new-session agent picker.
+                    if (typeof message.backend === "string") {
+                        const { defaultCwd } = await import("../extension/config");
+                        this.d.dialogues.openDialogue(message.backend, { cwd: defaultCwd() }, "New dialogue");
+                    }
+                    return;
+                }
+                case "install-agent": {
+                    if (typeof message.backend === "string") {
+                        const { promptInstallCli } = await import("../extension/cli");
+                        const adapter = this.d.deps.adapterByBackend.get(message.backend);
+                        void promptInstallCli(message.backend, adapter?.displayName ?? message.backend, "");
+                    }
+                    return;
+                }
                 case "restart-from-message": {
                     if (typeof message.index === "number") {
                         this.d.dialogues.restartFromMessage(message.index);

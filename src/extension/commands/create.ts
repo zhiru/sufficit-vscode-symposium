@@ -15,33 +15,26 @@ export function registerCreateCommands(ctx: CommandContext): void {
 
     context.subscriptions.push(
         vscode.commands.registerCommand("symposium.newSession", async () => {
-            const picks = await Promise.all(adapters.map(async (adapter) => {
+            // In-chat picker (rendered inside the chat surface) instead of a
+            // native QuickPick floating over a bare "Starting…" spinner. The
+            // agent list + availability is probed here and handed to the webview;
+            // the choice comes back as a `pick-agent` / `install-agent` message.
+            const agents = await Promise.all(adapters.map(async (adapter) => {
                 const probe = await adapter.available();
                 const isEnoent = !probe.ok && /ENOENT|not found/i.test(probe.error ?? "");
                 const hasInstall = isEnoent && !!CLI_INSTALL[adapter.backend];
                 return {
-                    label: adapter.displayName ?? adapter.backend,
-                    description: probe.ok ? probe.version : `unavailable: ${probe.error}`,
-                    detail: hasInstall ? `$(cloud-download) Click to install via: ${CLI_INSTALL[adapter.backend].cmd}` : undefined,
-                    adapter,
+                    backend: adapter.backend,
+                    name: adapter.displayName ?? adapter.backend,
+                    version: probe.ok ? (probe.version ?? "") : `unavailable: ${probe.error}`,
                     ok: probe.ok,
+                    installCmd: hasInstall ? CLI_INSTALL[adapter.backend].cmd : undefined,
                 };
             }));
-            const choice = await vscode.window.showQuickPick(picks, {
-                placeHolder: "Which agent joins the symposium?",
-            });
-            if (!choice) {
-                return;
-            }
-            if (!choice.ok) {
-                void promptInstallCli(choice.adapter.backend, choice.label, choice.description ?? "");
-                return;
-            }
-            const cwd = defaultCwd();
             if (inEditor()) {
-                ChatPanel.show(context, surfaceDeps).openDialogue(choice.adapter.backend, { cwd }, "New dialogue");
+                ChatPanel.show(context, surfaceDeps).showAgentPicker(agents);
             } else {
-                void chatView.openDialogue(choice.adapter.backend, { cwd }, "New dialogue");
+                void chatView.showAgentPicker(agents);
             }
         }),
 

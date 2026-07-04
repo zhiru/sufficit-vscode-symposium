@@ -50,6 +50,7 @@ ${chatStyles}
         <div id="chatHeader">
             <button id="listToggle" class="iconBtn" title="Sessions" aria-label="Sessions"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 4h12v1H2V4Zm0 4h12v1H2V8Zm0 4h12v1H2v-1Z"/></svg></button>
             <span id="chatTitle"></span>
+            <span id="agentBadge" class="agentBadge" style="display:none" title="Agent driving this session"></span>
             <button id="switchAgentBtn" class="iconBtn" title="Switch adapter" aria-label="Switch adapter" style="display:none">
                 <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.5 1 6l3.5 3.5V7H10V5H4.5V2.5Zm7 4L15 10l-3.5 3.5V11H6V9h5.5V6.5Z"/></svg>
             </button>
@@ -70,6 +71,10 @@ ${chatStyles}
                 <div class="ldLogo"><svg viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="15" height="10" rx="3" fill="white" fill-opacity="0.3"/><path d="M4 11 L2 15 L8 11 Z" fill="white" fill-opacity="0.3"/><rect x="8" y="11" width="15" height="10" rx="3" fill="white" fill-opacity="0.92"/><path d="M20 21 L22 24 L17 21 Z" fill="white" fill-opacity="0.92"/><circle cx="12" cy="16" r="1.3" fill="#7C3AED"/><circle cx="15.5" cy="16" r="1.3" fill="#4F46E5"/><circle cx="19" cy="16" r="1.3" fill="#3B82F6"/></svg></div>
                 <div class="ldName">Symposium</div>
                 <div class="ldSub"><span class="spinner"></span><span id="loadingText">Loading session…</span></div>
+            </div>
+            <div id="agentPicker">
+                <div class="apTitle" id="agentPickerTitle">Which agent joins the symposium?</div>
+                <div class="apList" id="agentPickerList"></div>
             </div>
             <button id="scrollBottom" title="Go to the bottom" aria-label="Go to the bottom"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 13.5 13 8.5h-3v-6H6v6H3L8 13.5Z"/></svg></button>
         </div>

@@ -10,7 +10,8 @@ import { modelLabel, modelList, modelDefault, modelValue, reasoningList, setMode
 import { layout, scrollToBottom } from "./scroll";
 import { saved } from "./vscode";
 import { bootComplete, bootStep, bootTimer } from "./boot";
-import { root, chatTitle, configBtn, copySessionBtn, modelPicker, reasoningPicker, sendMode, switchAgentBtn } from "./dom";
+import { root, chatTitle, agentBadge, configBtn, copySessionBtn, modelPicker, reasoningPicker, sendMode, switchAgentBtn } from "./dom";
+import { svgIcon } from "./icons";
 import { activeSessionId, setAgentLabels, setActiveFile, setActiveFileDismissed, setActiveFilePinned, setActiveFilePreview, setActiveFileRange, setActiveSessionId, setAiToolsAvailable, setAiToolsEnabled, setBootstrapPath, setBusy, setCurrentBackend, setCurrentBackendName, setPermissionDefault, setPermissionModes, setPermissionValue, setSideMode } from "./state";
 
 /** Apply a `meta` message payload (session resolved / re-meta). */
@@ -40,7 +41,10 @@ export function applyMeta(data: any): void {
         setBootstrapPath("");
         bootEl.style.display = "none";
     }
-    chatTitle.textContent = (data.title ? data.title + " · " : "") + (data.backendName || data.backend);
+    chatTitle.textContent = data.title || (data.backendName || data.backend);
+    // Persistent agent badge: the agent-def name when bound, else the backend
+    // display name — so it's always visible which agent drives this session.
+    renderAgentBadge(data);
     setBrowserOpen(!!data.browserOpen);
     setAiToolsAvailable((data.aiTools && data.aiTools.available) || []);
     setAiToolsEnabled((data.aiTools && data.aiTools.enabled) || []);
@@ -100,4 +104,21 @@ export function applyMeta(data: any): void {
     setActiveFileDismissed(false); renderChips();
     setLoading(false);   // session resolved — reveal the conversation
     scrollToBottom();
+}
+
+/** Fills the chat-header badge with the AGENT-DEF driving this session. Hidden
+ *  for plain backend sessions — the backend is already shown in the statusbar,
+ *  so the badge doesn't duplicate the adapter. */
+function renderAgentBadge(data: any): void {
+    const agentName = data.agentLabels && data.agentLabels.agent;
+    if (!agentName) { agentBadge.style.display = "none"; return; }
+    agentBadge.textContent = "";
+    const ic = svgIcon("robot");
+    ic.classList.add("agentBadgeIcon");
+    ic.setAttribute("aria-hidden", "true");
+    agentBadge.appendChild(ic);
+    agentBadge.appendChild(document.createTextNode(agentName));
+    agentBadge.setAttribute("data-backend", data.backend || "");
+    agentBadge.title = "Agent: " + agentName + " · " + (data.backendName || data.backend || "");
+    agentBadge.style.display = "inline-flex";
 }

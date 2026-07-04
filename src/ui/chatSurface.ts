@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { AgentAdapter, FollowHandle, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatController } from "./chatController";
-import { WebviewToHost } from "./protocol";
+import { WebviewToHost, AgentPickerEntry } from "./protocol";
 import { renderHtml } from "./chatHtml";
 import { TerminalSession } from "./terminalSession";
 import { LiveSessions } from "../sessions/runtime";
@@ -205,6 +205,12 @@ export class ChatSurface {
     }
     openTerminalDialogue(backend: string, options: SessionStartOptions & { env?: Record<string, string>; tmuxName?: string; reasoning?: string }, title: string): void {
         this.dialogues.openTerminalDialogue(backend, options, title);
+    }
+
+    /** Renders the in-chat "which agent joins the symposium?" picker (replaces
+     *  the native QuickPick). Selection comes back as a `pick-agent` message. */
+    showAgentPicker(agents: AgentPickerEntry[]): void {
+        this.post({ type: "agent-picker", agents });
     }
 
     /** Symposium-level slash commands injected into every backend's autocomplete. */
