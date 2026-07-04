@@ -98,6 +98,8 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     // Sufficit Identity login (tokens in SecretStorage; basis for memory/MCP).
     const auth = new SufficitAuth(context, symposiumLog);
     context.subscriptions.push(auth.onDidChange(() => ConfigPanel.refresh()));
+    context.subscriptions.push({ dispose: () => auth.dispose() });
+    void auth.startAutoRefresh();   // silent token refresh so the session never lapses
     // Native Accounts-menu integration (avatar/login at the bottom of the activity bar).
     SufficitAuthProvider.register(context, auth);
     // Hub/MCP requests use the logged-in identity token when available.

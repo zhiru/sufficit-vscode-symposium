@@ -2,17 +2,11 @@ import * as vscode from "vscode";
 import { readFallbackToken, writeFallbackToken } from "./tokenStore";
 
 /**
- * Sufficit Identity login for Symposium via OAuth 2.0 Device Authorization Grant
- * against the Duende IdentityServer at identity.sufficit.com.br. Device flow is
- * used because it needs no redirect URI — works in desktop VS Code and code-server.
- *
- * Tokens live in SecretStorage (never settings.json). The profile (name/email/
- * avatar) comes from /connect/userinfo. These credentials are the basis for
- * memory/MCP access.
- *
- * Requires a public OAuth client registered in identity with the device_code
- * grant enabled and scopes openid/profile/email/offline_access. The client id is
- * read from `symposium.identity.clientId`.
+ * Sufficit Identity login via OAuth 2.0 Device Authorization Grant against the
+ * Duende IdentityServer at identity.sufficit.com.br (device flow needs no
+ * redirect URI — works in desktop VS Code and code-server). Tokens live in
+ * SecretStorage (fallback file when no keyring); profile from /connect/userinfo.
+ * Public client with device_code grant + openid/profile/email/offline_access.
  */
 
 export interface SufficitProfile {
@@ -37,36 +31,41 @@ interface Discovery {
 
 const SECRET_KEY = "sufficit.identity.tokens";
 const PROFILE_KEY = "sufficit.identity.profile";
-/**
- * Fallback home for tokens when SecretStorage doesn't persist (VS Code snap,
- * code-server — in-memory, lost on restart). Stored in globalState (per-extension
- * SQLite DB): survives restarts, not covered by Settings Sync, so credentials
- * stay local. Less isolated than the OS keyring, but beats losing the login.
- */
+/** Fallback token store key (globalState) when SecretStorage doesn't persist. */
 const FALLBACK_KEY = "sufficit.identity.tokens.fallback";
 
 export class SufficitAuth {
     private profileCache: SufficitProfile | undefined;
     private readonly onChangeEmitter = new vscode.EventEmitter<void>();
     readonly onDidChange = this.onChangeEmitter.event;
-    // Guards the "session expired" notification so a flapping token or repeated
-    // requests don't spam the user with the same prompt.
+    // Guards the "session expired" notice against spamming.
     private expiredNoticeShown = false;
-    // Guards the "credentials not persisted to keyring" notice (shown once per
-    // login that landed in the globalState fallback).
+    // Guards the "credentials not in keyring" notice (shown once per fallback login).
     private persistNoticeShown = false;
-    /**
-     * Whether SecretStorage actually persists. Probed once on the first write
-     * via a read-back round-trip; while it stays `undefined` we don't know yet,
-     * and once probed the value is cached so the config panel's banner reflects
-     * the real situation without re-probing on every read.
-     */
+    // Whether SecretStorage persists (probed once on first write, then cached).
     private secretStoragePersists: boolean | undefined;
+
+    private refreshTimer?: ReturnType<typeof setTimeout>;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly log: (msg: string) => void = () => { },
     ) { }
+
+    // Silently refresh ~5 min before expiry so the token never lapses and the
+    // refresh token keeps sliding (avoids "expired, could not be renewed").
+    private scheduleRefresh(expiresAtMs: number): void {
+        if (this.refreshTimer) { clearTimeout(this.refreshTimer); }
+        this.refreshTimer = setTimeout(() => { void this.getAccessToken(); }, Math.max(10_000, expiresAtMs - Date.now() - 300_000));
+    }
+
+    /** On activation: arm the silent-refresh timer if already logged in. */
+    async startAutoRefresh(): Promise<void> {
+        const t = await this.readTokens();
+        if (t) { this.scheduleRefresh(t.expiresAtMs); }
+    }
+
+    dispose(): void { if (this.refreshTimer) { clearTimeout(this.refreshTimer); } }
 
     private cfg() {
         return vscode.workspace.getConfiguration("symposium.identity");
@@ -259,6 +258,7 @@ export class SufficitAuth {
             writeFallbackToken(this.context, payload);
             await this.context.globalState.update(FALLBACK_KEY, payload);
         }
+        this.scheduleRefresh(t.expiresAtMs);   // keep the session alive proactively
     }
 
     /** Whether SecretStorage persists across restarts (false on snap/code-server);
@@ -319,7 +319,7 @@ export class SufficitAuth {
                     this.expiredNoticeShown = false;
                     return nt;
                 }
-                this.log(`[auth] refresh rejected: HTTP ${res.status}`);
+                this.log(`[auth] refresh rejected: HTTP ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
             } catch (err) {
                 this.log(`[auth] refresh failed: ${err}`);
             }
