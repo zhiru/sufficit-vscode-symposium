@@ -37,13 +37,10 @@ interface Discovery {
 const SECRET_KEY = "sufficit.identity.tokens";
 const PROFILE_KEY = "sufficit.identity.profile";
 /**
- * Fallback home for the tokens when SecretStorage does not persist (most often
- * the VS Code snap, which is isolated from the host keyring and silently falls
- * back to an in-memory store that is lost on restart). Stored in globalState,
- * which is backed by a per-extension SQLite DB that survives restarts and is
- * NOT covered by Settings Sync — so credentials persist locally but never roam
- * to other machines. Less isolated than the OS keyring, but strictly better
- * than losing the login every restart.
+ * Fallback home for tokens when SecretStorage doesn't persist (VS Code snap,
+ * code-server — in-memory, lost on restart). Stored in globalState (per-extension
+ * SQLite DB): survives restarts, not covered by Settings Sync, so credentials
+ * stay local. Less isolated than the OS keyring, but beats losing the login.
  */
 const FALLBACK_KEY = "sufficit.identity.tokens.fallback";
 
@@ -106,9 +103,12 @@ export class SufficitAuth {
      * "Copy URL" action so the user can paste it into their browser manually.
      */
     private async showLoginUrlModal(url: string, userCode: string): Promise<void> {
+        // Blocking modal (unmissable, unlike a transient toast) that shows the
+        // full verification URL and user code. The URL goes in `detail` so it is
+        // visible and selectable; "Copy URL" also puts it on the clipboard.
         const action = await vscode.window.showInformationMessage(
-            `Sufficit login — open this URL in your browser and authorize code: ${userCode}`,
-            { modal: true },
+            `Sufficit login — a browser tab should have opened. If not, open this URL to authorize (code ${userCode}):`,
+            { modal: true, detail: url },
             "Copy URL",
         );
         if (action === "Copy URL") {
@@ -141,22 +141,26 @@ export class SufficitAuth {
         }
 
         const verifyUrl: string = dev.verification_uri_complete ?? dev.verification_uri ?? "";
-        // In code-server (and other headless/web hosts) vscode.env.openExternal
-        // cannot launch the user's browser and fails silently — so we always
-        // offer a copyable URL too. Try the external opener first; if it fails
-        // (or we're in a web UI), surface the URL and user code in a modal with
-        // a copy action so the user can open it manually.
-        const pick = await vscode.window.showInformationMessage(
-            `Sufficit: open the browser and confirm the code ${dev.user_code}`, "Open browser", "Copy URL");
-        if (pick === "Open browser") {
-            try {
-                const opened = await vscode.env.openExternal(vscode.Uri.parse(verifyUrl));
-                if (!opened) { await this.showLoginUrlModal(verifyUrl, dev.user_code); }
-            } catch {
+        if (vscode.env.uiKind === vscode.UIKind.Web) {
+            // code-server / web: open the browser directly (the verification URL
+            // embeds the user code) and only fall back to the blocking URL modal if
+            // openExternal fails — so login doesn't nag once the tab is opening.
+            let opened = false;
+            try { opened = await vscode.env.openExternal(vscode.Uri.parse(verifyUrl)); } catch { opened = false; }
+            if (!opened) { await this.showLoginUrlModal(verifyUrl, dev.user_code); }
+        } else {
+            const pick = await vscode.window.showInformationMessage(
+                `Sufficit: open the browser and confirm the code ${dev.user_code}`, "Open browser", "Copy URL");
+            if (pick === "Open browser") {
+                try {
+                    const opened = await vscode.env.openExternal(vscode.Uri.parse(verifyUrl));
+                    if (!opened) { await this.showLoginUrlModal(verifyUrl, dev.user_code); }
+                } catch {
+                    await this.showLoginUrlModal(verifyUrl, dev.user_code);
+                }
+            } else if (pick === "Copy URL") {
                 await this.showLoginUrlModal(verifyUrl, dev.user_code);
             }
-        } else if (pick === "Copy URL") {
-            await this.showLoginUrlModal(verifyUrl, dev.user_code);
         }
 
         // 2. Poll the token endpoint until the user approves (or timeout).
@@ -169,12 +173,8 @@ export class SufficitAuth {
         this.profileCache = undefined;
         const profile = await this.getProfile(true);
         this.onChangeEmitter.fire();
-        // If SecretStorage does not persist (no system keyring available — e.g.
-        // code-server on a headless server, a container, or the VS Code snap),
-        // reassure the user once: the login still works and is saved locally.
-        // This is informational, not an error — the globalState fallback keeps
-        // the tokens across restarts. The Sufficit tab shows a standing banner
-        // with the same note.
+        // No system keyring (code-server, container, snap): reassure once that the
+        // login is saved to the globalState fallback and survives restarts.
         if (this.secretStoragePersists === false && !this.persistNoticeShown) {
             this.persistNoticeShown = true;
             void vscode.window.showInformationMessage(
@@ -246,7 +246,12 @@ export class SufficitAuth {
         // and remember the verdict so the config banner can warn the user.
         if (this.secretStoragePersists === undefined) {
             const readBack = await this.context.secrets.get(SECRET_KEY);
-            this.secretStoragePersists = readBack === payload;
+            // A same-session readback can't prove cross-reload persistence: in
+            // code-server (uiKind Web) SecretStorage is in-memory, so it lies here
+            // and the token vanishes on reload. Treat web as non-persistent so the
+            // token always lands in the globalState fallback (which survives reload).
+            this.secretStoragePersists = readBack === payload
+                && vscode.env.uiKind !== vscode.UIKind.Web;
         }
         if (this.secretStoragePersists) {
             // Keep the fallback clean while the keyring works, so we never leave
@@ -266,11 +271,16 @@ export class SufficitAuth {
      */
     async isSecretStorageWorking(): Promise<boolean> {
         if (this.secretStoragePersists === undefined) {
-            // Probe with a throwaway marker so the verdict is known even before
-            // the first real login (the banner should show on first install too).
+            // Probe with a throwaway marker under a DEDICATED key (never SECRET_KEY,
+            // which would clobber a real token). Web hosts (code-server) are treated
+            // as non-persistent: SecretStorage is in-memory there, so a same-session
+            // readback lies and the token would vanish on reload.
+            const probeKey = SECRET_KEY + ".probe";
             const marker = "symposium-probe";
-            await this.context.secrets.store(SECRET_KEY, marker);
-            this.secretStoragePersists = (await this.context.secrets.get(SECRET_KEY)) === marker;
+            await this.context.secrets.store(probeKey, marker);
+            this.secretStoragePersists = (await this.context.secrets.get(probeKey)) === marker
+                && vscode.env.uiKind !== vscode.UIKind.Web;
+            await this.context.secrets.delete(probeKey);
         }
         return this.secretStoragePersists;
     }

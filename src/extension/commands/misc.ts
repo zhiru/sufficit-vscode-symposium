@@ -19,9 +19,12 @@ export function registerMiscCommands(ctx: CommandContext): void {
         // picked up. restartExtensionHost only reactivates the already-scanned
         // version and does NOT load a new build from disk; reloadWindow does.
         vscode.commands.registerCommand("symposium.reload", async () => {
+            // Modal confirm: a non-modal toast slides into code-server's
+            // notification bell where the user never sees it, so the "Reload
+            // Window" button was effectively dead in web hosts.
             const pick = await vscode.window.showWarningMessage(
-                "Reload the window to apply the latest installed Symposium build? Editors are restored after reload.",
-                { modal: false },
+                "Reload the window to apply the latest installed Symposium build?",
+                { modal: true, detail: "Editors are restored after reload." },
                 "Reload Window",
             );
             if (pick === "Reload Window") {
