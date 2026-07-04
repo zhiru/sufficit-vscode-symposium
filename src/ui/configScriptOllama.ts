@@ -81,6 +81,10 @@ export const configScriptOllama = `
         }
     }
 
+    function __isSufficitPreset(name) {
+        return __sufficitPresets.some(function (m) { return (m.name || m.id) === name; });
+    }
+
     function setOllamaModelsLoading() {
         var status = document.getElementById("ollama-models-status");
         if (status) { status.classList.remove("ok", "error"); status.classList.add("loading"); status.textContent = t("config.vscode.models.loading"); }
