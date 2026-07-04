@@ -41,7 +41,9 @@ export const configScriptOllama = `
         var status = document.getElementById("ollama-models-status");
         if (!status) return;
         status.classList.remove("loading");
-        var total = __ollamaModels.length + __sufficitPresets.length;
+        var uniq = {};
+        __sufficitPresets.concat(__ollamaModels).forEach(function (m) { uniq[m.name || m.id] = 1; });
+        var total = Object.keys(uniq).length;
         if (total > 0) {
             status.classList.remove("error"); status.classList.add("ok");
             if (__sufficitPresets.length) {
@@ -93,11 +95,14 @@ export const configScriptOllama = `
     // Query the Ollama endpoint (if a URL is set) and the Sufficit presets (auto,
     // when logged in) so suggestions are ready without any manual step.
     function autoFetchOllamaModels() {
+        setOllamaModelsLoading();
         vscode.postMessage({ type: "fetch-sufficit-presets" });
         var urlInput = document.getElementById("gitlens-ai-ollama-url");
         var url = urlInput && urlInput.value;
-        if (url) { setOllamaModelsLoading(); vscode.postMessage({ type: "fetch-ollama-models", value: url }); }
-        else { setOllamaModelsLoading(); }
+        // A Sufficit gateway URL (/vscode/{token}) serves the SAME presets via
+        // /api/tags, so fetching it again would duplicate the list. Only query a
+        // separate (non-gateway) Ollama endpoint.
+        if (url && url.indexOf("/vscode/") === -1) { vscode.postMessage({ type: "fetch-ollama-models", value: url }); }
     }
 
     // "Backend auto-configured": when a Sufficit preset is chosen in a model

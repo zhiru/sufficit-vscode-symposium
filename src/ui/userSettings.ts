@@ -19,6 +19,24 @@ import * as vscode from "vscode";
  * (`<...>/User/globalStorage/<ext>` → `<...>/User/settings.json`), correct on
  * desktop and code-server alike.
  */
+/**
+ * Reads a flat-dotted key straight from settings.json. Needed because
+ * getConfiguration().get() returns "" for keys no installed extension
+ * registered (gitlens.*, github.copilot.* when those aren't installed), which
+ * would render the config fields empty and let a stray change clobber the file.
+ */
+export function readUserSetting(context: vscode.ExtensionContext, key: string): unknown {
+    const userDir = path.resolve(context.globalStorageUri.fsPath, "..", "..");
+    const file = path.join(userDir, "settings.json");
+    try {
+        const raw = fs.readFileSync(file, "utf8");
+        const obj = tryParse(raw) ?? tryParse(stripJsonc(raw));
+        return obj ? obj[key] : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 export function writeUserSetting(context: vscode.ExtensionContext, key: string, value: unknown): void {
     const userDir = path.resolve(context.globalStorageUri.fsPath, "..", "..");
     const file = path.join(userDir, "settings.json");

@@ -308,9 +308,10 @@ export class ConfigPanel {
 
     private async pushState(): Promise<void> {
         const api = this.deps.api;
+        const { readUserSetting } = await import("./userSettings");
+        const tp = (key: string): string => { const v = readUserSetting(this.context, key); return typeof v === "string" ? v : ""; };
         const profile = this.deps.auth ? await this.deps.auth.getProfile().catch(() => undefined) : undefined;
-        // Whether the OS keyring persists the login (false on snap/code-server);
-        // drives the Sufficit-tab warning banner about globalState-fallback creds.
+        // OS-keyring persistence (drives the Sufficit-tab fallback-creds banner).
         const secretStorageWorking = this.deps.auth ? await this.deps.auth.isSecretStorageWorking().catch(() => true) : true;
 
         if (profile) {   // ensure the Sufficit native MCP server exists when logged in
@@ -336,8 +337,7 @@ export class ConfigPanel {
             // A failing backends list (e.g. the gateway rejecting a stale token)
             // must not abort the whole refresh — render the rest of the panel.
             backends: await api.backends.list().catch(() => []),
-            // Live hub liveness for the header pill: status().health is only
-            // written after a sync, so it goes stale ("down" sticks forever).
+            // Live hub liveness (status().health goes stale after a failed sync).
             sync: api.sync.configured()
                 ? { ...api.sync.status(), health: (await api.sync.health().catch(() => false)) ? "ok" as const : "down" as const }
                 : api.sync.status(),
@@ -366,15 +366,15 @@ export class ConfigPanel {
                 voiceDotsAnimation: root.get<boolean>("voice.dotsAnimation", true),
                 voiceSoundFeedback: root.get<boolean>("voice.soundFeedback", true),
             },
-            // VS Code global settings (safeguarded for when extensions aren't installed)
+            // Third-party keys read from settings.json via tp() (getConfiguration
+            // returns "" for unregistered keys, blanking fields + clobbering saves).
             vscodeConfig: {
-                "gitlens.ai.model": vscode.workspace.getConfiguration("gitlens.ai").get<string>("model", ""),
-                "gitlens.ai.vscode.model": vscode.workspace.getConfiguration("gitlens.ai.vscode").get<string>("model", ""),
-                "gitlens.ai.ollama.url": vscode.workspace.getConfiguration("gitlens.ai.ollama").get<string>("url", ""),
-                "github.copilot.chat.askAgent.model": vscode.workspace.getConfiguration("github.copilot.chat").get<string>("askAgent.model", ""),
-                "github.copilot.chat.implementAgent.model": vscode.workspace.getConfiguration("github.copilot.chat").get<string>("implementAgent.model", ""),
+                "gitlens.ai.model": tp("gitlens.ai.model"),
+                "gitlens.ai.vscode.model": tp("gitlens.ai.vscode.model"),
+                "gitlens.ai.ollama.url": tp("gitlens.ai.ollama.url"),
+                "github.copilot.chat.askAgent.model": tp("github.copilot.chat.askAgent.model"),
+                "github.copilot.chat.implementAgent.model": tp("github.copilot.chat.implementAgent.model"),
                 "git.enableSmartCommit": vscode.workspace.getConfiguration("git").get<boolean>("enableSmartCommit", true),
-                // macOS-specific settings (safe to read even if not on macOS)
                 "macos.mouse.trackingSpeed": vscode.workspace.getConfiguration("macos.mouse").get<number>("trackingSpeed", 0)?.toString() || "",
                 "macos.mouse.scrollingSpeed": vscode.workspace.getConfiguration("macos.mouse").get<number>("scrollingSpeed", 0)?.toString() || "",
                 "macos.mouse.doubleClickSpeed": vscode.workspace.getConfiguration("macos.mouse").get<number>("doubleClickSpeed", 0)?.toString() || "",
