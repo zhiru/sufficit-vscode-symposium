@@ -65,6 +65,16 @@ export const configStylesViews = /* css */ `
     .pref-item .ctl { justify-self: end; width: 100%; }
     .pref-item select.pref { width: 100%; cursor: pointer; min-height: 32px; }
     .pref-item .ctl .vscode-input, .pref-item .ctl .vscode-select { width: 100%; min-height: 32px; }
+    .vscode-field { display: flex; align-items: center; gap: 4px; }
+    .vscode-field .vscode-input { flex: 1; min-width: 0; }
+    .jumpSetting {
+        flex: none; display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; padding: 0; cursor: pointer; border-radius: var(--sym-radius-sm);
+        border: 1px solid var(--sym-border); background: transparent; color: var(--vscode-descriptionForeground);
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    }
+    .jumpSetting:hover { background: var(--sym-surface); color: var(--sym-accent); border-color: var(--sym-accent); }
+    .jumpSetting svg { width: 14px; height: 14px; }
 
     /* ---- Model source (Ollama URL + fetch + suggestions status) ------------- */
     .model-source-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

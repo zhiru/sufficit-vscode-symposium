@@ -291,10 +291,14 @@ export const configViews = `    function resourceList(kind) {
         const vsccfg = state?.vscodeConfig || {};
         // id = element id (was silently dropped before); list = datalist id for
         // model-name autocomplete suggestions sourced from the Ollama endpoint.
-        const input = (key, value, placeholder, id, list) => '<input class="vscode-input" type="text" data-key="' + esc(key) + '"'
+        // Each field carries a "jump" button that opens settings.json at this key's
+        // line, so raw values can be tried by hand.
+        const jump = (key) => '<button class="jumpSetting" data-key="' + esc(key) + '" title="' + esc(t("config.vscode.openInSettingsJson")) + '" aria-label="settings.json">'
+            + '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5L9.5 1ZM9 5V2l3 3H9ZM6 7h4v1H6V7Zm0 2h4v1H6V9Zm0 2h3v1H6v-1Z"/></svg></button>';
+        const input = (key, value, placeholder, id, list) => '<div class="vscode-field"><input class="vscode-input" type="text" data-key="' + esc(key) + '"'
             + (id ? ' id="' + esc(id) + '"' : '')
             + (list ? ' list="' + esc(list) + '" autocomplete="off"' : '')
-            + ' value="' + esc(value) + '" placeholder="' + esc(placeholder) + '" />';
+            + ' value="' + esc(value) + '" placeholder="' + esc(placeholder) + '" />' + jump(key) + '</div>';
         const MODELS_LIST = "vscode-models-list";
         const sel = (key, value, opts) => {
             return '<select class="vscode-select" data-key="' + esc(key) + '">'

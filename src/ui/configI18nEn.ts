@@ -229,6 +229,7 @@ export const CONFIG_EN: Dict = {
     "config.vscode.models.availableSufficit": "{count} models available ({sufficit} Sufficit AI presets) — start typing in any model field.",
     "config.vscode.models.none": "No models found at this endpoint — check the URL.",
     "config.vscode.models.loading": "Querying available models…",
+    "config.vscode.openInSettingsJson": "Open settings.json at this setting",
     "config.vscode.section.misc": "Miscellaneous",
     "config.vscode.enableSmartCommit.name": "Enable smart commit",
     "config.vscode.enableSmartCommit.desc": "Auto-stage changes when committing.",

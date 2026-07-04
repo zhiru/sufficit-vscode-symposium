@@ -113,8 +113,7 @@ export class ConfigPanel {
 
     private async onMessage(message: ConfigMessage): Promise<void> {
         const api = this.deps.api;
-        // Delegate cohesive case groups to sibling handlers (each returns true
-        // when it handled the message; case sets are disjoint, so order is free).
+        // Delegate cohesive case groups to sibling handlers (disjoint case sets).
         const ctx: ConfigHandlerCtx = {
             api,
             auth: this.deps.auth,
@@ -135,8 +134,7 @@ export class ConfigPanel {
                 await this.pushState();
                 return;
             case "refresh": {
-                // Re-render AND live-probe the hub so the button gives real
-                // feedback (it used to silently re-render with no notification).
+                // Re-render + live-probe the hub so the button gives real feedback.
                 await this.pushState();
                 let msg = this.tr("msg.config.refreshed");
                 if (api.sync.configured()) {
@@ -267,6 +265,12 @@ export class ConfigPanel {
                 await this.pushState();
                 return;
             }
+            case "open-setting-json": {
+                if (typeof message.key === "string") {
+                    await (await import("./userSettings")).openUserSettingAt(this.context, message.key);
+                }
+                return;
+            }
             case "set-vscode-config": {
                 if (typeof message.key === "string") {
                     let value: unknown = message.value;
@@ -287,7 +291,6 @@ export class ConfigPanel {
         }
     }
 
-    /** Confirms a CRUD change and offers a reload. */
     private async offerReload(message: string): Promise<void> {
         const reload = this.tr("msg.reloadWindow.action");
         const pick = await vscode.window.showInformationMessage(message, reload);
@@ -332,10 +335,8 @@ export class ConfigPanel {
             vaultBindings: (api.resources.scan()["tool"] || [])
                 .map(t => ({ tool: t.name, ...readToolCredential(t.name) }))
                 .filter(vb => vb.ref),
-            // MCP servers (Model Context Protocol)
             mcpServers: listServers(),
-            // A failing backends list (e.g. the gateway rejecting a stale token)
-            // must not abort the whole refresh — render the rest of the panel.
+            // A failing backends list must not abort the whole refresh.
             backends: await api.backends.list().catch(() => []),
             // Live hub liveness (status().health goes stale after a failed sync).
             sync: api.sync.configured()
@@ -359,7 +360,6 @@ export class ConfigPanel {
                 maxHistoryMessages: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxHistoryMessages", 40),
                 shellExecution: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
                 autoApprove: vscode.workspace.getConfiguration().get<boolean>("chat.tools.global.autoApprove", false),
-                // Voice input preferences
                 voiceLanguage: root.get<string>("voice.language", "pt-BR"),
                 voiceContinuous: root.get<boolean>("voice.continuous", true),
                 voiceInterimResults: root.get<boolean>("voice.interimResults", true),

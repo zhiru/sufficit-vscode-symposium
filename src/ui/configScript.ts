@@ -196,6 +196,9 @@ export function renderConfigScript(dict: Record<string, string>): string {
                     vscode.postMessage({ type: "set-vscode-config", key, value });
                 };
             });
+            main.querySelectorAll("button.jumpSetting").forEach(el => {
+                el.onclick = () => vscode.postMessage({ type: "open-setting-json", key: el.getAttribute("data-key") });
+            });
             // Fetch Ollama models button handler
             const fetchModelsBtn = document.getElementById("fetch-ollama-models");
             if (fetchModelsBtn) {
