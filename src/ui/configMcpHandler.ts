@@ -94,16 +94,20 @@ function parsePairs(raw: string): Record<string, string> {
 async function saveMcpServer(ctx: ConfigHandlerCtx, p?: McpFormPayload): Promise<void> {
     if (!p) { return; }
     const editing = p.mode === "edit";
-    const name = (editing ? (p.originalName ?? "") : (p.name ?? "")).trim();
+    const originalName = (p.originalName ?? "").trim();
+    // Use the typed name (renaming is allowed on edit), falling back to the
+    // original. Previously edit ignored p.name, so the server couldn't be renamed.
+    const name = (p.name ?? (editing ? originalName : "")).trim();
     if (!name) { void vscode.window.showWarningMessage(ctx.tr("msg.addMcp.nameRequired")); return; }
-    if (!editing) {
+    const renamed = editing && originalName.toLowerCase() !== name.toLowerCase();
+    if (!editing || renamed) {
         if (!/^[\w.-]+$/.test(name)) { void vscode.window.showWarningMessage(ctx.tr("msg.addMcp.nameInvalid")); return; }
         if (listServers().some((s) => s.name.toLowerCase() === name.toLowerCase())) {
             void vscode.window.showWarningMessage(ctx.tr("msg.addMcp.nameExists")); return;
         }
     }
     const transport: "stdio" | "sse" = p.transport === "sse" ? "sse" : "stdio";
-    const cur = editing ? (readManifest(name) ?? {}) : {};
+    const cur = editing ? (readManifest(originalName) ?? {}) : {};
     const manifest: ServerManifest = {
         ...cur,
         name,
@@ -134,6 +138,7 @@ async function saveMcpServer(ctx: ConfigHandlerCtx, p?: McpFormPayload): Promise
     }
 
     writeManifest(name, manifest);
+    if (renamed) { deleteServer(originalName); }   // drop the old-named manifest
     await ctx.pushState();
     void vscode.window.showInformationMessage(
         ctx.tr(editing ? "msg.editMcp.updated" : "msg.addMcp.created", { name }));

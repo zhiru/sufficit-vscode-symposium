@@ -144,7 +144,7 @@ export const configViews = `    function resourceList(kind) {
         const f = mcpForm;
         const editing = f.mode === "edit";
         const isSse = f.transport === "sse";
-        const lockName = editing ? " disabled" : "";
+        const lockName = "";   // name is editable on edit too (rename supported)
         const title = editing ? t("config.mcpForm.titleEdit") : t("config.mcpForm.titleAdd");
         const field = (label, inner, hint) =>
             '<label class="mcpf-field"><span class="mcpf-label">' + esc(label) + '</span>' + inner
