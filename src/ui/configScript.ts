@@ -175,6 +175,7 @@ export function renderConfigScript(dict: Record<string, string>): string {
                     const key = el.getAttribute("data-key");
                     const value = el.value;
                     vscode.postMessage({ type: "set-vscode-config", key, value });
+                    __maybeAutoConfigSufficit(el);   // Sufficit preset → auto-set endpoint
                 };
             });
             main.querySelectorAll("select.vscode-select").forEach(el => {
@@ -190,9 +191,13 @@ export function renderConfigScript(dict: Record<string, string>): string {
                 fetchModelsBtn.onclick = () => {
                     const urlInput = document.getElementById("gitlens-ai-ollama-url");
                     const ollamaUrl = urlInput?.value || "";
+                    if (!ollamaUrl) { return; }
+                    setOllamaModelsLoading();
                     vscode.postMessage({ type: "fetch-ollama-models", value: ollamaUrl });
                 };
             }
+            // Populate the model-suggestion datalist automatically on tab open.
+            autoFetchOllamaModels();
             return;
         }
         if (active === "backends") {
@@ -347,6 +352,10 @@ export function renderConfigScript(dict: Record<string, string>): string {
         if (applySttHostMessage(e.data)) { return; }
         if (e.data?.type === "ollama-models-list") {
             applyOllamaModels(e.data.models);
+            return;
+        }
+        if (e.data?.type === "sufficit-presets-list") {
+            applySufficitPresets(e.data.presets, e.data.endpoint);
             return;
         }
     });

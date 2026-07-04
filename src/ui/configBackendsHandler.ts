@@ -218,6 +218,25 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
             }
             return true;
         }
+        case "fetch-sufficit-presets": {
+            // When logged into Sufficit, resolve the VS Code Ollama gateway
+            // (<origin>/vscode/{token}) and surface its /api/tags presets as model
+            // suggestions. `endpoint` is the gateway URL the model fields should
+            // point GitLens/Copilot at. Silent no-op when not logged in.
+            try {
+                const { openaiConfig } = await import("../extension/config");
+                const { resolveVSCodeGateway } = await import("./vscodeGateway");
+                const cfg = openaiConfig(ctx.context);
+                let origin = "";
+                try { origin = new URL(cfg.baseUrl).origin; } catch { /* unset/invalid */ }
+                const loginToken = ctx.auth ? (await ctx.auth.getAccessToken()) ?? "" : "";
+                const gw = await resolveVSCodeGateway(ctx.context, origin, loginToken);
+                ctx.post({ type: "sufficit-presets-list", presets: gw?.presets ?? [], endpoint: gw?.gatewayUrl ?? "" });
+            } catch {
+                ctx.post({ type: "sufficit-presets-list", presets: [], endpoint: "" });
+            }
+            return true;
+        }
     }
     return false;
 }

@@ -37,24 +37,23 @@ export interface ConfigMessage {
  */
 export interface ConfigHandlerCtx {
     api: SymposiumApi;
-    /** Resolve a localized string. */
+    /** Sufficit identity: login state + access token for authed gateway calls. */
+    auth?: SufficitAuth;
+    /** Extension context (reads backend config, e.g. the Sufficit base URL). */
+    context: vscode.ExtensionContext;
     tr(key: string, vars?: Record<string, string | number>): string;
     /** Re-push the full panel state to the webview. */
     pushState(): Promise<void>;
-    /** Post a raw message to the webview (used for back-compression presets, ollama list, stt progress). */
     post(message: object): void;
-    /** Confirms a CRUD change and offers a reload. */
     offerReload(message: string): Promise<void>;
 }
 
 /**
  * Dynamic configuration surface: a reusable webview panel that lists the local
  * vendor-neutral agent knowledge (~/.symposium/repo), lets the user edit/test
- * backends (health + model + executable), and shows the sync/health of the
- * sufficit-ai memory hub. Replaces the static settings.json flow.
- *
- * All reads/writes go through the SymposiumApi facade, so the panel and the
- * remote bridge stay in lock-step.
+ * backends, and shows the sync/health of the sufficit-ai memory hub. All
+ * reads/writes go through the SymposiumApi facade so the panel and the remote
+ * bridge stay in lock-step.
  *
  * The giant `onMessage` switch is split across three sibling handler modules
  * (compression / backends / mcp); this class keeps the small/frequent cases and
@@ -79,7 +78,7 @@ export class ConfigPanel {
         void ConfigPanel.current?.pushState();
     }
 
-    private constructor(context: vscode.ExtensionContext, private readonly deps: ConfigPanelDeps) {
+    private constructor(private readonly context: vscode.ExtensionContext, private readonly deps: ConfigPanelDeps) {
         ensureScaffold();
         this.panel = vscode.window.createWebviewPanel(
             "symposium.config",
@@ -114,11 +113,12 @@ export class ConfigPanel {
 
     private async onMessage(message: ConfigMessage): Promise<void> {
         const api = this.deps.api;
-        // Delegate the big cohesive case groups to sibling handlers (each
-        // returns true when it handled the message). Order doesn't matter — the
-        // case sets are disjoint.
+        // Delegate cohesive case groups to sibling handlers (each returns true
+        // when it handled the message; case sets are disjoint, so order is free).
         const ctx: ConfigHandlerCtx = {
             api,
+            auth: this.deps.auth,
+            context: this.context,
             tr: (k, v) => this.tr(k, v),
             pushState: () => this.pushState(),
             post: (m) => { void this.panel.webview.postMessage(m); },
@@ -270,21 +270,24 @@ export class ConfigPanel {
             case "set-vscode-config": {
                 if (typeof message.key === "string") {
                     let value: unknown = message.value;
-                    // Handle boolean values for checkboxes
-                    if (value === "true") { value = true; }
+                    if (value === "true") { value = true; }           // checkbox
                     else if (value === "false") { value = false; }
-                    // Handle numeric values for macOS mouse settings
-                    else if (message.key.startsWith("macos.mouse.")) {
-                        value = Number(message.value) || 0;
+                    else if (message.key.startsWith("macos.mouse.")) { value = Number(message.value) || 0; }
+                    try {
+                        await vscode.workspace.getConfiguration().update(message.key, value, vscode.ConfigurationTarget.Global);
+                    } catch {
+                        // Third-party keys (gitlens.*, github.copilot.*) aren't registered
+                        // here, so update() throws — write settings.json directly instead.
+                        const { writeUserSetting } = await import("./userSettings");
+                        writeUserSetting(this.context, message.key, value);
                     }
-                    await vscode.workspace.getConfiguration().update(message.key, value, vscode.ConfigurationTarget.Global);
                 }
                 return;
             }
         }
     }
 
-    /** Confirms a CRUD change and offers a reload (added/removed endpoints register on reload). */
+    /** Confirms a CRUD change and offers a reload. */
     private async offerReload(message: string): Promise<void> {
         const reload = this.tr("msg.reloadWindow.action");
         const pick = await vscode.window.showInformationMessage(message, reload);
@@ -306,15 +309,11 @@ export class ConfigPanel {
     private async pushState(): Promise<void> {
         const api = this.deps.api;
         const profile = this.deps.auth ? await this.deps.auth.getProfile().catch(() => undefined) : undefined;
-        // Whether the OS keyring actually persists the Sufficit login. False on
-        // VS Code-via-snap (isolated from the host keyring) and similar setups;
-        // surfaced as a warning banner in the Sufficit tab so the user knows
-        // the credentials aren't protected by the keyring (they fall back to the
-        // extension's global storage).
+        // Whether the OS keyring persists the login (false on snap/code-server);
+        // drives the Sufficit-tab warning banner about globalState-fallback creds.
         const secretStorageWorking = this.deps.auth ? await this.deps.auth.isSecretStorageWorking().catch(() => true) : true;
 
-        // Ensure Sufficit native MCP server exists when logged in
-        if (profile) {
+        if (profile) {   // ensure the Sufficit native MCP server exists when logged in
             try {
                 ensureSufficitNativeServer();
             } catch (e) {
@@ -328,8 +327,7 @@ export class ConfigPanel {
         const state = {
             root: api.resources.root(),
             resources: api.resources.scan(),
-            // Vault bindings: tools that declare a credentialRef (secret resolved
-            // at runtime via the Sufficit vault / hub API).
+            // Vault bindings: tools with a credentialRef (resolved via vault/hub).
             vaultBindings: (api.resources.scan()["tool"] || [])
                 .map(t => ({ tool: t.name, ...readToolCredential(t.name) }))
                 .filter(vb => vb.ref),
@@ -338,7 +336,11 @@ export class ConfigPanel {
             // A failing backends list (e.g. the gateway rejecting a stale token)
             // must not abort the whole refresh — render the rest of the panel.
             backends: await api.backends.list().catch(() => []),
-            sync: api.sync.status(),
+            // Live hub liveness for the header pill: status().health is only
+            // written after a sync, so it goes stale ("down" sticks forever).
+            sync: api.sync.configured()
+                ? { ...api.sync.status(), health: (await api.sync.health().catch(() => false)) ? "ok" as const : "down" as const }
+                : api.sync.status(),
             hubConfigured: api.sync.configured(),
             profile: profile ?? null,
             secretStorageWorking,
@@ -347,10 +349,8 @@ export class ConfigPanel {
                 openIn: chat.get<string>("openIn", "editor"),
                 preferredLanguage: chat.get<string>("preferredLanguage", ""),
                 systemInstruction: chat.get<string>("systemInstruction", ""),
-                // No explicit default arg: get() returns the package.json default
-                // when the user hasn't set the key, so the textarea shows the
-                // built-in hint instead of being empty. An explicitly-cleared
-                // field (value "") still reads back as "".
+                // No default arg: get() returns the package.json default so the
+                // textarea shows the built-in hint; a cleared field ("") stays "".
                 memoryInstruction: chat.get<string>("memoryInstruction"),
                 lmTools: root.get<string>("lmTools", "terminal"),
                 maxToolHops: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxToolHops", 50),

@@ -64,6 +64,27 @@ export const configStylesViews = /* css */ `
     .pref-item .desc { opacity: .68; font-size: .9em; line-height: 1.5; white-space: normal; }
     .pref-item .ctl { justify-self: end; width: 100%; }
     .pref-item select.pref { width: 100%; cursor: pointer; min-height: 32px; }
+    .pref-item .ctl .vscode-input, .pref-item .ctl .vscode-select { width: 100%; min-height: 32px; }
+
+    /* ---- Model source (Ollama URL + fetch + suggestions status) ------------- */
+    .model-source-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .model-source-row .vscode-input { flex: 1 1 100%; min-width: 0; }
+    .model-source-row .secondary { flex: 1 1 auto; white-space: nowrap; cursor: pointer; }
+    .model-source-status {
+        margin-top: 8px; font-size: .84em; opacity: .7; min-height: 1.1em;
+        display: flex; align-items: center; gap: 6px;
+    }
+    .model-source-status::before {
+        content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none;
+        background: var(--sym-border); transition: background 150ms ease;
+    }
+    .model-source-status:empty { display: none; }
+    .model-source-status.loading::before { background: var(--sym-accent-2, #4F46E5); animation: msPulse 1s ease-in-out infinite; }
+    .model-source-status.ok { opacity: .85; }
+    .model-source-status.ok::before { background: var(--sym-ok, var(--vscode-charts-green, #3FB950)); }
+    .model-source-status.error { opacity: .85; color: var(--sym-bad, var(--vscode-errorForeground, #F85149)); }
+    .model-source-status.error::before { background: var(--sym-bad, var(--vscode-errorForeground, #F85149)); }
+    @keyframes msPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
     /* ---- Compression presets: card grid ------------------------------------- */
     .presets-grid {

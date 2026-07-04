@@ -289,40 +289,51 @@ export const configViews = `    function resourceList(kind) {
     function vscodeView() {
         const s = state?.vscode || {};
         const vsccfg = state?.vscodeConfig || {};
-        const input = (key, value, placeholder) => '<input class="vscode-input" type="text" data-key="' + esc(key) + '" value="' + esc(value) + '" placeholder="' + esc(placeholder) + '" />';
+        // id = element id (was silently dropped before); list = datalist id for
+        // model-name autocomplete suggestions sourced from the Ollama endpoint.
+        const input = (key, value, placeholder, id, list) => '<input class="vscode-input" type="text" data-key="' + esc(key) + '"'
+            + (id ? ' id="' + esc(id) + '"' : '')
+            + (list ? ' list="' + esc(list) + '" autocomplete="off"' : '')
+            + ' value="' + esc(value) + '" placeholder="' + esc(placeholder) + '" />';
+        const MODELS_LIST = "vscode-models-list";
         const sel = (key, value, opts) => {
             return '<select class="vscode-select" data-key="' + esc(key) + '">'
                 + opts.map(o => '<option value="' + esc(o.v) + '"' + (String(value) === o.v ? ' selected' : '') + '>' + esc(o.l) + '</option>').join('')
                 + '</select>';
         };
+        // Match the shared .pref-item grid (.meta[.name/.desc] + .ctl) so this tab
+        // gets the same polished two-column layout as the other config tabs.
         const item = (name, desc, ctl) =>
-            '<div class="pref-item"><div class="pref-name">' + esc(name) + '</div>'
-            + '<div class="pref-desc">' + esc(desc) + '</div><div class="pref-ctl">' + ctl + '</div></div>';
+            '<div class="pref-item"><div class="meta"><div class="name">' + esc(name) + '</div>'
+            + '<div class="desc">' + esc(desc) + '</div></div><div class="ctl">' + ctl + '</div></div>';
         const section = (title, body) =>
-            '<div class="pref-section"><div class="pref-section-title">' + esc(title) + '</div>' + body + '</div>';
+            '<div class="section"><div class="section-title">' + esc(title) + '</div>' + body + '</div>';
 
         let html = '';
 
+        // Shared suggestion list for every model field, filled by the Ollama
+        // endpoint query (applyOllamaModels). Typing in any model input shows the
+        // discovered models as native autocomplete suggestions.
+        html += '<datalist id="' + MODELS_LIST + '"></datalist>';
+
         html += section(t("config.vscode.section.gitlens"),
             item(t("config.vscode.gitlensModel.name"), t("config.vscode.gitlensModel.desc"),
-                input("gitlens.ai.model", vsccfg["gitlens.ai.model"] || "", t("config.vscode.gitlensModel.placeholder"))) +
+                input("gitlens.ai.model", vsccfg["gitlens.ai.model"] || "", t("config.vscode.gitlensModel.placeholder"), null, MODELS_LIST)) +
             item(t("config.vscode.gitlensVscodeModel.name"), t("config.vscode.gitlensVscodeModel.desc"),
-                input("gitlens.ai.vscode.model", vsccfg["gitlens.ai.vscode.model"] || "", t("config.vscode.gitlensVscodeModel.placeholder"))) +
+                input("gitlens.ai.vscode.model", vsccfg["gitlens.ai.vscode.model"] || "", t("config.vscode.gitlensVscodeModel.placeholder"), null, MODELS_LIST)) +
             item(t("config.vscode.gitlensOllamaUrl.name"), t("config.vscode.gitlensOllamaUrl.desc"),
-                '<div class="flex-row" style="align-items:center; gap:8px;">' +
+                '<div class="model-source-row">' +
                 input("gitlens.ai.ollama.url", vsccfg["gitlens.ai.ollama.url"] || "", t("config.vscode.gitlensOllamaUrl.placeholder"), "gitlens-ai-ollama-url") +
-                '<button class="secondary" id="fetch-ollama-models" style="white-space:nowrap; min-width: 120px;">' + esc(t("config.btn.fetchModels")) + '</button>' +
+                '<button class="secondary" id="fetch-ollama-models">' + esc(t("config.btn.fetchModels")) + '</button>' +
                 '</div>' +
-                '<select id="ollama-models-select" style="display:none; width:100%; margin-top:8px; padding:6px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); border:1px solid var(--vscode-input-border); border-radius:2px;">' +
-                '<option value="">Selecione um modelo...</option>' +
-                '</select>')
+                '<div id="ollama-models-status" class="model-source-status" role="status"></div>')
         );
 
         html += section(t("config.vscode.section.copilot"),
             item(t("config.vscode.copilotAskAgentModel.name"), t("config.vscode.copilotAskAgentModel.desc"),
-                input("github.copilot.chat.askAgent.model", vsccfg["github.copilot.chat.askAgent.model"] || "", "")) +
+                input("github.copilot.chat.askAgent.model", vsccfg["github.copilot.chat.askAgent.model"] || "", t("config.vscode.copilotAskAgentModel.placeholder"), null, MODELS_LIST)) +
             item(t("config.vscode.copilotImplementAgentModel.name"), t("config.vscode.copilotImplementAgentModel.desc"),
-                input("github.copilot.chat.implementAgent.model", vsccfg["github.copilot.chat.implementAgent.model"] || "", ""))
+                input("github.copilot.chat.implementAgent.model", vsccfg["github.copilot.chat.implementAgent.model"] || "", t("config.vscode.copilotImplementAgentModel.placeholder"), null, MODELS_LIST))
         );
 
         html += section(t("config.vscode.section.misc"),
