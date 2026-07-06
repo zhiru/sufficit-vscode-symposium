@@ -4,6 +4,7 @@ import { vscode } from "./vscode";
 import { input, micBtn } from "./dom";
 import { setStatus } from "./status";
 import { showToast } from "./menus";
+import { resizeInput } from "./inputSizing";
 
 // Voice input using Web Speech API (SpeechRecognition)
 let recognition: any = null;
@@ -54,8 +55,7 @@ function updateRecordingDots() {
     recordingDotsInterval = setInterval(() => {
         index = (index + 1) % dots.length;
         input.value = recordingTextBase + dots[index];
-        input.style.height = 'auto';
-        input.style.height = Math.min(input.scrollHeight, 180) + "px";
+        resizeInput();
         setStatus();
     }, 400);
 }
@@ -193,16 +193,14 @@ if (SpeechRecognition) {
             const dots = ['', '.', '..', '...', '..', '.'];
             const index = Math.floor(Date.now() / 400) % dots.length;
             input.value = recordingTextBase + dots[index];
-            input.style.height = 'auto';
-            input.style.height = Math.min(input.scrollHeight, 180) + "px";
+            resizeInput();
             setStatus('Listening...');
         } else if (interimTranscript) {
             // Show interim results with dots animation
             const dots = ['', '.', '..', '...', '..', '.'];
             const index = Math.floor(Date.now() / 400) % dots.length;
             input.value = recordingTextBase + interimTranscript + dots[index];
-            input.style.height = 'auto';
-            input.style.height = Math.min(input.scrollHeight, 180) + "px";
+            resizeInput();
             setStatus('Listening...');
         }
     };
@@ -310,8 +308,7 @@ window.addEventListener('message', (e) => {
         const text = (e.data.text || '').trim();
         if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
         input.value = (recordingTextBase ? recordingTextBase.replace(/[.\s]*$/, ' ') : '') + text;
-        input.style.height = 'auto';
-        input.style.height = Math.min(input.scrollHeight, 180) + "px";
+        resizeInput();
         input.focus();
         setStatus('Ready');
     } else if (e.data.type === 'stt-error') {

@@ -2,6 +2,7 @@
 import { vscode } from "./vscode";
 import { bootComplete, bootStep, bootTimer } from "./boot";
 import { renderChips, setBrowserOpen } from "./composer";
+import { resizeInput } from "./inputSizing";
 import { applyMeta } from "./meta";
 import { applyEvent } from "./events";
 import { append, branchBanner, endStream, message, renderThinkBlock, resetLastMsg } from "./messages";
@@ -70,8 +71,7 @@ window.addEventListener("message", ({ data }) => {
         }
         case "load-input": {
             input.value = data.text || "";
-            input.style.height = "auto";
-            input.style.height = Math.min(input.scrollHeight, 180) + "px";
+            resizeInput();
             input.focus();
             if (Array.isArray(data.attachments)) {
                 for (const p of data.attachments) {
@@ -98,6 +98,7 @@ window.addEventListener("message", ({ data }) => {
         }
         case "set-input": {
             input.value = data.text || "";
+            resizeInput();
             input.focus();
             break;
         }
@@ -244,6 +245,7 @@ window.addEventListener("message", ({ data }) => {
                 el.appendChild(list);
             }
             setBusy(true); setStatus();   // a turn just started (covers queued flush)
+            resizeInput();
             break;
         }
         case "attachments-picked": {
@@ -270,6 +272,7 @@ window.addEventListener("message", ({ data }) => {
             // Host-driven busy state correction (e.g. after render-log replay).
             setBusy(!!data.busy);
             setStatus();
+            resizeInput();
             break;
         }
         case "event": { applyEvent(data.event); break; }

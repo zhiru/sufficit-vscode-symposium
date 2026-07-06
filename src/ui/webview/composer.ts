@@ -8,6 +8,7 @@ import { showToast, hideCtx } from "./menus";
 import { scrollToBottom, autoScroll, nearBottom } from "./scroll";
 import { svgIcon } from "./icons";
 import { refreshPanels } from "./panels";
+import { resizeInput } from "./inputSizing";
 // Voice input (Web Speech + host/local capture) is extracted to ./voice; its
 // listeners run on import, so importing it here preserves registration order.
 import "./voice";
@@ -106,14 +107,14 @@ export function lastUserRow() {
 export function beginEdit(idx, text) {
     editAnchor = idx;
     input.value = text;
-    input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px";
+    resizeInput();
     markEditing();
     input.focus();
 }
 export function cancelEdit() {
     if (editAnchor == null) { return; }
     editAnchor = null; input.value = "";
-    input.style.height = "auto";
+    resizeInput();
     markEditing();
 }
 export function send(modeOverride) {
@@ -123,6 +124,7 @@ export function send(modeOverride) {
     // While a turn runs, only queue/steer may submit; plain send waits too
     // (the extension queues it), so allow submitting in every mode.
     input.value = "";
+    resizeInput();
     const atts = attachments.map((a) => a.path);
     // A preview-tab file is only attached when the user pinned it (clicked the
     // suggestion); a really-open file auto-attaches as before.
@@ -207,8 +209,7 @@ input.addEventListener("keydown", (e) => {
     }
 });
 input.addEventListener("input", () => {
-    input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 180) + "px";
+    resizeInput();
     updateSlash();
     setStatus();
 });
