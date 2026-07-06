@@ -6,6 +6,47 @@ import { AdapterPatch } from "../api/symposiumApi";
 import { HubClient } from "../sync/hubClient";
 import type { ConfigHandlerCtx, ConfigMessage } from "./configPanel";
 
+type StoredAdapterEntry = AdapterPatch & {
+    id?: string;
+    models?: string[];
+    headers?: Record<string, string>;
+    supportsDeveloperRole?: boolean;
+    [key: string]: unknown;
+};
+
+interface OllamaModelEntry {
+    id?: string;
+    model?: string;
+    name?: string;
+    digest?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object";
+}
+
+function readAdapterArray(value: unknown): StoredAdapterEntry[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .filter(isRecord)
+        .map((entry) => entry as StoredAdapterEntry);
+}
+
+function readOllamaModels(value: unknown): OllamaModelEntry[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .filter(isRecord)
+        .map((entry) => entry as OllamaModelEntry);
+}
+
+function adapterKey(entry: StoredAdapterEntry): string {
+    return entry.id || `${entry.baseUrl ?? ""}|${entry.name ?? ""}`;
+}
+
 /**
  * Handles backend (custom OpenAI-compatible endpoints) + import/export/backup
  * webview messages for a live ConfigPanel. Mirrors the controllerMessageHandler
@@ -79,18 +120,16 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
             catch (e) { void vscode.window.showErrorMessage(ctx.tr("msg.backends.importErr", { err: String(e) })); return true; }
             // Accept a raw array, or a { "symposium.adapters": [...] } / { adapters: [...] } wrapper
             // (so a settings.json snippet pasted into a file imports cleanly too).
-            const d = data as Record<string, unknown>;
-            const incoming: any[] = Array.isArray(data) ? data
-                : Array.isArray(d?.["symposium.adapters"]) ? d["symposium.adapters"] as any[]
-                : Array.isArray(d?.adapters) ? d.adapters as any[] : [];
+            const d = isRecord(data) ? data : {};
+            const incoming = Array.isArray(data) ? readAdapterArray(data)
+                : readAdapterArray(d["symposium.adapters"] ?? d.adapters);
             const cfg = vscode.workspace.getConfiguration("symposium");
-            const cur = cfg.get<any[]>("adapters", []) || [];
-            const keyOf = (a: any) => a.id || (a.baseUrl + "|" + (a.name || ""));
-            const byKey = new Map<string, any>(cur.map((a) => [keyOf(a), a]));
+            const cur = readAdapterArray(cfg.get<unknown>("adapters", []));
+            const byKey = new Map<string, StoredAdapterEntry>(cur.map((a) => [adapterKey(a), a]));
             let n = 0;
             for (const b of incoming) {
                 if (!b || !b.baseUrl) { continue; }
-                const k = keyOf(b);
+                const k = adapterKey(b);
                 byKey.set(k, { ...(byKey.get(k) || {}), ...b }); // merge: imported fields win
                 n++;
             }
@@ -100,7 +139,7 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
             return true;
         }
         case "export-backends": {
-            const defs = vscode.workspace.getConfiguration("symposium").get<any[]>("adapters", []) || [];
+            const defs = readAdapterArray(vscode.workspace.getConfiguration("symposium").get<unknown>("adapters", []));
             if (!defs.length) { void vscode.window.showInformationMessage(ctx.tr("msg.backends.none")); return true; }
             const save = await vscode.window.showSaveDialog({
                 filters: { JSON: ["json"] },
@@ -113,7 +152,7 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
             return true;
         }
         case "backup-backends": {
-            const defs = vscode.workspace.getConfiguration("symposium").get<any[]>("adapters", []) || [];
+            const defs = readAdapterArray(vscode.workspace.getConfiguration("symposium").get<unknown>("adapters", []));
             if (!defs.length) { void vscode.window.showInformationMessage(ctx.tr("msg.backends.none")); return true; }
             const hub = new HubClient();
             if (!hub.configured()) { void vscode.window.showErrorMessage(ctx.tr("msg.backends.hubOff")); return true; }
@@ -140,18 +179,17 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
                 const recs = await hub.searchByType("symposium-backends", 5);
                 if (!recs.length) { void vscode.window.showInformationMessage(ctx.tr("msg.backends.hubEmpty")); return true; }
                 const docs = await hub.getByIds(recs.map((r) => r.id));
-                const incoming: any[] = [];
+                const incoming: StoredAdapterEntry[] = [];
                 for (const doc of docs) {
-                    try { const arr = JSON.parse(doc.payload || "[]"); if (Array.isArray(arr)) { incoming.push(...arr); } } catch { /* skip bad payload */ }
+                    try { incoming.push(...readAdapterArray(JSON.parse(doc.payload || "[]"))); } catch { /* skip bad payload */ }
                 }
                 const cfg = vscode.workspace.getConfiguration("symposium");
-                const cur = cfg.get<any[]>("adapters", []) || [];
-                const keyOf = (a: any) => a.id || (a.baseUrl + "|" + (a.name || ""));
-                const byKey = new Map<string, any>(cur.map((a) => [keyOf(a), a]));
+                const cur = readAdapterArray(cfg.get<unknown>("adapters", []));
+                const byKey = new Map<string, StoredAdapterEntry>(cur.map((a) => [adapterKey(a), a]));
                 let n = 0;
                 for (const b of incoming) {
                     if (!b || !b.baseUrl) { continue; }
-                    const k = keyOf(b);
+                    const k = adapterKey(b);
                     byKey.set(k, { ...(byKey.get(k) || {}), ...b });
                     n++;
                 }
@@ -171,15 +209,15 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
                 // Remove trailing slash if present
                 const baseUrl = ollamaUrl.replace(/\/$/, "");
                 // Try both Ollama v1 API and the classic /api/tags endpoint
-                let models: any[] = [];
+                let models: OllamaModelEntry[] = [];
                 try {
                     const response = await fetch(`${baseUrl}/api/tags`, {
                         method: "GET",
                         headers: { "Accept": "application/json" },
                     });
                     if (response.ok) {
-                        const data = await response.json() as any;
-                        models = data.models || [];
+                        const data = await response.json() as Record<string, unknown>;
+                        models = readOllamaModels(data.models);
                     }
                 } catch {
                     // Try v1 endpoint
@@ -189,8 +227,8 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
                             headers: { "Accept": "application/json" },
                         });
                         if (response.ok) {
-                            const data = await response.json() as any;
-                            models = data.data || [];
+                            const data = await response.json() as Record<string, unknown>;
+                            models = readOllamaModels(data.data);
                         }
                     } catch {
                         void vscode.window.showErrorMessage(ctx.tr("msg.ollama.fetchFailed"));
@@ -206,10 +244,10 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
                 // Post models back to the webview
                 ctx.post({
                     type: "ollama-models-list",
-                    models: models.map((m: any) => ({
+                    models: models.map((m) => ({
                         id: m.model || m.id,
                         name: m.name || m.model || m.id,
-                        digest: m.digest || m.digest || "",
+                        digest: m.digest || "",
                     }))
                 });
                 void vscode.window.showInformationMessage(ctx.tr("msg.ollama.fetched", { count: models.length }));

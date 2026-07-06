@@ -19,7 +19,7 @@ export interface SettingsApi {
 /** Builds the `settings` slice of the public API. */
 export function createSettingsApi(): SettingsApi {
     return {
-        getAll: async () => {
+        getAll: () => Promise.resolve().then(() => {
             const config = vscode.workspace.getConfiguration();
             const inspect = config.inspect('symposium');
             const result: Record<string, unknown> = {};
@@ -42,12 +42,12 @@ export function createSettingsApi(): SettingsApi {
             }
 
             return result;
-        },
+        }),
 
-        get: async (key: string) => {
+        get: (key: string) => Promise.resolve().then(() => {
             const config = vscode.workspace.getConfiguration();
             return config.get(key);
-        },
+        }),
 
         set: async (key: string, value: unknown, target: 'global' | 'workspace' = 'global') => {
             const config = vscode.workspace.getConfiguration();

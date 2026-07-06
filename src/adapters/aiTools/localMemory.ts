@@ -90,79 +90,87 @@ function toCompactRecord(obs: Observation): CompactRecord {
 /** Local memory implementation */
 export class LocalMemory {
     /** Search memory by query */
-    async searchMemory(options: {
+    searchMemory(options: {
         query: string;
         type?: string;
         limit?: number;
     }): Promise<CompactRecord[]> {
-        const allObs = loadAllObservations();
-        const queryLower = options.query.toLowerCase();
+        return Promise.resolve().then(() => {
+            const allObs = loadAllObservations();
+            const queryLower = options.query.toLowerCase();
 
-        // Filter by type if specified
-        let filtered = allObs;
-        if (options.type) {
-            filtered = filtered.filter((obs) => obs.type === options.type);
-        }
+            // Filter by type if specified
+            let filtered = allObs;
+            if (options.type) {
+                filtered = filtered.filter((obs) => obs.type === options.type);
+            }
 
-        // Filter by query (search in title and summary)
-        const matching = filtered.filter((obs) => {
-            const titleLower = obs.title.toLowerCase();
-            const summaryLower = obs.summary.toLowerCase();
-            return titleLower.includes(queryLower) || summaryLower.includes(queryLower);
+            // Filter by query (search in title and summary)
+            const matching = filtered.filter((obs) => {
+                const titleLower = obs.title.toLowerCase();
+                const summaryLower = obs.summary.toLowerCase();
+                return titleLower.includes(queryLower) || summaryLower.includes(queryLower);
+            });
+
+            // Apply limit
+            const limit = options.limit || 20;
+            const results = matching.slice(0, limit);
+
+            return results.map(toCompactRecord);
         });
-
-        // Apply limit
-        const limit = options.limit || 20;
-        const results = matching.slice(0, limit);
-
-        return results.map(toCompactRecord);
     }
 
     /** Get observations by IDs */
-    async getByIds(ids: string[]): Promise<Observation[]> {
-        ensureMemoryDir();
-        const results: Observation[] = [];
+    getByIds(ids: string[]): Promise<Observation[]> {
+        return Promise.resolve().then(() => {
+            ensureMemoryDir();
+            const results: Observation[] = [];
 
-        for (const id of ids) {
-            const filePath = getObservationPath(id);
-            try {
-                const content = fs.readFileSync(filePath, "utf-8");
-                const obs = JSON.parse(content) as Observation;
-                results.push(obs);
-            } catch (e) {
-                // Skip missing or corrupted files
-                continue;
+            for (const id of ids) {
+                const filePath = getObservationPath(id);
+                try {
+                    const content = fs.readFileSync(filePath, "utf-8");
+                    const obs = JSON.parse(content) as Observation;
+                    results.push(obs);
+                } catch (e) {
+                    // Skip missing or corrupted files
+                    continue;
+                }
             }
-        }
 
-        return results;
+            return results;
+        });
     }
 
     /** Save an observation */
-    async save(obs: Observation): Promise<{ id: string }> {
-        ensureMemoryDir();
+    save(obs: Observation): Promise<{ id: string }> {
+        return Promise.resolve().then(() => {
+            ensureMemoryDir();
 
-        // Generate ID if not provided
-        const id = obs.id || generateId();
-        const obsWithId = { ...obs, id };
+            // Generate ID if not provided
+            const id = obs.id || generateId();
+            const obsWithId = { ...obs, id };
 
-        // Write to disk
-        const filePath = getObservationPath(id);
-        fs.writeFileSync(filePath, JSON.stringify(obsWithId, null, 2));
+            // Write to disk
+            const filePath = getObservationPath(id);
+            fs.writeFileSync(filePath, JSON.stringify(obsWithId, null, 2));
 
-        return { id };
+            return { id };
+        });
     }
 
     /** Check if local memory is available */
-    static async isAvailable(): Promise<boolean> {
-        try {
-            ensureMemoryDir();
-            const testPath = path.join(MEMORY_DIR, ".available");
-            fs.writeFileSync(testPath, "test");
-            fs.unlinkSync(testPath);
-            return true;
-        } catch (e) {
-            return false;
-        }
+    static isAvailable(): Promise<boolean> {
+        return Promise.resolve().then(() => {
+            try {
+                ensureMemoryDir();
+                const testPath = path.join(MEMORY_DIR, ".available");
+                fs.writeFileSync(testPath, "test");
+                fs.unlinkSync(testPath);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        });
     }
 }
