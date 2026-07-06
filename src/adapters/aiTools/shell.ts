@@ -47,10 +47,18 @@ export function runShell(command: string, cwd: string, timeoutMs: number, progre
         const child = spawn("bash", ["-lc", command], { cwd, env: process.env });
         let out = "";
         let done = false;
+        const terminate = () => {
+            try { child.kill("SIGTERM"); } catch { /* ignore */ }
+            // Some commands ignore SIGTERM; without escalation the promise can
+            // stay pending forever because it resolves only on child close.
+            setTimeout(() => {
+                if (!done) { try { child.kill("SIGKILL"); } catch { /* ignore */ } }
+            }, 2000);
+        };
         const timer = setTimeout(() => {
             if (!done) {
                 out += `\n[Symposium] command timed out after ${timeoutMs}ms; terminating...\n`;
-                try { child.kill("SIGTERM"); } catch { /* ignore */ }
+                terminate();
             }
         }, timeoutMs);
         const push = (chunk: Buffer | string) => {
@@ -72,7 +80,7 @@ export function runShell(command: string, cwd: string, timeoutMs: number, progre
             const abortHandler = () => {
                 if (!done) {
                     out += `\n[Symposium] command cancelled by user; terminating...\n`;
-                    try { child.kill("SIGTERM"); } catch { /* ignore */ }
+                    terminate();
                 }
             };
             abortSignal.addEventListener("abort", abortHandler, { once: true });
@@ -104,7 +112,14 @@ function terminalHandleFor(requestedId: string | undefined, cwd: string): Termin
     if (requestedId) {
         const existing = TERMINALS.get(requestedId);
         if (existing) {
-            return existing;
+            // VS Code keeps Terminal objects around after the user closes them.
+            // Reusing that stale handle accepts sendText() but nothing runs, so
+            // the polling loop waits until a synthetic timeout. Only reuse live
+            // terminals that still appear in the current terminal registry.
+            if (existing.terminal.exitStatus === undefined && vscode.window.terminals.includes(existing.terminal)) {
+                return existing;
+            }
+            TERMINALS.delete(requestedId);
         }
     }
     const id = requestedId || `t${++terminalSeq}-${randomUUID().slice(0, 8)}`;
@@ -120,8 +135,9 @@ function shellQuote(value: string): string {
 }
 
 export async function runShellInTerminal(command: string, cwd: string, timeoutMs: number, progress?: ToolProgressSink, terminalId?: string, abortSignal?: AbortSignal): Promise<{ stdout: string; code: number; terminal_id: string; reused: boolean }> {
-    const existed = !!(terminalId && TERMINALS.has(terminalId));
+    const prior = terminalId ? TERMINALS.get(terminalId) : undefined;
     const handle = terminalHandleFor(terminalId, cwd);
+    const existed = prior === handle;
     const name = handle.name;
     const term = handle.terminal;
     term.show(true);
@@ -157,6 +173,7 @@ export async function runShellInTerminal(command: string, cwd: string, timeoutMs
     const wrapped =
         `{ bash ${shellQuote(cmdFile)}; printf '%s' "$?" > ${shellQuote(codeFile)}; } 2>&1 | tee -a ${shellQuote(outFile)}`;
     term.sendText(wrapped);
+    const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ } };
 
     const started = Date.now();
     let lastLen = 0;
@@ -175,15 +192,18 @@ export async function runShellInTerminal(command: string, cwd: string, timeoutMs
             const data = fs.existsSync(outFile) ? fs.readFileSync(outFile, "utf8") : "";
             const raw = fs.readFileSync(codeFile, "utf8").trim();
             const code = /^\d+$/.test(raw) ? Number(raw) : 1;
+            cleanup();
             return { stdout: data.slice(0, 30000), code, terminal_id: handle.id, reused: existed };
         }
         if (Date.now() - started > timeoutMs) {
             term.sendText("\u0003");
             const data = fs.existsSync(outFile) ? fs.readFileSync(outFile, "utf8") : "";
+            cleanup();
             return { stdout: (data + `\n[Symposium] command timed out after ${timeoutMs}ms`).slice(0, 30000), code: 124, terminal_id: handle.id, reused: existed };
         }
         if (cancelled) {
             const data = fs.existsSync(outFile) ? fs.readFileSync(outFile, "utf8") : "";
+            cleanup();
             return { stdout: (data + `\n[Symposium] command cancelled by user`).slice(0, 30000), code: 130, terminal_id: handle.id, reused: existed };
         }
         await new Promise((r) => setTimeout(r, 250));

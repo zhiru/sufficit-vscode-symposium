@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { SufficitAuth } from "../auth/identity";
+import { symposiumLog } from "../extension/log";
 import { commitDiff, recentSubjects } from "../git";
 import { resolveVSCodeGateway, GatewayPreset } from "../ui/vscodeGateway";
 
@@ -31,54 +32,64 @@ export function registerCommitMessage(context: vscode.ExtensionContext, auth: Su
 }
 
 async function run(context: vscode.ExtensionContext, auth: SufficitAuth, arg?: unknown): Promise<void> {
-    const repo = resolveRepo(arg);
-    if (!repo) {
-        void vscode.window.showErrorMessage("Sufficit: no Git repository found for the commit message.");
-        return;
+    try {
+        const repo = resolveRepo(arg);
+        symposiumLog(`[commit] invoked; repo=${repo?.rootUri.fsPath ?? "<none>"}`);
+        if (!repo) {
+            void vscode.window.showErrorMessage("Sufficit: no Git repository found for the commit message.");
+            return;
+        }
+
+        const loginToken = (await auth.getAccessToken()) ?? "";
+        if (!loginToken) {
+            symposiumLog("[commit] aborted: not logged in (no access token)");
+            void vscode.window.showWarningMessage("Sufficit: sign in first (Sufficit AI login) to generate commit messages.");
+            return;
+        }
+
+        const cfg = vscode.workspace.getConfiguration("symposium.commit");
+        let origin = (cfg.get<string>("origin") || DEFAULT_ORIGIN).replace(/\/+$/, "");
+        if (!/^https?:\/\//.test(origin)) { origin = DEFAULT_ORIGIN; }
+
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.SourceControl, title: "Sufficit: generating commit message…" },
+            async () => {
+                const diff = (await commitDiff(repo.rootUri.fsPath)).trim();
+                symposiumLog(`[commit] diff length=${diff.length}`);
+                if (!diff) {
+                    void vscode.window.showInformationMessage("Sufficit: no changes to describe.");
+                    return;
+                }
+
+                const gw = await resolveVSCodeGateway(context, origin, loginToken);
+                symposiumLog(`[commit] gateway=${gw ? gw.gatewayUrl.replace(/\/[^/]+$/, "/***") : "<null>"} presets=${gw?.presets.length ?? 0}`);
+                if (!gw) {
+                    void vscode.window.showErrorMessage("Sufficit: could not reach the AI gateway (check login / network).");
+                    return;
+                }
+
+                const model = pickModel(cfg.get<string>("model") || "", gw.presets);
+                symposiumLog(`[commit] model=${model || "<none>"}`);
+                if (!model) {
+                    void vscode.window.showErrorMessage("Sufficit: no AI model available for commit generation.");
+                    return;
+                }
+
+                const recent = await recentSubjects(repo.rootUri.fsPath, 5);
+                const message = await requestMessage(gw.gatewayUrl, model, diff, recent);
+                symposiumLog(`[commit] response length=${message.length}`);
+                if (!message) {
+                    void vscode.window.showErrorMessage("Sufficit: the AI returned no commit message.");
+                    return;
+                }
+                repo.inputBox.value = message;
+                symposiumLog("[commit] message written to SCM input box");
+            },
+        );
+    } catch (e) {
+        symposiumLog(`[commit] ERROR: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+        void vscode.window.showErrorMessage(`Sufficit commit message failed: ${e instanceof Error ? e.message : String(e)}`);
     }
-
-    const loginToken = (await auth.getAccessToken()) ?? "";
-    if (!loginToken) {
-        void vscode.window.showWarningMessage("Sufficit: sign in first (Sufficit AI login) to generate commit messages.");
-        return;
-    }
-
-    const cfg = vscode.workspace.getConfiguration("symposium.commit");
-    let origin = (cfg.get<string>("origin") || DEFAULT_ORIGIN).replace(/\/+$/, "");
-    if (!/^https?:\/\//.test(origin)) { origin = DEFAULT_ORIGIN; }
-
-    await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.SourceControl, title: "Sufficit: generating commit message…" },
-        async () => {
-            const diff = (await commitDiff(repo.rootUri.fsPath)).trim();
-            if (!diff) {
-                void vscode.window.showInformationMessage("Sufficit: no changes to describe.");
-                return;
-            }
-
-            const gw = await resolveVSCodeGateway(context, origin, loginToken);
-            if (!gw) {
-                void vscode.window.showErrorMessage("Sufficit: could not reach the AI gateway (check login / network).");
-                return;
-            }
-
-            const model = pickModel(cfg.get<string>("model") || "", gw.presets);
-            if (!model) {
-                void vscode.window.showErrorMessage("Sufficit: no AI model available for commit generation.");
-                return;
-            }
-
-            const recent = await recentSubjects(repo.rootUri.fsPath, 5);
-            const message = await requestMessage(gw.gatewayUrl, model, diff, recent);
-            if (!message) {
-                void vscode.window.showErrorMessage("Sufficit: the AI returned no commit message.");
-                return;
-            }
-            // Preserve anything the user already typed as a prefix guide is rare;
-            // overwrite matches the built-in behaviour and what users expect.
-            repo.inputBox.value = message;
-        },
-    );
 }
 
 /** Resolves the Git repository from the scm/inputBox arg, else the first repo. */
@@ -142,10 +153,17 @@ async function requestMessage(
                 options: { temperature: 0.2 },
             }),
         });
-        if (!res.ok) { return ""; }
+        symposiumLog(`[commit] POST /api/chat model=${model} -> HTTP ${res.status}`);
+        if (!res.ok) {
+            symposiumLog(`[commit] gateway error body: ${(await res.text()).slice(0, 300)}`);
+            return "";
+        }
         const d = await res.json() as { message?: { content?: string } };
         return cleanup(d.message?.content ?? "");
-    } catch { return ""; }
+    } catch (e) {
+        symposiumLog(`[commit] /api/chat fetch failed: ${e instanceof Error ? e.message : String(e)}`);
+        return "";
+    }
 }
 
 /** Strips wrapping code fences / quotes the model may add. */
