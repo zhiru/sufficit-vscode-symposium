@@ -13,12 +13,6 @@ import type { ConfigHandlerCtx, ConfigMessage } from "./configPanel";
  */
 export async function handleCompressionMessage(message: ConfigMessage, ctx: ConfigHandlerCtx): Promise<boolean> {
     switch (message.type) {
-        case "list-compression-presets": {
-            const { CompressionManager } = await import("../compression");
-            const presets = CompressionManager.getInstance().getPresets();
-            ctx.post({ type: "compression-presets", presets });
-            return true;
-        }
         case "add-compression-preset": {
             const { CompressionManager } = await import("../compression");
 
