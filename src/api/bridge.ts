@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import * as vscode from "vscode";
 import { ResourceKind } from "../config/root";
 import { SymposiumApi, SendMode } from "./symposiumApi";
+import { isBridgeAuthorized } from "./bridgeAuth";
 
 /** VS Code commands the bridge is allowed to run (browser/navigation only). */
 const ALLOWED_COMMANDS = new Set<string>([
@@ -43,37 +44,34 @@ export class RemoteBridge {
         let token = cfg.get<string>("token", "");
         if (!token) {
             token = randomUUID();
-            this.log(`[bridge] no token configured; generated ephemeral token: ${token}`);
+            this.log("[bridge] no token configured; generated ephemeral token (see ~/.symposium/bridge.json)");
         }
 
         const url = `http://${host}:${port}`;
         this.server = http.createServer((req, res) => void this.handle(req, res, token));
-        this.server.on("error", (err) => this.log(`[bridge] server error: ${err}`));
-        this.server.listen(port, host, () => this.log(`[bridge] listening on ${url}`));
-        // Publish url+token so local skills/scripts can reach the bridge without
-        // hardcoding them.
-        try {
-            const dir = path.join(os.homedir(), ".symposium");
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(path.join(dir, "bridge.json"), JSON.stringify({ url, token }), { mode: 0o600 });
-        } catch (err) { this.log(`[bridge] bridge.json write failed: ${err}`); }
+        this.server.on("error", (err) => {
+            this.log(`[bridge] server error: ${err}`);
+            removeBridgeAdvertisement();
+        });
+        this.server.listen(port, host, () => {
+            this.log(`[bridge] listening on ${url}`);
+            // Publish url+token so local skills/scripts can reach the bridge without
+            // hardcoding them, but only after we own the advertised listener.
+            try {
+                writeBridgeAdvertisement(url, token);
+            } catch (err) { this.log(`[bridge] bridge.json write failed: ${err}`); }
+        });
         return url;
     }
 
     stop(): void {
         this.server?.close();
         this.server = undefined;
-        try { fs.rmSync(path.join(os.homedir(), ".symposium", "bridge.json"), { force: true }); } catch { /* ignore */ }
+        removeBridgeAdvertisement();
     }
 
     private authorized(req: http.IncomingMessage, url: URL, token: string): boolean {
-        const header = req.headers.authorization;
-        if (header === `Bearer ${token}`) {
-            return true;
-        }
-        // EventSource cannot set headers, so allow the token as a query param
-        // for the SSE follow endpoint only.
-        return url.searchParams.get("token") === token;
+        return isBridgeAuthorized(req.headers.authorization, url, token);
     }
 
     private async handle(req: http.IncomingMessage, res: http.ServerResponse, token: string): Promise<void> {
@@ -250,8 +248,18 @@ function json(res: http.ServerResponse, status: number, body: unknown): void {
 function readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
         let data = "";
-        req.on("data", (chunk) => { data += chunk; if (data.length > 1_000_000) { reject(new Error("body too large")); } });
+        let tooLarge = false;
+        req.on("data", (chunk) => {
+            if (tooLarge) { return; }
+            data += chunk;
+            if (data.length > 1_000_000) {
+                tooLarge = true;
+                reject(new Error("body too large"));
+                req.destroy();
+            }
+        });
         req.on("end", () => {
+            if (tooLarge) { return; }
             try {
                 resolve((data ? JSON.parse(data) : {}) as Record<string, unknown>);
             } catch (err) {
@@ -260,4 +268,18 @@ function readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
         });
         req.on("error", reject);
     });
+}
+
+function bridgeAdvertisementPath(): string {
+    return path.join(os.homedir(), ".symposium", "bridge.json");
+}
+
+function writeBridgeAdvertisement(url: string, token: string): void {
+    const filePath = bridgeAdvertisementPath();
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify({ url, token }), { mode: 0o600 });
+}
+
+function removeBridgeAdvertisement(): void {
+    try { fs.rmSync(bridgeAdvertisementPath(), { force: true }); } catch { /* ignore */ }
 }
