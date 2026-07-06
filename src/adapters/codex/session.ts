@@ -196,11 +196,11 @@ export class CodexSession extends EventEmitter implements AgentSession {
         }
         const approvalPolicy = this.options.permission || this.config.approvalPolicy;
         if (approvalPolicy && approvalPolicy !== "default") {
-            base.push("--approval-policy", approvalPolicy);
+            base.push("-c", `approval_policy="${approvalPolicy}"`);
         }
         const sandboxMode = this.config.sandboxMode;
         if (sandboxMode && sandboxMode !== "default") {
-            base.push("--sandbox-mode", sandboxMode);
+            base.push("--sandbox", sandboxMode);
         }
         const reasoning = this.options.reasoning || this.config.reasoning;
         if (reasoning && reasoning !== "default") {

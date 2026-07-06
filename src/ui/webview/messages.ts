@@ -285,6 +285,7 @@ const THINK_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5
  * @returns Objeto contendo referências aos elementos DOM criados (wrap, body, len)
  */
 export function renderThinkBlock(text) {
+    if (!String(text || "").trim()) { return null; }
     const stick = nearBottom();
     const wrap = document.createElement("div"); wrap.className = "msg thinkWrap";
     const det = document.createElement("details"); det.className = "thinkBlock";
@@ -322,7 +323,9 @@ export function streamThinkingDelta(text) {
         if (text.trim() === "") {
             return; // Skip creating empty thinking blocks
         }
-        const { wrap, body, len } = renderThinkBlock("");
+        const rendered = renderThinkBlock(text);
+        if (!rendered) { return; }
+        const { wrap, body, len } = rendered;
         streamThink = wrap; streamThinkBody = body; streamThinkLen = len; streamThinkText = "";
     }
     streamThinkText += text;

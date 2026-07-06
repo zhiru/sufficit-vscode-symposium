@@ -4,6 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import { randomUUID } from "crypto";
 import * as vscode from "vscode";
+import { lmToolInvocationOptions } from "../adapters/lmToolInvocation";
 import { ResourceKind } from "../config/root";
 import { SymposiumApi, SendMode } from "./symposiumApi";
 import { isBridgeAuthorized } from "./bridgeAuth";
@@ -101,7 +102,8 @@ export class RemoteBridge {
                 if (typeof body.name !== "string") { return json(res, 400, { error: "name must be a string" }); }
                 const cts = new vscode.CancellationTokenSource();
                 try {
-                    const r = await vscode.lm.invokeTool(body.name, { input: body.input ?? {}, toolInvocationToken: undefined } as vscode.LanguageModelToolInvocationOptions<object>, cts.token);
+                    const input = isRecord(body.input) ? body.input : {};
+                    const r = await vscode.lm.invokeTool(body.name, lmToolInvocationOptions(input), cts.token);
                     const content = r.content as Array<vscode.LanguageModelTextPart | vscode.LanguageModelPromptTsxPart>;
                     const text = content.map((p) => (p instanceof vscode.LanguageModelTextPart ? p.value : JSON.stringify(p))).join("\n");
                     return json(res, 200, { ok: true, result: text });
@@ -268,6 +270,10 @@ function readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
         });
         req.on("error", reject);
     });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function bridgeAdvertisementPath(): string {

@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { lmToolInvocationOptions } from "../adapters/lmToolInvocation";
 import { AgentAdapter, SlashCommand } from "../adapters/types";
 import { HubClient } from "../sync/hubClient";
 import { fetchSessionTasks, TaskItem } from "../sync/tasks";
@@ -105,7 +106,7 @@ export class SurfaceSync {
         const cts = new vscode.CancellationTokenSource();
         try {
             const r = await lm.invokeTool("open_browser_page",
-                { input: {}, toolInvocationToken: undefined } as vscode.LanguageModelToolInvocationOptions<object>, cts.token);
+                lmToolInvocationOptions({}), cts.token);
             const content = r.content as Array<vscode.LanguageModelTextPart | vscode.LanguageModelPromptTsxPart>;
             const text = content.map((p) => (p instanceof vscode.LanguageModelTextPart ? p.value : "")).join("\n").trim();
             if (!text || /opted not to share|no .*page/i.test(text)) {

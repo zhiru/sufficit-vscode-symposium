@@ -71,11 +71,15 @@ export class TerminalSession {
                 args.push("--reasoning-effort", effort);
             }
         }
-        if (this.options.resumeSessionId) {
+        let cliArgs = args;
+        if (this.options.resumeSessionId && this.adapter.backend === "codex") {
+            cliArgs = ["resume", ...args, this.options.resumeSessionId];
+            this.sessionId = this.options.resumeSessionId;
+        } else if (this.options.resumeSessionId) {
             args.push("--resume", this.options.resumeSessionId);
             this.sessionId = this.options.resumeSessionId;
         }
-        const cli = `${this.adapter.backend === "claude" ? "claude" : this.adapter.backend} ${args.join(" ")}`.trim();
+        const cli = `${this.adapter.backend === "claude" ? "claude" : this.adapter.backend} ${cliArgs.join(" ")}`.trim();
         // Persistent mode: run the CLI inside a detached tmux session that
         // survives VS Code. `-A` attaches to it if it already exists (recovery
         // of a live process), or creates it on first launch.

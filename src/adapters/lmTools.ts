@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { OpenAITool } from "./aiTools";
+import { lmToolInvocationOptions } from "./lmToolInvocation";
 import { sanitizeToolParametersForOpenAI } from "./openaiSchema";
 
 /**
@@ -128,7 +129,7 @@ async function invokeOne(real: string, input: Record<string, unknown>): Promise<
     try {
         const res = await vscode.lm.invokeTool(
             real,
-            { input, toolInvocationToken: undefined } as vscode.LanguageModelToolInvocationOptions<object>,
+            lmToolInvocationOptions(input),
             cts.token,
         );
         const parts: string[] = [];

@@ -89,7 +89,7 @@ export function parseTranscriptLine(line: string): HistoryMessage[] {
         for (const block of Array.isArray(assistantContent) ? assistantContent : []) {
             if (typeof block === "object" && block !== null) {
                 if (block.type === "thinking" && typeof block.thinking === "string") {
-                    messages.push({ role: "thinking", text: block.thinking });
+                    if (block.thinking.trim()) { messages.push({ role: "thinking", text: block.thinking }); }
                 } else if (block.type === "text" && typeof block.text === "string") {
                     messages.push({ role: "assistant", text: block.text });
                 } else if (block.type === "tool_use") {

@@ -183,8 +183,10 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                         this.streamedText = true;
                         this.emit("event", { kind: "text", text: delta.text });
                     } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
-                        this.streamedThinking = true;
-                        this.emit("event", { kind: "thinking", text: delta.thinking });
+                        if (delta.thinking.trim()) {
+                            this.streamedThinking = true;
+                            this.emit("event", { kind: "thinking", text: delta.thinking });
+                        }
                     }
                 }
                 break;
@@ -201,7 +203,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                     if (typeof block === "object" && block !== null) {
                         const b = block as Record<string, unknown>;
                         if (b.type === "thinking" && typeof b.thinking === "string") {
-                            if (!this.streamedThinking) { this.emit("event", { kind: "thinking", text: b.thinking }); }
+                            if (!this.streamedThinking && b.thinking.trim()) { this.emit("event", { kind: "thinking", text: b.thinking }); }
                         } else if (b.type === "text" && typeof b.text === "string") {
                             // Already streamed via stream_event deltas — don't repeat.
                             if (!this.streamedText) { this.emit("event", { kind: "text", text: b.text }); }
