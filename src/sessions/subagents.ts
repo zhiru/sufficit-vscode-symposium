@@ -175,6 +175,10 @@ export class SubagentManager implements SubagentHost {
         rec.status = "gone";
         rec.unsub();
         this.flush(rec);
+        // Drop stopped subagents so their output buffer and captured controller
+        // do not accumulate across long VS Code windows. Subsequent status/send
+        // calls report the id as unknown, matching already-expired subagents.
+        this.recs.delete(rec.id);
         return true;
     }
 

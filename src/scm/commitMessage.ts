@@ -106,7 +106,7 @@ function resolveRepo(arg: unknown): GitRepo | undefined {
     const api = gitApi();
     if (!api) { return undefined; }
 
-    const argPath = uriFsPath(arg);
+    const argPath = argRepoPath(arg);
     if (argPath) {
         const match = api.repositories.find((r) => r.rootUri.fsPath === argPath);
         if (match) { return match; }
@@ -119,6 +119,16 @@ function resolveRepo(arg: unknown): GitRepo | undefined {
         if (owning) { return owning; }
     }
     return api.repositories[0];
+}
+
+/**
+ * Repo root path from the menu arg. scm/inputBox passes the repo root as a
+ * vscode.Uri; scm/title passes the SourceControl (which carries `.rootUri`).
+ */
+function argRepoPath(arg: unknown): string | undefined {
+    const a = arg as { rootUri?: unknown } | undefined;
+    if (a && typeof a === "object" && a.rootUri) { return uriFsPath(a.rootUri); }
+    return uriFsPath(arg);
 }
 
 /** fsPath of a value that is (or serialises like) a vscode.Uri, else undefined. */
