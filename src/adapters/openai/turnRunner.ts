@@ -86,7 +86,7 @@ export class TurnRunner {
         if (compressionPresetId && compressionPresetId !== "none") {
             compressionPreset = CompressionManager.getInstance().getPreset(compressionPresetId);
             if (!compressionPreset) {
-                this.d.emit({ kind: "warn", message: `[Compression: preset "${compressionPresetId}" not found]` });
+                this.d.emit({ kind: "status-notice", text: `[Compression: preset "${compressionPresetId}" not found; continuing uncompressed]` });
             }
         }
         const requestMessages = (): ChatMessage[] => {
@@ -94,7 +94,7 @@ export class TurnRunner {
             try {
                 const compressed = compressMessages(messages, compressionPreset.strategy, compressionPreset.params);
                 if (!compressionNoticeEmitted) {
-                    this.d.emit({ kind: "info", message: `[Compression: applied preset "${compressionPresetId}" - ${messages.length} → ${compressed.length} messages]` });
+                    this.d.emit({ kind: "status-notice", text: `[Compression: applied preset "${compressionPresetId}" - ${messages.length} → ${compressed.length} messages]` });
                     compressionNoticeEmitted = true;
                 }
                 return compressed;
@@ -189,8 +189,8 @@ export class TurnRunner {
                     const orphanCount = toolHistoryIssues.filter((issue) => issue.type === "orphan_tool_message").length;
                     const missingCount = toolHistoryIssues.length - orphanCount;
                     this.d.emit({
-                        kind: "warn",
-                        message: `OpenAI dispatch history has invalid tool pairing; request sent unchanged. orphan_tools=${orphanCount} missing_tool_results=${missingCount}`,
+                        kind: "status-notice",
+                        text: `OpenAI dispatch history has invalid tool pairing; request sent unchanged. orphan_tools=${orphanCount} missing_tool_results=${missingCount}`,
                     });
                 }
                 const body: Record<string, unknown> = responses

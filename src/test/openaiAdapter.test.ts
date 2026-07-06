@@ -5,6 +5,7 @@ import { sanitizeToolParametersForOpenAI } from "../adapters/openaiSchema";
 import { compressMessages } from "../compression/webhook";
 import { findToolHistoryIssues } from "../adapters/openai/toolHistory";
 import { ChatMessage } from "../adapters/openai/types";
+import { mergeToolDefinitions } from "../adapters/openai/toolMerge";
 
 test("buildOpenAIModelList does not invent OpenAI fallback models", () => {
     assert.deepEqual(buildOpenAIModelList([], ""), []);
@@ -99,4 +100,37 @@ test("findToolHistoryIssues reports invalid dispatch windows without repairing t
         findToolHistoryIssues(messages).map((issue) => issue.type),
         ["orphan_tool_message", "missing_tool_result"],
     );
+});
+
+test("mergeToolDefinitions prefixes collisions without mutating shared tool defs", () => {
+    const symTool = {
+        type: "function",
+        function: {
+            name: "search",
+            description: "Search memory",
+        },
+    };
+    const localTool = {
+        type: "function",
+        function: {
+            name: "search",
+            description: "Search files",
+        },
+    };
+
+    const merged = mergeToolDefinitions([
+        { tool: symTool, source: "sym_" },
+        { tool: localTool, source: "local_" },
+    ]);
+
+    assert.deepEqual(
+        merged.map((tool) => tool.function?.name),
+        ["sym_search", "local_search"],
+    );
+    assert.equal(symTool.function.name, "search");
+    assert.equal(symTool.function.description, "Search memory");
+    assert.equal(localTool.function.name, "search");
+    assert.equal(localTool.function.description, "Search files");
+    assert.notEqual(merged[0], symTool);
+    assert.notEqual(merged[0].function, symTool.function);
 });

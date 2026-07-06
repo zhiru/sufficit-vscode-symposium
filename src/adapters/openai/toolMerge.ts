@@ -35,8 +35,8 @@ export function stripSourcePrefix(name: string): string {
  * Resolve name collisions across tool sources. For each name, if every source
  * exposing it has the same description, keep a single copy (dedup). Otherwise
  * prefix each variant's name with its source and tag its description so the
- * model can tell them apart. Mutates the tool objects in place (as the original
- * inline code did) and returns the flat, de-duplicated/prefixed tool list.
+ * model can tell them apart. Clones before renaming because the source tool
+ * definitions are shared module constants reused across turns and sessions.
  *
  * @param sourced tools already tagged with their source prefix
  *                (e.g. "sym_", "local_", "agent_", "vscode_")
@@ -67,14 +67,22 @@ export function mergeToolDefinitions(
             // Prefix source to avoid collision
             for (const { tool, source } of group) {
                 const nameKey = (tool.function?.name ?? tool.name) as string;
-                if (tool.function) {
-                    tool.function = { ...tool.function, name: `${source}${nameKey}` };
-                    tool.function.description = `[${source.slice(0, -1)}] ${tool.function.description ?? ""}`;
-                } else if (tool.name) {
-                    tool.name = `${source}${nameKey}`;
-                    tool.description = `[${source.slice(0, -1)}] ${tool.description}`;
-                }
-                finalTools.push({ tool, source });
+                const label = source.slice(0, -1);
+                const renamed: ToolDefinition = tool.function
+                    ? {
+                        ...tool,
+                        function: {
+                            ...tool.function,
+                            name: `${source}${nameKey}`,
+                            description: `[${label}] ${tool.function.description ?? ""}`,
+                        },
+                    }
+                    : {
+                        ...tool,
+                        name: `${source}${nameKey}`,
+                        description: `[${label}] ${tool.description ?? ""}`,
+                    };
+                finalTools.push({ tool: renamed, source });
             }
         }
     }
