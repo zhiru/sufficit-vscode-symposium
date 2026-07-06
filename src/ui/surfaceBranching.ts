@@ -46,6 +46,15 @@ function buildSeedHistory(transcript: string | undefined): string | undefined {
         : undefined;
 }
 
+function sameTextRetry(backend: string, original: string | undefined, edited: string): boolean {
+    // CLI adapters (Claude/Codex/Copilot) own their native transcript and can
+    // resume the same session after a failed turn. If the user clicked
+    // "Edit & retry" and submitted the unchanged text, that is a retry, not a
+    // history rewrite; branching here creates a duplicate Claude session in the
+    // sidebar and loses the CLI-native continuity. Real edits still branch below.
+    return CLI_BACKENDS.has(backend) && original === edited;
+}
+
 /**
  * Starts a fresh session on the SAME backend, seeded only with the visible
  * conversation up to the chosen message. This is the Symposium equivalent
@@ -131,6 +140,14 @@ export function editResend(
         void d.getController()?.handleMessage({ ...sendMsg, editFrom: undefined } as WebviewToHost);
         return;
     }
+    if (!("text" in sendMsg) || typeof sendMsg.text !== "string") {
+        return;
+    }
+    const original = transcriptMessages[adjustedIndex];
+    if (original?.role === "user" && sameTextRetry(from.backend, original.text, sendMsg.text)) {
+        void from.handleMessage({ ...sendMsg, editFrom: undefined } as WebviewToHost);
+        return;
+    }
     const keepTo = adjustedIndex - 1;   // exclude the message being edited
     const messages = from.transcriptMessagesUpTo(keepTo);
     const transcript = from.transcriptUpTo(keepTo);
@@ -138,10 +155,6 @@ export function editResend(
     openDialogue(from.backend, { cwd: from.cwd, seedHistory, lineageId: inheritedLineage(from.backend, from) }, from.title);
     if (messages.length) {
         d.post({ type: "history", messages, carried: true });
-    }
-    // Type guard: ensure sendMsg has the required "send" properties
-    if (!("text" in sendMsg) || typeof sendMsg.text !== "string") {
-        return;
     }
     void d.getController()?.handleMessage({
         type: "send",
