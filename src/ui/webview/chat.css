@@ -592,6 +592,33 @@
         border-radius: 12px 12px 3px 12px; padding: 10px 14px; white-space: pre-wrap;
         max-width: 82%; text-align: left; line-height: 1.6;
     }
+    .ubody.user-expandable {
+        position: relative; cursor: pointer; transition: max-height 160ms ease;
+    }
+    .ubody.user-expandable.collapsed {
+        max-height: calc(3.2em + 20px); overflow: hidden; padding-right: 42px;
+    }
+    .ubody.user-expandable.collapsed::after {
+        content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2.65em;
+        border-radius: 0 0 3px 12px; pointer-events: none;
+        background: linear-gradient(
+            to bottom,
+            transparent 0%,
+            color-mix(in srgb, var(--vscode-button-background, var(--vscode-focusBorder, #0078d4)) 12%, var(--vscode-editor-background, #1f1f1f)) 58%,
+            color-mix(in srgb, var(--vscode-button-background, var(--vscode-focusBorder, #0078d4)) 24%, var(--vscode-editor-background, #1f1f1f)) 100%
+        );
+    }
+    .ubody .userChev {
+        position: absolute; right: 10px; bottom: 8px; z-index: 1;
+        width: 22px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 999px; color: var(--vscode-foreground);
+        background: color-mix(in srgb, var(--vscode-button-background, var(--vscode-focusBorder, #0078d4)) 36%, var(--vscode-editor-background, #1f1f1f));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-button-background, var(--vscode-focusBorder, #0078d4)) 35%, transparent);
+        opacity: 0.82; transform: rotate(90deg); transition: transform 140ms ease, opacity 120ms ease, background-color 120ms ease;
+    }
+    .ubody .userChev svg { width: 12px; height: 12px; }
+    .ubody.user-expandable:hover .userChev { opacity: 1; }
+    .ubody.user-expandable:not(.collapsed) .userChev { transform: rotate(-90deg); }
     .ubody .chips { margin-top: 6px; }
     /* assistant turns: full width, no bubble (padding from the combined rule). */
     .msg.assistant { position: relative; }

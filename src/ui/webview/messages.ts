@@ -178,28 +178,14 @@ export function message(role, text, ts, model) {
         if (isLong) {
             body.classList.add("user-expandable");
             body.classList.add("collapsed");
-            // Add chevron indicator
             const chev = document.createElement("span");
             chev.className = "userChev";
+            chev.title = "Expand message";
             chev.appendChild(svgIcon("chevron"));
             body.appendChild(chev);
-            // Truncate to 2 lines visually
-            body.style.maxHeight = "3em";
-            body.style.overflow = "hidden";
-            body.style.display = "-webkit-box";
-            body.style.webkitLineClamp = "2";
-            body.style.webkitBoxOrient = "vertical";
-            body.style.cursor = "pointer";
-            // Toggle expansion on click
             body.addEventListener("click", () => {
                 body.classList.toggle("collapsed");
-                if (body.classList.contains("collapsed")) {
-                    body.style.maxHeight = "3em";
-                    body.style.webkitLineClamp = "2";
-                } else {
-                    body.style.maxHeight = "";
-                    body.style.webkitLineClamp = "";
-                }
+                chev.title = body.classList.contains("collapsed") ? "Expand message" : "Collapse message";
             });
         }
     }
