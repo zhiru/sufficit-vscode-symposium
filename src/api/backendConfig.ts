@@ -22,7 +22,18 @@ export interface BackendStatus {
     /** True for user-defined OpenAI-compatible endpoints (symposium.adapters),
      *  i.e. not a built-in backend. Such endpoints can be edited/removed in-place. */
     custom: boolean;
+    /** npm install command for a CLI backend whose binary is missing; the UI
+     *  offers a one-click "Install" that runs it in a terminal. Absent when the
+     *  backend is available or has no known installer. */
+    installCommand?: string;
 }
+
+/** npm packages that provide each CLI backend's executable (for on-demand install). */
+const INSTALL_COMMANDS: Record<string, string> = {
+    claude: "npm install -g @anthropic-ai/claude-code",
+    codex: "npm install -g @openai/codex",
+    copilot: "npm install -g @github/copilot",
+};
 
 /** Editable fields of a custom OpenAI-compatible endpoint (symposium.adapters). */
 export interface AdapterPatch {
@@ -121,6 +132,7 @@ async function probeBackend(a: AgentAdapter): Promise<BackendStatus> {
         // Custom endpoints are model-editable too (their picker writes back into the adapter entry).
         modelEditable: isModelEditable(a.backend) || custom,
         custom,
+        installCommand: !available && CLI_BACKENDS.has(a.backend) ? INSTALL_COMMANDS[a.backend] : undefined,
     };
 }
 

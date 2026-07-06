@@ -275,6 +275,23 @@ export async function handleBackendsMessage(message: ConfigMessage, ctx: ConfigH
             }
             return true;
         }
+        case "install-backend": {
+            // On-demand CLI install: run the backend's npm install in a visible
+            // terminal so the user sees progress and can authenticate afterwards.
+            const backend = message.backend;
+            if (!backend) { return true; }
+            const status = await api.backends.test(backend);
+            const cmd = status?.installCommand;
+            if (!cmd) {
+                void vscode.window.showInformationMessage(ctx.tr("msg.backend.installUnavailable", { backend }));
+                return true;
+            }
+            const term = vscode.window.createTerminal({ name: `Install ${backend}` });
+            term.show();
+            term.sendText(cmd);
+            void vscode.window.showInformationMessage(ctx.tr("msg.backend.installing", { backend }));
+            return true;
+        }
     }
     return false;
 }

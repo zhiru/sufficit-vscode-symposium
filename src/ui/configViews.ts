@@ -60,6 +60,9 @@ export const configViews = `    function resourceList(kind) {
                     '<span class="desc">' + esc(b.detail || "") + "</span>" +
                     '<span class="bk-test" data-backend="' + esc(b.backend) + '"></span>' +
                     '<button class="secondary test" data-backend="' + esc(b.backend) + '">' + esc(t("config.btn.test")) + '</button>' +
+                    (b.installCommand
+                        ? '<button class="secondary install-ep" data-backend="' + esc(b.backend) + '" title="' + esc(b.installCommand) + '">' + esc(t("config.btn.install")) + '</button>'
+                        : "") +
                     (b.custom
                         ? '<button class="secondary edit-ep" data-backend="' + esc(b.backend) + '">' + esc(t("config.btn.edit")) + '</button>' +
                           '<button class="secondary remove-ep" data-backend="' + esc(b.backend) + '">' + esc(t("config.btn.remove")) + '</button>'

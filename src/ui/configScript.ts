@@ -223,6 +223,9 @@ export function renderConfigScript(dict: Record<string, string>): string {
             main.querySelectorAll("button.edit").forEach(el => {
                 el.onclick = () => vscode.postMessage({ type: "edit-backend", backend: el.getAttribute("data-backend") });
             });
+            main.querySelectorAll("button.install-ep").forEach(el => {
+                el.onclick = () => vscode.postMessage({ type: "install-backend", backend: el.getAttribute("data-backend") });
+            });
             const addEp = document.getElementById("add-endpoint");
             if (addEp) { addEp.onclick = () => vscode.postMessage({ type: "add-endpoint" }); }
             const impBk = document.getElementById("import-backends");
