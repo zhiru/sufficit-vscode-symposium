@@ -159,9 +159,12 @@ export function renderTool(name, detail, opts) {
     else if (opts.input) { body.appendChild(toolSection("Input", opts.input)); }
     let resultSec = null;
     let resultText = "";
-    const showResult = (text) => {
+    const showResult = (text, replace) => {
         if (!text) return;
-        resultText += String(text);
+        // Streaming adapters often send chunks via tool-output and then send
+        // the same complete payload on tool-end. The final result replaces the
+        // streamed buffer instead of appending a duplicate copy.
+        resultText = replace ? String(text) : resultText + String(text);
         const shown = resultText.length > 30000 ? resultText.slice(resultText.length - 30000) : resultText;
         if (!resultSec) { resultSec = toolSection("Result", shown); body.appendChild(resultSec); }
         else { resultSec.querySelector("pre").textContent = shown; }
@@ -191,7 +194,12 @@ export function renderTool(name, detail, opts) {
     if (opts.toolId) { toolRows[opts.toolId] = { showResult }; }
     return wrap;
 }
-export function fillToolResult(toolId, result) {
+export function fillToolResult(toolId, result, final) {
     const rec = toolId && toolRows[toolId];
-    if (rec) { rec.showResult(result); }
+    if (rec) {
+        rec.showResult(result, final);
+        if (final) { delete toolRows[toolId]; }
+    }
 }
+
+export function resetToolRows() { for (const k in toolRows) { delete toolRows[k]; } }

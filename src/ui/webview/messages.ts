@@ -6,7 +6,7 @@ import { setStatus, syncProgress, setLoading } from "./status";
 import { modelLabel } from "./models";
 import { showFileMenu } from "./menus";
 import { autoScroll, nearBottom, refreshEmpty, scrollToBottom } from "./scroll";
-import { renderMarkdown, inline } from "./markdown";
+import { renderMarkdown, inline, copyText } from "./markdown";
 import { svgIcon, fileIcon } from "./icons";
 import { middleEllipsisPath, allDigits } from "./format";
 import { beginEdit, lastUserRow } from "./composer";
@@ -222,8 +222,9 @@ export function message(role, text, ts, model) {
         const cp = document.createElement("button"); cp.className = "msgCopy"; cp.title = "Copy this reply";
         cp.appendChild(svgIcon("copy"));
         cp.addEventListener("click", () => {
-            if (navigator.clipboard) { navigator.clipboard.writeText(wrap._raw != null ? wrap._raw : text); }
-            cp.classList.add("done"); setTimeout(() => cp.classList.remove("done"), 1000);
+            copyText(wrap._raw != null ? wrap._raw : text, () => {
+                cp.classList.add("done"); setTimeout(() => cp.classList.remove("done"), 1000);
+            });
         });
         tools.appendChild(cp);
     }
@@ -238,6 +239,11 @@ export function message(role, text, ts, model) {
 // Coalesce streaming assistant deltas into ONE message (the OpenAI adapter
 // emits token-by-token; without this each token became its own bubble).
 let streamMsg = null, streamBody = null, streamText = "";
+let streamRaf = 0;
+function flushStreamRender() {
+    streamRaf = 0;
+    if (streamBody) { streamBody.textContent = ""; renderMarkdown(streamBody, streamText); }
+}
 export function streamDelta(text) {
     const stick = nearBottom();
     endThinkingStream(); // close any open thinking block before first text token
@@ -250,10 +256,18 @@ export function streamDelta(text) {
     streamMsg._raw = streamText;
     const idx = Number(streamMsg.dataset.msgIndex || "-1");
     if (idx >= 0 && conversationRows[idx]) { conversationRows[idx].text = streamText; }
-    if (streamBody) { streamBody.textContent = ""; renderMarkdown(streamBody, streamText); }
+    if (!streamRaf) {
+        streamRaf = requestAnimationFrame(() => { flushStreamRender(); autoScroll(stick); });
+    }
     autoScroll(stick);
 }
-export function endStream() { streamMsg = null; streamBody = null; streamText = ""; endThinkingStream(); }
+export function endStream() {
+    // Flush a pending animation frame so the final assistant text is fully
+    // rendered before the next event closes the streaming message.
+    if (streamRaf) { cancelAnimationFrame(streamRaf); flushStreamRender(); }
+    streamMsg = null; streamBody = null; streamText = "";
+    endThinkingStream();
+}
 
 // Streaming thinking blocks (extended reasoning).
 // Gerencia o estado de streaming de thinking blocks, incluindo:

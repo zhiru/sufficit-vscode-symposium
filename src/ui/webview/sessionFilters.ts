@@ -99,7 +99,13 @@ function appendFilterSection(title: string, items: Array<{ label: string; active
         const row = document.createElement("button");
         row.type = "button";
         row.className = "sessionFilterItem" + (item.active ? " active" : "");
-        row.innerHTML = `<span class="tick">${item.active ? "✓" : ""}</span><span>${item.label}</span>`;
+        const tick = document.createElement("span");
+        tick.className = "tick";
+        tick.textContent = item.active ? "✓" : "";
+        const label = document.createElement("span");
+        label.textContent = item.label;
+        row.appendChild(tick);
+        row.appendChild(label);
         row.onclick = (ev) => { ev.stopPropagation(); item.onToggle(); openSessionsFilterMenu(sessionFilterBtn); };
         group.appendChild(row);
     }
@@ -112,8 +118,13 @@ export function openSessionsFilterMenu(anchorEl: HTMLElement) {
 
     const head = document.createElement("div");
     head.className = "sessionFilterHead";
-    head.innerHTML = `<span>${t("sessions.filter.title")}</span><button type="button" class="sessionFilterReset">${t("sessions.filter.clear")}</button>`;
-    (head.querySelector("button") as HTMLButtonElement).onclick = (ev) => {
+    const title = document.createElement("span");
+    title.textContent = t("sessions.filter.title");
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "sessionFilterReset";
+    reset.textContent = t("sessions.filter.clear");
+    reset.onclick = (ev) => {
         ev.stopPropagation();
         setSessionSort("updated-desc");
         setSessionBackendFilter([]);
@@ -123,6 +134,8 @@ export function openSessionsFilterMenu(anchorEl: HTMLElement) {
         renderSessions();
         openSessionsFilterMenu(anchorEl);
     };
+    head.appendChild(title);
+    head.appendChild(reset);
     ctxMenu.appendChild(head);
 
     appendFilterSection(t("sessions.group.label"), [

@@ -6,7 +6,7 @@ import { t } from "./i18n";
 import { renderSessions } from "./sessions";
 import { renderStatusbar } from "./statusbar";
 import { setLoading } from "./status";
-import { modelLabel, modelList, modelDefault, modelValue, reasoningList, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, setReasoningDefault, setReasoningLabel, setReasoningList, setReasoningValue } from "./models";
+import { modelLabel, modelList, modelDefault, modelValue, reasoningList, reasoningValue, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, setReasoningDefault, setReasoningLabel, setReasoningList, setReasoningValue } from "./models";
 import { scheduleLayout, scrollToBottom } from "./scroll";
 import { saved } from "./vscode";
 import { bootComplete, bootStep, bootTimer } from "./boot";
@@ -73,7 +73,11 @@ export function applyMeta(data: any): void {
     modelPicker.style.display = "";
     setModelLabel();
     setReasoningList(data.reasoningLevels || []);
-    setReasoningValue(reasoningList[0] || "default");
+    // Re-meta happens during edit/resend and handoff. Preserve the user's
+    // reasoning effort when the refreshed backend still offers it.
+    if (!reasoningValue || !reasoningList.includes(reasoningValue)) {
+        setReasoningValue(reasoningList[0] || "default");
+    }
     reasoningPicker.disabled = false;
     reasoningPicker.style.display = reasoningList.length ? "" : "none";
     setReasoningLabel();

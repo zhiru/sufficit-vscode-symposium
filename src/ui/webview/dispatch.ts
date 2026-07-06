@@ -5,7 +5,7 @@ import { renderChips, setBrowserOpen } from "./composer";
 import { applyMeta } from "./meta";
 import { applyEvent } from "./events";
 import { append, branchBanner, endStream, message, renderThinkBlock, resetLastMsg } from "./messages";
-import { renderTool } from "./tools";
+import { renderTool, resetToolRows } from "./tools";
 import { renderChangedFiles, renderGuardrails, renderQueued, renderTasks, renderPlan, resetWorkingState, refreshPanels, changedItems, setChangedItems } from "./panels";
 import { renderAccount, renderSessions } from "./sessions";
 import { setLang, t } from "./i18n";
@@ -57,6 +57,7 @@ window.addEventListener("message", ({ data }) => {
             agentBadge.style.display = "none";
             setActiveModel(""); setBusy(false); setQueued(0);
             resetWorkingState();
+            resetToolRows();
             refreshEmpty();
             sendBtn.disabled = false;
             document.getElementById("composer").style.display = "flex";

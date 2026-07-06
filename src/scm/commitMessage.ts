@@ -33,6 +33,9 @@ export function registerCommitMessage(context: vscode.ExtensionContext, auth: Su
 
 async function run(context: vscode.ExtensionContext, auth: SufficitAuth, arg?: unknown): Promise<void> {
     try {
+        const sc = arg as { rootUri?: vscode.Uri; inputBox?: unknown } | undefined;
+        symposiumLog(`[commit] arg keys=${arg && typeof arg === "object" ? Object.keys(arg).join(",") : String(arg)} `
+            + `rootUri=${sc?.rootUri ? sc.rootUri.toString() : "none"} hasInputBox=${!!sc?.inputBox}`);
         const repo = resolveRepo(arg);
         symposiumLog(`[commit] invoked; repo=${repo?.rootUri.fsPath ?? "<none>"}`);
         if (!repo) {
@@ -92,13 +95,20 @@ async function run(context: vscode.ExtensionContext, auth: SufficitAuth, arg?: u
     }
 }
 
-/** Resolves the Git repository from the scm/inputBox arg, else the first repo. */
+/**
+ * Resolves the repository whose commit box was clicked. The scm/inputBox menu
+ * passes THAT repository's root as a `vscode.Uri` argument, so match it against
+ * the git API to get the live Repository (with its inputBox) — guessing picks
+ * the wrong repo in multi-root workspaces. Falls back to the active editor's
+ * repo, then the first repo, when invoked without an arg (command palette).
+ */
 function resolveRepo(arg: unknown): GitRepo | undefined {
     const api = gitApi();
     if (!api) { return undefined; }
-    const rootUri = (arg as { rootUri?: vscode.Uri })?.rootUri;
-    if (rootUri) {
-        const match = api.repositories.find((r) => r.rootUri.fsPath === rootUri.fsPath);
+
+    const argPath = uriFsPath(arg);
+    if (argPath) {
+        const match = api.repositories.find((r) => r.rootUri.fsPath === argPath);
         if (match) { return match; }
     }
     const active = vscode.window.activeTextEditor?.document.uri.fsPath;
@@ -109,6 +119,14 @@ function resolveRepo(arg: unknown): GitRepo | undefined {
         if (owning) { return owning; }
     }
     return api.repositories[0];
+}
+
+/** fsPath of a value that is (or serialises like) a vscode.Uri, else undefined. */
+function uriFsPath(arg: unknown): string | undefined {
+    const u = arg as { _fsPath?: string; fsPath?: string; path?: string; scheme?: string } | undefined;
+    if (!u || typeof u !== "object") { return undefined; }
+    const fp = u.fsPath ?? u._fsPath ?? u.path;
+    return typeof fp === "string" && fp ? fp : undefined;
 }
 
 function gitApi(): GitApi | undefined {
