@@ -174,16 +174,14 @@ export function renderConfigScript(dict: Record<string, string>): string {
                 el.onchange = () => {
                     const key = el.getAttribute("data-key");
                     let value = el.value;
-                    // GitLens/Copilot call /api/show to validate a model, which the
-                    // gateway resolves by preset GUID (the name 404s). So when a model
-                    // field holds a Sufficit preset name, SAVE its GUID (the field keeps
-                    // showing the friendly name). The URL field never matches a preset.
-                    if (key && key.endsWith(".model")) {
-                        const guid = __presetGuidForName(value);
-                        // "ollama:<guid>": the ollama: prefix selects the provider;
-                        // the client strips it and sends <guid>, which /api/show and
-                        // /api/chat resolve (the name 404s on /api/show).
-                        if (guid) { value = "ollama:" + guid; }
+                    // GitLens' Ollama provider lists models by DISPLAY name
+                    // (getModels maps id:e.name) and validates gitlens.ai.model
+                    // against that list — so store the friendly name, NOT the preset
+                    // GUID. /api/chat resolves the name fine; GitLens never calls
+                    // /api/show. gitlens.ai.model needs an "ollama:" prefix to select
+                    // the provider; other model keys take the bare name.
+                    if (key && key.endsWith(".model") && __presetGuidForName(value)) {
+                        if (key === "gitlens.ai.model") { value = "ollama:" + value; }
                     }
                     vscode.postMessage({ type: "set-vscode-config", key, value });
                     __maybeAutoConfigSufficit(el);   // Sufficit preset → auto-set endpoint

@@ -96,8 +96,9 @@ export const configScriptOllama = `
         var m = __sufficitPresets.filter(function (p) { return p.id === guid; })[0];
         return m ? m.name : "";
     }
-    // Model fields store the GUID but should DISPLAY the friendly name. After the
-    // presets load, swap any GUID currently shown in a model field for its name.
+    // Model fields DISPLAY the friendly name. Settings store "ollama:<name>"
+    // (gitlens.ai.model) or a bare name; strip the "ollama:" prefix for display,
+    // and translate any legacy GUID value back to its name.
     function __remapModelFieldsToNames() {
         var inputs = document.querySelectorAll("input.vscode-input");
         for (var i = 0; i < inputs.length; i++) {
@@ -105,8 +106,9 @@ export const configScriptOllama = `
             var key = el.getAttribute("data-key") || "";
             if (key.slice(-6) === ".model") {
                 var v = el.value.indexOf("ollama:") === 0 ? el.value.slice(7) : el.value;
-                var name = __presetNameForGuid(v);
+                var name = __presetNameForGuid(v);   // legacy: value was a GUID
                 if (name) { el.value = name; }
+                else if (v !== el.value) { el.value = v; }   // strip "ollama:" prefix
             }
         }
     }
