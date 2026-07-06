@@ -65,7 +65,7 @@ export class BackendHandoff {
         const options: SessionStartOptions = { cwd, model: undefined, permission: undefined, env: {}, parentId, seedHistory };
         // If fromName is provided, include it in the transcript context.
         if (fromName) {
-            const header = `[Conversation continued from ${fromName}]\\n\\n${transcript}`;
+            const header = `[Conversation continued from ${fromName}]\n\n${transcript}`;
             this.d.openDialogue(backend, options, title);
             // Set the text in the textarea for user review, don't auto-send
             this.d.post({ type: "set-input", text: header });
@@ -80,6 +80,19 @@ export class BackendHandoff {
     private carry(_rows: Row[], _transcript: string, _fromName: string, _backend: string): void {
         // TODO: implement replay if we want automatic injection.
         // For now, we rely on the transcript block set by openDialogueSeeded.
+    }
+
+    private async storedRows(info: SessionInfo, backend: string): Promise<Row[]> {
+        const adapter = this.d.getAdapter(backend);
+        if (!adapter?.history) {
+            return [];
+        }
+        try {
+            return historyToRows(await adapter.history(info));
+        } catch {
+            // Stored transcript may be gone/corrupt; still open the handoff.
+            return [];
+        }
     }
 
     /**
@@ -100,16 +113,17 @@ export class BackendHandoff {
     }
 
     /** Hand a live TERMINAL session off (history read from the CLI transcript). */
-    async switchTerminal(): Promise<void> {
+    async switchTerminal(backend: string): Promise<void> {
         const term = this.d.getTerminalSession();
         if (!term) { return; }
+        if (!this.d.getAdapter(backend)) { return; }
         const fromName = this.displayName(term.backend);
         const history = await term.historyMessages();
         const rows = historyToRows(history);
         const transcript = historyFromRows(rows);
         // No parentId for terminal sessions (no sessionId)
-        this.openDialogueSeeded("claude", term.cwd, transcript, `From ${term.backend} (terminal)`, fromName, undefined, transcript);
-        this.carry(rows, transcript, fromName, "claude");
+        this.openDialogueSeeded(backend, term.cwd, transcript, `From ${term.backend} (terminal)`, fromName, undefined, transcript);
+        this.carry(rows, transcript, fromName, backend);
     }
 
     /**
@@ -122,10 +136,11 @@ export class BackendHandoff {
         if (!info) { return; }
         const fromName = this.displayName(info.backend);
         const cwd = this.d.cwdFor(info);
-        const transcript = "";
+        const rows = await this.storedRows(info, info.backend);
+        const transcript = historyFromRows(rows);
         const parentId = sessionId; // new session links to the stored one
-        this.openDialogueSeeded("claude", cwd, transcript, info.title, fromName, parentId, undefined);
-        this.carry([], transcript, fromName, "claude");
+        this.openDialogueSeeded("claude", cwd, transcript, info.title, fromName, parentId, transcript);
+        this.carry(rows, transcript, fromName, "claude");
     }
 
     async switchToSession(sessionId: string): Promise<void> {
@@ -133,9 +148,10 @@ export class BackendHandoff {
         const info = sessions.find((s) => s.sessionId === sessionId);
         if (!info) { return; }
         const fromName = this.displayName(info.backend);
-        const transcript = "";
+        const rows = await this.storedRows(info, info.backend);
+        const transcript = historyFromRows(rows);
         const parentId = sessionId; // new session links to the stored one
-        this.openDialogueSeeded(info.backend, this.d.cwdFor(info), transcript, info.title, fromName, parentId, undefined);
+        this.openDialogueSeeded(info.backend, this.d.cwdFor(info), transcript, info.title, fromName, parentId, transcript);
     }
 
     /**
@@ -149,16 +165,16 @@ export class BackendHandoff {
         const fromName = this.displayName(info.backend);
         const targetAdapter = this.d.getAdapter(targetBackend);
         if (!targetAdapter) { return; }
-        // TODO: read transcript from storage when available
-        const transcript = "";
+        const rows = await this.storedRows(info, sourceBackend);
+        const transcript = historyFromRows(rows);
         const parentId = sessionId; // new session links to the stored one
-        this.openDialogueSeeded(targetBackend, this.d.cwdFor(info), transcript, info.title, fromName, parentId, undefined);
-        this.carry([], transcript, fromName, targetBackend);
+        this.openDialogueSeeded(targetBackend, this.d.cwdFor(info), transcript, info.title, fromName, parentId, transcript);
+        this.carry(rows, transcript, fromName, targetBackend);
     }
 
     /** Alias for switchTerminal (used by surfaceMessages). */
-    fromTerminal(): Promise<void> {
-        return this.switchTerminal();
+    fromTerminal(backend: string): Promise<void> {
+        return this.switchTerminal(backend);
     }
 
     /** Alias for switchFromSession (used by surfaceMessages). */
