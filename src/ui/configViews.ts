@@ -320,24 +320,15 @@ export const configViews = `    function resourceList(kind) {
         // discovered models as native autocomplete suggestions.
         html += '<datalist id="' + MODELS_LIST + '"></datalist>';
 
-        html += section(t("config.vscode.section.gitlens"),
-            item(t("config.vscode.gitlensModel.name"), t("config.vscode.gitlensModel.desc"),
-                input("gitlens.ai.model", vsccfg["gitlens.ai.model"] || "", t("config.vscode.gitlensModel.placeholder"), null, MODELS_LIST)) +
-            item(t("config.vscode.gitlensVscodeModel.name"), t("config.vscode.gitlensVscodeModel.desc"),
-                input("gitlens.ai.vscode.model", vsccfg["gitlens.ai.vscode.model"] || "", t("config.vscode.gitlensVscodeModel.placeholder"), null, MODELS_LIST)) +
-            item(t("config.vscode.gitlensOllamaUrl.name"), t("config.vscode.gitlensOllamaUrl.desc"),
+        html += section(t("config.vscode.section.commit"),
+            item(t("config.vscode.commitModel.name"), t("config.vscode.commitModel.desc"),
+                input("symposium.commit.model", vsccfg["symposium.commit.model"] || "", t("config.vscode.commitModel.placeholder"), null, MODELS_LIST)) +
+            item(t("config.vscode.commitOrigin.name"), t("config.vscode.commitOrigin.desc"),
                 '<div class="model-source-row">' +
-                input("gitlens.ai.ollama.url", vsccfg["gitlens.ai.ollama.url"] || "", t("config.vscode.gitlensOllamaUrl.placeholder"), "gitlens-ai-ollama-url") +
+                input("symposium.commit.origin", vsccfg["symposium.commit.origin"] || "", t("config.vscode.commitOrigin.placeholder"), "sufficit-commit-origin") +
                 '<button class="secondary" id="fetch-ollama-models">' + esc(t("config.btn.fetchModels")) + '</button>' +
                 '</div>' +
                 '<div id="ollama-models-status" class="model-source-status" role="status"></div>')
-        );
-
-        html += section(t("config.vscode.section.copilot"),
-            item(t("config.vscode.copilotAskAgentModel.name"), t("config.vscode.copilotAskAgentModel.desc"),
-                input("github.copilot.chat.askAgent.model", vsccfg["github.copilot.chat.askAgent.model"] || "", t("config.vscode.copilotAskAgentModel.placeholder"), null, MODELS_LIST)) +
-            item(t("config.vscode.copilotImplementAgentModel.name"), t("config.vscode.copilotImplementAgentModel.desc"),
-                input("github.copilot.chat.implementAgent.model", vsccfg["github.copilot.chat.implementAgent.model"] || "", t("config.vscode.copilotImplementAgentModel.placeholder"), null, MODELS_LIST))
         );
 
         html += section(t("config.vscode.section.misc"),

@@ -197,15 +197,13 @@ export function renderConfigScript(dict: Record<string, string>): string {
             main.querySelectorAll("button.jumpSetting").forEach(el => {
                 el.onclick = () => vscode.postMessage({ type: "open-setting-json", key: el.getAttribute("data-key") });
             });
-            // Fetch Ollama models button handler
+            // "List models" reloads the Sufficit presets (gateway /api/tags) that
+            // fill the model-name suggestions; auth-scoped, no URL to type.
             const fetchModelsBtn = document.getElementById("fetch-ollama-models");
             if (fetchModelsBtn) {
                 fetchModelsBtn.onclick = () => {
-                    const urlInput = document.getElementById("gitlens-ai-ollama-url");
-                    const ollamaUrl = urlInput?.value || "";
-                    if (!ollamaUrl) { return; }
                     setOllamaModelsLoading();
-                    vscode.postMessage({ type: "fetch-ollama-models", value: ollamaUrl });
+                    vscode.postMessage({ type: "fetch-sufficit-presets" });
                 };
             }
             // Populate the model-suggestion datalist automatically on tab open.

@@ -311,8 +311,6 @@ export class ConfigPanel {
 
     private async pushState(): Promise<void> {
         const api = this.deps.api;
-        const { readUserSetting } = await import("./userSettings");
-        const tp = (key: string): string => { const v = readUserSetting(this.context, key); return typeof v === "string" ? v : ""; };
         const profile = this.deps.auth ? await this.deps.auth.getProfile().catch(() => undefined) : undefined;
         // OS-keyring persistence (drives the Sufficit-tab fallback-creds banner).
         const secretStorageWorking = this.deps.auth ? await this.deps.auth.isSecretStorageWorking().catch(() => true) : true;
@@ -366,14 +364,12 @@ export class ConfigPanel {
                 voiceDotsAnimation: root.get<boolean>("voice.dotsAnimation", true),
                 voiceSoundFeedback: root.get<boolean>("voice.soundFeedback", true),
             },
-            // Third-party keys read from settings.json via tp() (getConfiguration
-            // returns "" for unregistered keys, blanking fields + clobbering saves).
+            // Symposium's own commit-message keys (registered, so getConfiguration
+            // reads them). git.* / macos.* stay as third-party. tp() reads any raw
+            // settings.json key (getConfiguration returns "" for unregistered ones).
             vscodeConfig: {
-                "gitlens.ai.model": tp("gitlens.ai.model"),
-                "gitlens.ai.vscode.model": tp("gitlens.ai.vscode.model"),
-                "gitlens.ai.ollama.url": tp("gitlens.ai.ollama.url"),
-                "github.copilot.chat.askAgent.model": tp("github.copilot.chat.askAgent.model"),
-                "github.copilot.chat.implementAgent.model": tp("github.copilot.chat.implementAgent.model"),
+                "symposium.commit.model": vscode.workspace.getConfiguration("symposium.commit").get<string>("model", ""),
+                "symposium.commit.origin": vscode.workspace.getConfiguration("symposium.commit").get<string>("origin", ""),
                 "git.enableSmartCommit": vscode.workspace.getConfiguration("git").get<boolean>("enableSmartCommit", true),
                 "macos.mouse.trackingSpeed": vscode.workspace.getConfiguration("macos.mouse").get<number>("trackingSpeed", 0)?.toString() || "",
                 "macos.mouse.scrollingSpeed": vscode.workspace.getConfiguration("macos.mouse").get<number>("scrollingSpeed", 0)?.toString() || "",
