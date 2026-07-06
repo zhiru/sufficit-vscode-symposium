@@ -54,34 +54,74 @@ function loadVscodeMcpServers(): Record<string, { command: string; args: string[
         for (const [name, server] of Object.entries(config.servers)) {
             const s = server as Record<string, unknown>;
             if (s.type === "http" && s.url && typeof s.url === "string") {
-                // HTTP MCP servers need to communicate via HTTP POST
-                // We create a wrapper that uses node to handle HTTP MCP protocol
-                const headers: Record<string, string> = {};
-                if (s.headers && typeof s.headers === "object") {
-                    for (const [k, v] of Object.entries(s.headers)) {
-                        headers[k] = String(v);
-                    }
+                // HTTP MCP servers need to communicate via HTTP POST. The
+                // wrapper reads url/headers from mcp.json at runtime so secrets
+                // are not baked into generated code under ~/.symposium.
+                const wrapperPath = mcpHttpWrapperPath(name);
+                const wrapperScript = buildHttpMcpWrapperScript(configPath, name);
+                const dir = path.dirname(wrapperPath);
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
                 }
-                // Create a temporary wrapper script for HTTP MCP servers
-                const wrapperPath = path.join(os.homedir(), ".symposium", `mcp-http-${name}.js`);
-                const wrapperScript = `
+                fs.writeFileSync(wrapperPath, wrapperScript, { encoding: "utf8", mode: 0o600 });
+                fs.chmodSync(wrapperPath, 0o600);
+                result[name] = { command: "node", args: [wrapperPath] };
+            } else if (s.type === "stdio" && s.command && typeof s.command === "string") {
+                const args: string[] = [];
+                if (Array.isArray(s.args)) {
+                    args.push(...s.args);
+                }
+                result[name] = { command: s.command, args };
+            }
+        }
+    } catch (error) {
+        // Silently fail on errors - MCP is optional
+        console.error(`[codex] Failed to load VSCode MCP config: ${error}`);
+    }
+    return result;
+}
+
+export function mcpHttpWrapperPath(name: string): string {
+    const safeName = encodeURIComponent(name) || "server";
+    return path.join(os.homedir(), ".symposium", `mcp-http-${safeName}.js`);
+}
+
+export function buildHttpMcpWrapperScript(configPath: string, serverName: string): string {
+    return `
+const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const readline = require('readline');
 
-const URL = '${s.url}';
-const HEADERS = ${JSON.stringify(headers)};
+const CONFIG_PATH = ${JSON.stringify(configPath)};
+const SERVER_NAME = ${JSON.stringify(serverName)};
+
+function loadServerConfig() {
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    const servers = config && typeof config === 'object' ? config.servers : undefined;
+    const server = servers && servers[SERVER_NAME];
+    if (!server || typeof server.url !== 'string') {
+        throw new Error('HTTP MCP server not found in mcp.json: ' + SERVER_NAME);
+    }
+    const headers = {};
+    if (server.headers && typeof server.headers === 'object') {
+        for (const [k, v] of Object.entries(server.headers)) {
+            headers[k] = String(v);
+        }
+    }
+    return { targetUrl: server.url, headers };
+}
 
 async function makeRequest(data) {
-    const url = new URL(URL);
-    const client = url.protocol === 'https:' ? https : http;
-    
+    const { targetUrl, headers } = loadServerConfig();
+    const client = new URL(targetUrl).protocol === 'https:' ? https : http;
+
     return new Promise((resolve, reject) => {
-        const req = client.request(URL, {
+        const req = client.request(targetUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                ...HEADERS
+                ...headers
             }
         }, (res) => {
             let body = '';
@@ -117,25 +157,6 @@ rl.on('line', async (line) => {
     }
 });
 `;
-                const dir = path.dirname(wrapperPath);
-                if (!fs.existsSync(dir)) {
-                    fs.mkdirSync(dir, { recursive: true });
-                }
-                fs.writeFileSync(wrapperPath, wrapperScript, "utf8");
-                result[name] = { command: "node", args: [wrapperPath] };
-            } else if (s.type === "stdio" && s.command && typeof s.command === "string") {
-                const args: string[] = [];
-                if (Array.isArray(s.args)) {
-                    args.push(...s.args);
-                }
-                result[name] = { command: s.command, args };
-            }
-        }
-    } catch (error) {
-        // Silently fail on errors - MCP is optional
-        console.error(`[codex] Failed to load VSCode MCP config: ${error}`);
-    }
-    return result;
 }
 
 /**
@@ -162,6 +183,12 @@ export class CodexSession extends EventEmitter implements AgentSession {
     }
 
     send(text: string): void {
+        // A mid-turn send must not leave two `codex exec` processes writing
+        // the same rollout. Cancel the in-flight child before starting another.
+        if (this.current) {
+            this.current.kill("SIGINT");
+            this.current = undefined;
+        }
         const base = ["exec", "--json", "--skip-git-repo-check"];
         const model = this.options.model || this.config.model;
         if (model) {
@@ -208,15 +235,26 @@ export class CodexSession extends EventEmitter implements AgentSession {
         this.reportedError = false;
 
         const rl = readline.createInterface({ input: child.stdout! });
-        rl.on("line", (line) => this.handleLine(line));
+        rl.on("line", (line) => {
+            if (this.current === child) {
+                this.handleLine(line);
+            }
+        });
 
         let stderr = "";
         child.stderr!.on("data", (chunk) => { stderr += String(chunk); });
         child.on("error", (error) => {
+            if (this.current !== child) {
+                return;
+            }
+            this.current = undefined;
             this.emit("event", { kind: "error", message: `codex spawn failed: ${error.message}` });
             this.emit("event", { kind: "turn-end" });
         });
         child.on("exit", (code) => {
+            if (this.current !== child) {
+                return;
+            }
             this.current = undefined;
             if (this.disposed) {
                 return;
