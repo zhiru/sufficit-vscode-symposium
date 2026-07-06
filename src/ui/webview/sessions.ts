@@ -1,7 +1,7 @@
 // Sessions list + account footer rendering.
 import { vscode, saved, saveState } from "./vscode";
 import { sessionsList, root } from "./dom";
-import { sessions, activeSessionId, showArchived, sessionGroupBy, setActiveSessionId } from "./state";
+import { sessions, sessionsLoaded, activeSessionId, showArchived, sessionGroupBy, setActiveSessionId } from "./state";
 import { setLoading } from "./status";
 import { showCtx } from "./menus";
 import { svgIcon } from "./icons";
@@ -24,6 +24,10 @@ const BACKEND_LABELS: Record<string, string> = {
 export function backendLabel(backend: string): string {
     if (backend === "openai") { return t("backend.openai"); }
     return BACKEND_LABELS[backend] || backend;
+}
+
+function sessionBackendLabel(s: any): string {
+    return s.backendName || backendLabel(s.backend);
 }
 
 // Subagent groups are collapsed by default (accordion): only parents the user
@@ -122,7 +126,15 @@ export function renderAccount(profile) {
 export function renderSessions() {
     sessionsList.textContent = "";
     updateFilterButtonState();
+    if (!sessionsLoaded) {
+        sessionsList.appendChild(sessionsPlaceholder("loading", t("sessions.loading"), t("sessions.loading.detail")));
+        return;
+    }
     const visible = sortSessions(sessions.filter((s) => (!s.archived || showArchived) && matchesSearch(s) && matchesSessionFilters(s)));
+    if (visible.length === 0) {
+        sessionsList.appendChild(sessionsPlaceholder("empty", t("sessions.empty"), t("sessions.empty.detail")));
+        return;
+    }
     // Subagents (parentId pointing at a visible session) render nested under
     // their parent — not as top-level rows — so the list stays a tidy tree.
     const byId = new Map(visible.map((s) => [s.sessionId, s]));
@@ -214,6 +226,34 @@ export function renderSessions() {
         }
     }
 }
+
+function sessionsPlaceholder(kind: "loading" | "empty", title: string, detail: string) {
+    const box = document.createElement("div");
+    box.className = "sessionsPlaceholder " + kind;
+    box.setAttribute("aria-live", "polite");
+    const icon = document.createElement("div");
+    icon.className = "sessionsPlaceholderIcon";
+    if (kind === "loading") {
+        const sp = document.createElement("span");
+        sp.className = "spinner";
+        icon.appendChild(sp);
+    } else {
+        icon.appendChild(svgIcon("chat"));
+    }
+    const text = document.createElement("div");
+    text.className = "sessionsPlaceholderText";
+    const head = document.createElement("div");
+    head.className = "sessionsPlaceholderTitle";
+    head.textContent = title;
+    const sub = document.createElement("div");
+    sub.className = "sessionsPlaceholderDetail";
+    sub.textContent = detail;
+    text.appendChild(head);
+    text.appendChild(sub);
+    box.appendChild(icon);
+    box.appendChild(text);
+    return box;
+}
 export function dropPinnedOn(targetId) {
     if (!dragPinId || dragPinId === targetId) { return; }
     const order = sessions.filter((s) => s.pinned).sort((a, b) => (a.pinIndex || 0) - (b.pinIndex || 0)).map((s) => s.sessionId);
@@ -299,7 +339,7 @@ export function renderSessionItem(s, depth, childCount) {
             sub.textContent = "deleting…";
         } else {
             const statusText = s.status === "working" ? "working… · " : (s.status === "idle" ? "live · " : "");
-            sub.textContent = statusText + backendLabel(s.backend) + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
+            sub.textContent = statusText + sessionBackendLabel(s) + (s.updatedAt ? " · " + relTime(s.updatedAt) : "");
         }
         sub.title = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "";
         body.appendChild(ttl);

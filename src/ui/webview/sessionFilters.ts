@@ -61,7 +61,7 @@ export function matchesSessionFilters(s: any) {
 export function matchesSearch(s: any) {
     const q = (sessionSearchTerm || "").trim().toLowerCase();
     if (!q) { return true; }
-    const hay = `${s.title || ""} ${backendLabel(s.backend)} ${s.backend || ""}`.toLowerCase();
+    const hay = `${s.title || ""} ${s.backendName || backendLabel(s.backend)} ${s.backend || ""}`.toLowerCase();
     return hay.includes(q);
 }
 
@@ -143,7 +143,7 @@ export function openSessionsFilterMenu(anchorEl: HTMLElement) {
     const backends = [...new Set(sessions.map((s) => String(s.backend || "")).filter(Boolean))].sort();
     if (backends.length) {
         appendFilterSection(t("sessions.filter.agent"), backends.map((backend) => ({
-            label: backendLabel(backend),
+            label: sessions.find((s) => String(s.backend || "") === backend)?.backendName || backendLabel(backend),
             active: sessionBackendFilter.includes(backend),
             onToggle: () => toggleIn(sessionBackendFilter, backend, setSessionBackendFilter),
         })));

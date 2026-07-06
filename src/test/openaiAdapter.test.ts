@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { buildOpenAIModelList } from "../adapters/openaiModels";
 import { sanitizeToolParametersForOpenAI } from "../adapters/openaiSchema";
 import { compressMessages } from "../compression/webhook";
-import { findToolHistoryIssues } from "../adapters/openai/toolHistory";
+import { windowMessages } from "../adapters/openai/requestWindow";
+import { findToolHistoryIssues, materializeToolSafeHistory } from "../adapters/openai/toolHistory";
 import { ChatMessage } from "../adapters/openai/types";
 import { mergeToolDefinitions } from "../adapters/openai/toolMerge";
 
@@ -100,6 +101,71 @@ test("findToolHistoryIssues reports invalid dispatch windows without repairing t
         findToolHistoryIssues(messages).map((issue) => issue.type),
         ["orphan_tool_message", "missing_tool_result"],
     );
+});
+
+test("windowMessages keeps tool results paired with the assistant call that produced them", () => {
+    const messages: ChatMessage[] = [
+        { role: "system", content: "system" },
+        { role: "user", content: "older user" },
+        {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+                { id: "call_keep", type: "function", function: { name: "read_file", arguments: "{}" } },
+            ],
+        },
+        { role: "tool", tool_call_id: "call_keep", name: "read_file", content: "result" },
+        { role: "assistant", content: "done" },
+    ];
+
+    const windowed = windowMessages(messages, 2);
+
+    assert.deepEqual(
+        windowed.map((m) => m.role === "tool" ? `tool:${m.tool_call_id}` : m.role),
+        ["system", "assistant", "tool:call_keep", "assistant"],
+    );
+    assert.deepEqual(findToolHistoryIssues(windowed), []);
+});
+
+test("materializeToolSafeHistory folds orphan tool results without mutating saved history", () => {
+    const messages: ChatMessage[] = [
+        { role: "system", content: "system" },
+        { role: "tool", tool_call_id: "call_old", name: "shell", content: "old result" },
+        { role: "user", content: "new user" },
+    ];
+
+    const materialized = materializeToolSafeHistory(messages, "developer");
+
+    assert.equal(materialized.foldedOrphanTools, 1);
+    assert.equal(materialized.foldedMissingToolCalls, 0);
+    assert.equal(messages[1].role, "tool");
+    assert.equal(materialized.messages[1].role, "developer");
+    assert.match(String(materialized.messages[1].content), /Tool history compacted for dispatch/);
+    assert.deepEqual(findToolHistoryIssues(materialized.messages), []);
+});
+
+test("materializeToolSafeHistory omits missing tool calls and keeps matched calls valid", () => {
+    const messages: ChatMessage[] = [
+        { role: "system", content: "system" },
+        { role: "user", content: "run tools" },
+        {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+                { id: "call_missing", type: "function", function: { name: "missing", arguments: "{}" } },
+                { id: "call_present", type: "function", function: { name: "present", arguments: "{}" } },
+            ],
+        },
+        { role: "tool", tool_call_id: "call_present", name: "present", content: "ok" },
+    ];
+
+    const materialized = materializeToolSafeHistory(messages);
+
+    assert.equal(materialized.foldedOrphanTools, 0);
+    assert.equal(materialized.foldedMissingToolCalls, 1);
+    assert.deepEqual(materialized.messages[2].tool_calls?.map((toolCall) => toolCall.id), ["call_present"]);
+    assert.match(String(materialized.messages[2].content), /1 tool request/);
+    assert.deepEqual(findToolHistoryIssues(materialized.messages), []);
 });
 
 test("mergeToolDefinitions prefixes collisions without mutating shared tool defs", () => {

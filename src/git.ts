@@ -18,6 +18,40 @@ export async function gitRoot(cwd: string): Promise<string | undefined> {
     return r.code === 0 ? r.stdout.trim() : undefined;
 }
 
+/**
+ * Diff of what a commit would capture: staged changes when anything is staged,
+ * otherwise tracked working-tree edits PLUS untracked files (which never appear
+ * in `git diff`, so a brand-new-file repo would otherwise look empty). Empty
+ * string only when the tree is truly clean. Untracked files are capped so a
+ * huge working copy can't stall the request.
+ */
+export async function commitDiff(root: string): Promise<string> {
+    const staged = await git(root, ["diff", "--cached", "--no-color", "--no-ext-diff"]);
+    if (staged.code === 0 && staged.stdout.trim()) { return staged.stdout; }
+
+    const working = await git(root, ["diff", "HEAD", "--no-color", "--no-ext-diff"]);
+    let out = working.code === 0 ? working.stdout : "";
+
+    const untracked = await git(root, ["ls-files", "--others", "--exclude-standard"]);
+    if (untracked.code === 0) {
+        const files = untracked.stdout.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 50);
+        for (const f of files) {
+            // --no-index against /dev/null renders a new file as an add-diff; it
+            // exits 1 when the files differ (expected), but stdout holds the diff.
+            const d = await git(root, ["diff", "--no-index", "--no-color", "/dev/null", f]);
+            if (d.stdout.trim()) { out += (out ? "\n" : "") + d.stdout; }
+        }
+    }
+    return out;
+}
+
+/** Subjects of the most recent commits, newest first (for style priming). */
+export async function recentSubjects(root: string, n: number): Promise<string[]> {
+    const r = await git(root, ["log", `-${Math.max(1, n)}`, "--format=%s"]);
+    if (r.code !== 0) { return []; }
+    return r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
 /** True if the path is tracked by git (exists at HEAD or index). */
 export async function isTracked(cwd: string, abs: string): Promise<boolean> {
     const r = await git(cwd, ["ls-files", "--error-unmatch", "--", abs]);

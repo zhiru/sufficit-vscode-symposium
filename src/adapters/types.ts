@@ -81,6 +81,8 @@ export type AgentEvent =
 /** A session known to a backend, listed in the sessions tree. */
 export interface SessionInfo {
     backend: AgentBackend;
+    /** Friendly adapter name shown in the sessions list, e.g. "Sufficit AI". */
+    backendName?: string;
     sessionId: string;
     title: string;
     cwd?: string;

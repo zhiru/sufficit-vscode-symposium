@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.72.39",
+  "version": "2026.72.41",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -45,6 +45,11 @@
       ]
     },
     "commands": [
+      {
+        "command": "symposium.generateCommitMessage",
+        "title": "Sufficit: Generate Commit Message",
+        "icon": "$(sparkle)"
+      },
       {
         "command": "symposium.newSession",
         "title": "Symposium: New Session",
@@ -191,11 +196,27 @@
           "when": "view == symposium.chat",
           "group": "navigation@9"
         }
+      ],
+      "scm/inputBox": [
+        {
+          "command": "symposium.generateCommitMessage",
+          "when": "scmProvider == git"
+        }
       ]
     },
     "configuration": {
       "title": "Symposium",
       "properties": {
+        "symposium.commit.model": {
+          "type": "string",
+          "default": "Sufficit AI - VS Code",
+          "markdownDescription": "Sufficit AI preset used to generate Source Control commit messages. Must match a preset name from the gateway's `/api/tags`; leave as-is to auto-pick a VS Code preset."
+        },
+        "symposium.commit.origin": {
+          "type": "string",
+          "default": "https://ai.sufficit.com.br",
+          "markdownDescription": "Origin of the Sufficit AI service that serves the VS Code Ollama gateway used for commit-message generation."
+        },
         "symposium.root": {
           "type": "string",
           "default": "",

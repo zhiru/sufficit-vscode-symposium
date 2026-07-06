@@ -37,6 +37,7 @@ import { applyStaticI18n } from "./staticI18n";
     });
     if (sessionRefreshBtn) { sessionRefreshBtn.addEventListener("click", (ev) => { ev.stopPropagation(); vscode.postMessage({ type: "refresh-sessions" }); }); }
     if (sessionSearch) { sessionSearch.addEventListener("input", () => { setSessionSearchTerm(sessionSearch.value); renderSessions(); }); }
+    renderSessions();   // initial placeholder while the host loads the session tree
 
     // Persisted UI state (send mode + sessions pane width).
     if (saved.sendMode) { sendMode.value = saved.sendMode; }

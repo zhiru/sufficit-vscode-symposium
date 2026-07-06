@@ -24,6 +24,7 @@ export let busy = false;
 export let queued = 0;
 export let loading = false;
 export let sessions: any[] = [];
+export let sessionsLoaded = false;
 export let showArchived = false;
 export let sessionSort = savedSessionFilters.sort || "updated-desc";
 export let sessionBackendFilter: string[] = Array.isArray(savedSessionFilters.backends) ? savedSessionFilters.backends : [];
@@ -55,7 +56,7 @@ export function setActiveSessionId(v: string) { activeSessionId = v; }
 export function setBusy(v: boolean) { busy = v; }
 export function setQueued(v: number) { queued = v; }
 export function setLoadingFlag(v: boolean) { loading = v; }
-export function setSessions(v: any[]) { sessions = v; }
+export function setSessions(v: any[]) { sessions = v; sessionsLoaded = true; }
 export function setShowArchived(v: boolean) { showArchived = v; }
 export function setSessionSort(v: string) { sessionSort = v; }
 export function setSessionBackendFilter(v: string[]) { sessionBackendFilter = v; }

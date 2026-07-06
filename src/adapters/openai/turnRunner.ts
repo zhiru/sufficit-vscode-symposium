@@ -18,7 +18,7 @@ import {
 } from "./requestWindow";
 import { compressMessages, CompressionManager, CompressionPreset } from "../../compression";
 import { mergeToolDefinitions, stripSourcePrefix } from "./toolMerge";
-import { findToolHistoryIssues } from "./toolHistory";
+import { findToolHistoryIssues, materializeToolSafeHistory } from "./toolHistory";
 
 /**
  * One conversation turn for an OpenAISession: the streaming tool-call loop that
@@ -106,12 +106,8 @@ export class TurnRunner {
                 return messages;
             }
         };
-        // Auth guard: when the gateway has no explicit apiKey/Authorization
-        // configured, it relies on the logged-in Sufficit token. If that token
-        // is missing (not logged in, or the token didn't persist — e.g. a
-        // code-server without a system keyring), fail early with a clear
-        // message instead of sending an unauthenticated request that the
-        // gateway answers with a cryptic HTTP 401.
+        // Fail early when the Sufficit gateway depends on login auth but no
+        // persisted token is available in this environment.
         const noExplicitAuth = !this.d.cfg.apiKey
             && !Object.keys(this.d.cfg.headers).some((k) => k.toLowerCase() === "authorization");
         if (noExplicitAuth && !loginToken) {
@@ -165,6 +161,7 @@ export class TurnRunner {
         const softCap = unlimited ? HARD_CAP : Math.max(1, this.d.cfg.maxToolHops ?? 50);
         const maxHops = Math.min(softCap, HARD_CAP);
         let hitCap = !unlimited;   // cleared when the model finishes on its own
+        let toolHistoryMaterializationNoticeEmitted = false;
         // Loop guard: if the model repeats the exact same tool+args many times
         // in a row without progress, break out instead of spinning forever.
         const recentCalls: string[] = [];
@@ -179,11 +176,17 @@ export class TurnRunner {
                 this.abort = new AbortController();
                 const currentMessages = requestMessages();
                 const windowed = windowMessages(currentMessages, this.d.cfg.maxHistoryMessages ?? 40);
-                // Continuous follow-up: once history is being windowed out (or after
-                // a few hops into the tool-loop), append a fresh objective+progress
-                // anchor at the tail so a small-context model keeps the thread.
+                // Add a fresh objective/progress anchor when the live view is small.
                 const anchor = (isWindowTruncated(messages, this.d.cfg.maxHistoryMessages ?? 40) || hop >= 3) ? this.d.followupAnchor() : undefined;
-                const outMessages = anchor ? [...windowed, anchor] : windowed;
+                const materialized = materializeToolSafeHistory(
+                    anchor ? [...windowed, anchor] : windowed,
+                    this.d.cfg.supportsDeveloperRole !== false ? "developer" : "system",
+                );
+                const outMessages = materialized.messages;
+                if (!toolHistoryMaterializationNoticeEmitted && (materialized.foldedOrphanTools > 0 || materialized.foldedMissingToolCalls > 0)) {
+                    this.d.emit({ kind: "status-notice", text: `OpenAI request history materialized from saved session; persisted transcript unchanged. folded_orphan_tools=${materialized.foldedOrphanTools} folded_missing_tool_calls=${materialized.foldedMissingToolCalls}` });
+                    toolHistoryMaterializationNoticeEmitted = true;
+                }
                 const toolHistoryIssues = findToolHistoryIssues(outMessages);
                 if (toolHistoryIssues.length > 0) {
                     const orphanCount = toolHistoryIssues.filter((issue) => issue.type === "orphan_tool_message").length;

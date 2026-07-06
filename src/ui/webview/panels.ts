@@ -1,5 +1,5 @@
 // Plan/tasks/guardrails/queued/changed-files panels + working set.
-import { vscode } from "./vscode";
+import { saved, saveState, vscode } from "./vscode";
 import { planEl, tasksEl, guardrailsEl, queuedEl, changedFiles, panelBody, panelTabs, attachedPanel, chips, composerEl } from "./dom";
 import { activeSessionId, setQueued } from "./state";
 import { setStatus } from "./status";
@@ -9,7 +9,22 @@ import { nearBottom } from "./scroll";
 import { endStream, endToolGroup } from "./messages";
 import { renderChips } from "./composer";
 
-const planBySession = {};   // sessionId -> todos[]
+const planBySession = {};   // sessionId -> visible todos[]
+const todoDismissals = saved.todoDismissals || {}; // sessionId -> removed todo ids
+function todoId(t) {
+    return String(t?.content || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+function dismissedSet() {
+    return new Set(todoDismissals[wsKey] || []);
+}
+function persistDismissed(set) {
+    todoDismissals[wsKey] = [...set].filter(Boolean);
+    saveState({ todoDismissals });
+}
+function visibleTodos(todos) {
+    const removed = dismissedSet();
+    return (todos || []).map((t) => ({ ...t, removed: removed.has(todoId(t)) })).filter((t) => !t.removed);
+}
 export function todoMark(status) {
     if (status === "completed") return svgIcon("check");
     if (status === "in_progress") return svgIcon("circleHalf");
@@ -17,16 +32,19 @@ export function todoMark(status) {
 }
 export function clearTodos(which) {
     const todos = planBySession[wsKey] || [];
+    const removed = dismissedSet();
     if (which === "done") {
-        planBySession[wsKey] = todos.filter((t) => t.status !== "completed");
+        for (const t of todos) { if (t.status === "completed") { removed.add(todoId(t)); } }
     } else {
-        planBySession[wsKey] = [];
+        for (const t of todos) { removed.add(todoId(t)); }
     }
+    persistDismissed(removed);
+    planBySession[wsKey] = visibleTodos(todos);
     renderPlan();
 }
 // A TodoWrite carries the full current list; just store it for this session.
 export function renderTodos(todos) {
-    planBySession[wsKey] = todos || [];
+    planBySession[wsKey] = visibleTodos(todos);
     renderPlan();
 }
 export function renderPlan() {

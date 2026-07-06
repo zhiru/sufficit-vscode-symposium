@@ -57,12 +57,17 @@ export function buildChatSurfaceDeps(args: SurfaceDepsArgs): ChatSurfaceDeps {
                             reconciledLive.add(byCwd.sessionId);
                         }
                     }
-                    return { ...s, status };
+                    const adapter = adapterByBackend.get(s.backend);
+                    return { ...s, backendName: adapter?.displayName ?? s.backend, status };
                 });
             const known = new Set(disk.map((s) => s.sessionId));
             const live = liveInfos
                 .filter((l) => !known.has(l.sessionId) && !reconciledLive.has(l.sessionId))
-                .map((l) => ({ ...l, updatedAt: new Date() } as SessionInfo));
+                .map((l) => ({
+                    ...l,
+                    backendName: adapterByBackend.get(l.backend)?.displayName ?? l.backend,
+                    updatedAt: new Date(),
+                } as SessionInfo));
             return [...live, ...disk].map((s) =>
                 deleting.has(s.sessionId) ? { ...s, deleting: true } : s);
         },

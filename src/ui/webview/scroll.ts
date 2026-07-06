@@ -19,12 +19,50 @@ export function sideIsRight(): boolean {
 // Responsive: wide surface shows the sessions pane beside the chat; narrow hides
 // it behind the toggle (mirrors the built-in chat sessions viewer).
 const NARROW = 640;
+let zeroWidthRetries = 0;
+
+function surfaceWidth(): number {
+    // VS Code can instantiate/reveal the webview before body.clientWidth has
+    // settled. Fall back through the root/document/window measurements so the
+    // first layout does not incorrectly lock the sessions pane into narrow mode
+    // until the user manually resizes the editor.
+    return Math.max(
+        root.getBoundingClientRect().width,
+        document.body.clientWidth,
+        document.documentElement.clientWidth,
+        window.innerWidth || 0,
+    );
+}
+
 export function layout(): void {
-    root.classList.toggle("narrow", document.body.clientWidth < NARROW);
+    const width = surfaceWidth();
+    if (width <= 1 && zeroWidthRetries < 8) {
+        zeroWidthRetries++;
+        requestAnimationFrame(layout);
+        return;
+    }
+    zeroWidthRetries = 0;
+    root.classList.toggle("narrow", width < NARROW);
     root.classList.toggle("side-right", sideIsRight());
 }
-new ResizeObserver(layout).observe(document.body);
-layout();
+
+export function scheduleLayout(): void {
+    layout();
+    // The host may apply the final editor dimensions just after scripts run or
+    // after the meta payload boots the surface. A couple of cheap deferred
+    // passes make the initial state deterministic without waiting for a resize.
+    requestAnimationFrame(layout);
+    setTimeout(layout, 50);
+    setTimeout(layout, 250);
+}
+
+new ResizeObserver(scheduleLayout).observe(document.body);
+window.addEventListener("resize", scheduleLayout);
+window.visualViewport?.addEventListener("resize", scheduleLayout);
+window.addEventListener("load", scheduleLayout);
+window.addEventListener("pageshow", scheduleLayout);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { scheduleLayout(); } });
+scheduleLayout();
 listToggle.addEventListener("click", () => root.classList.toggle("listOpen"));
 
 // Bottom-pinning (Copilot-style lock-to-bottom): while the user sits at the

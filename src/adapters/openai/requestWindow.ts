@@ -1,4 +1,5 @@
 import { ChatMessage } from "./types";
+import { expandStartToToolBoundary } from "./toolHistory";
 
 export interface RequestEstimate {
     inputTokens: number;
@@ -27,7 +28,12 @@ export function windowMessages(messages: ChatMessage[], max: number): ChatMessag
     const prefix = messages.slice(0, firstUserIdx);
     const conv = messages.slice(firstUserIdx);
     if (conv.length <= max) { return messages; }
-    return [...prefix, ...conv.slice(conv.length - max)];
+    // The OpenAI protocol treats an assistant tool_call and the following
+    // tool result(s) as one structural unit. A plain tail slice can start on a
+    // role:"tool" message and orphan it from the assistant call that created
+    // it, so the window may grow a little past `max` to keep that unit valid.
+    const tailStart = expandStartToToolBoundary(conv, conv.length - max);
+    return [...prefix, ...conv.slice(tailStart)];
 }
 
 /** True when the sliding window is dropping older turns (so the raw task /

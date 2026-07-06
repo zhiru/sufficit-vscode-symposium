@@ -7,7 +7,7 @@ import { renderSessions } from "./sessions";
 import { renderStatusbar } from "./statusbar";
 import { setLoading } from "./status";
 import { modelLabel, modelList, modelDefault, modelValue, reasoningList, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, setReasoningDefault, setReasoningLabel, setReasoningList, setReasoningValue } from "./models";
-import { layout, scrollToBottom } from "./scroll";
+import { scheduleLayout, scrollToBottom } from "./scroll";
 import { saved } from "./vscode";
 import { bootComplete, bootStep, bootTimer } from "./boot";
 import { root, chatTitle, agentBadge, configBtn, copySessionBtn, modelPicker, reasoningPicker, sendMode, switchAgentBtn } from "./dom";
@@ -22,8 +22,7 @@ export function applyMeta(data: any): void {
     // Apply the real busy state from the host (overrides any stale busy set by render log replay).
     setBusy(!!data.busy);
     root.classList.toggle("chat-only", !!data.chatOnly);
-    layout();   // apply the sessions-side now (meta sets sideMode)
-    layout();
+    scheduleLayout();   // apply sessions-side after the host dimensions settle
     setActiveSessionId(data.sessionId || "");
     copySessionBtn.style.display = "inline-flex";   // a session surface is open
     clearTimeout(bootTimer); bootStep("host", null, "ok"); bootStep("session", "Session ready", "ok"); bootComplete();
