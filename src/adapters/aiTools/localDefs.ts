@@ -63,13 +63,14 @@ export const LOCAL_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "edit_file",
-            description: "Apply a surgical edit to an existing text file by replacing an exact string. PREFER this over shell sed/awk/perl for editing files: it is tracked (shows a diff in the changed-files panel and can be reverted), whereas shell edits are opaque and not revertable. `old_string` must match the file content exactly (including whitespace/indentation) and be unique — include enough surrounding context to disambiguate, or set replace_all to change every occurrence.",
+            description: "Apply a surgical edit to an existing text file by replacing an exact string. PREFER this over shell sed/awk/perl for editing files: it is tracked (shows a diff in the changed-files panel and can be reverted), whereas shell edits are opaque and not revertable. `old_string` must match the file content exactly (including whitespace/indentation). If it matches more than once, include more surrounding context, set occurrence_index to replace a specific 1-based match, or set replace_all to change every occurrence.",
             parameters: {
                 type: "object",
                 properties: {
                     path: { type: "string", description: "File path (absolute, or relative to the session cwd)." },
-                    old_string: { type: "string", description: "The exact text to find (must be unique unless replace_all is true)." },
+                    old_string: { type: "string", description: "The exact text to find (must be unique unless occurrence_index or replace_all is set)." },
                     new_string: { type: "string", description: "The replacement text." },
+                    occurrence_index: { type: "integer", description: "Optional 1-based occurrence to replace when old_string appears multiple times. Use the match list returned by a non-unique error." },
                     replace_all: { type: "boolean", description: "Replace every occurrence instead of requiring a unique match. Default false." },
                 },
                 required: ["path", "old_string", "new_string"],

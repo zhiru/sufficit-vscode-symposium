@@ -30,6 +30,37 @@ function htmlToText(html: string): string {
         .trim();
 }
 
+function findOccurrences(content: string, needle: string): number[] {
+    const out: number[] = [];
+    for (let at = content.indexOf(needle); at >= 0; at = content.indexOf(needle, at + needle.length)) {
+        out.push(at);
+    }
+    return out;
+}
+
+function lineNumberAt(content: string, index: number): number {
+    return content.slice(0, index).split("\n").length;
+}
+
+function matchPreview(content: string, index: number, length: number): string {
+    const raw = content.slice(index, index + length).split(/\r?\n/).slice(0, 3).join("\\n");
+    return raw.length > 180 ? raw.slice(0, 177) + "..." : raw;
+}
+
+function replaceOccurrence(content: string, oldStr: string, newStr: string, occurrenceIndex: number): string {
+    let seen = 0;
+    let cursor = 0;
+    let out = "";
+    for (;;) {
+        const at = content.indexOf(oldStr, cursor);
+        if (at < 0) { return out + content.slice(cursor); }
+        seen++;
+        out += content.slice(cursor, at);
+        out += seen === occurrenceIndex ? newStr : oldStr;
+        cursor = at + oldStr.length;
+    }
+}
+
 /**
  * Runs one LOCAL tool (web/session/bootstrap/shell/fs). Returns the JSON string
  * result for the model, or undefined when `name` is not a local tool (so the
@@ -183,14 +214,40 @@ export async function runLocalTool(name: string, args: Record<string, unknown>, 
         const oldStr = String(args.old_string ?? "");
         const newStr = String(args.new_string ?? "");
         const replaceAll = args.replace_all === true;
+        const hasOccurrenceIndex = args.occurrence_index !== undefined && args.occurrence_index !== null;
         if (!oldStr) { return JSON.stringify({ error: "old_string is required and must be non-empty" }); }
+        if (replaceAll && hasOccurrenceIndex) {
+            return JSON.stringify({ error: "choose either occurrence_index or replace_all, not both" });
+        }
         let content: string;
         try { content = fs.readFileSync(p, "utf8"); }
         catch { return JSON.stringify({ error: `file not found: ${p}` }); }
-        const occurrences = content.split(oldStr).length - 1;
-        if (occurrences === 0) { return JSON.stringify({ error: "old_string not found in the file (it must match exactly, including whitespace)" }); }
+        const matches = findOccurrences(content, oldStr);
+        const occurrences = matches.length;
+        if (occurrences === 0) {
+            return JSON.stringify({ error: "old_string not found in the file (it must match exactly, including whitespace)" });
+        }
+        if (hasOccurrenceIndex) {
+            const requestedIndex = Number(args.occurrence_index);
+            if (!Number.isInteger(requestedIndex) || requestedIndex < 1 || requestedIndex > occurrences) {
+                return JSON.stringify({ error: `occurrence_index must be an integer from 1 to ${occurrences}`, match_count: occurrences });
+            }
+            const updated = replaceOccurrence(content, oldStr, newStr, requestedIndex);
+            fs.writeFileSync(p, updated, "utf8");
+            return JSON.stringify({ path: p, replaced: 1, occurrence_index: requestedIndex });
+        }
         if (occurrences > 1 && !replaceAll) {
-            return JSON.stringify({ error: `old_string is not unique (${occurrences} matches); add surrounding context or set replace_all: true` });
+            const previews = matches.slice(0, 20).map((index, i) => ({
+                occurrence_index: i + 1,
+                line: lineNumberAt(content, index),
+                preview: matchPreview(content, index, oldStr.length),
+            }));
+            return JSON.stringify({
+                error: `old_string is not unique (${occurrences} matches); add surrounding context, set occurrence_index, or set replace_all: true`,
+                match_count: occurrences,
+                matches: previews,
+                truncated: occurrences > previews.length,
+            });
         }
         // split/join instead of String.replace: replace() interprets $&, $', $$
         // etc. in the replacement string, silently corrupting written code. With

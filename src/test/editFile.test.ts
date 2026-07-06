@@ -18,6 +18,20 @@ function applyReplacement(content: string, oldStr: string, newStr: string): stri
     return content.split(oldStr).join(newStr);
 }
 
+function replaceOccurrence(content: string, oldStr: string, newStr: string, occurrenceIndex: number): string {
+    let seen = 0;
+    let cursor = 0;
+    let out = "";
+    for (;;) {
+        const at = content.indexOf(oldStr, cursor);
+        if (at < 0) { return out + content.slice(cursor); }
+        seen++;
+        out += content.slice(cursor, at);
+        out += seen === occurrenceIndex ? newStr : oldStr;
+        cursor = at + oldStr.length;
+    }
+}
+
 test("edit_file replacement: $& in new_string is kept literally", () => {
     const out = applyReplacement("echo hi", "hi", "$&-world");
     assert.equal(out, "echo $&-world");
@@ -41,4 +55,9 @@ test("edit_file replacement: multiple occurrences via replace_all equivalent", (
     // replace_all loops the same primitive; with split/join it handles all hits.
     const out = applyReplacement("foo bar foo baz foo", "foo", "$&");
     assert.equal(out, "$& bar $& baz $&");
+});
+
+test("edit_file replacement: one selected occurrence", () => {
+    const out = replaceOccurrence("foo bar foo baz foo", "foo", "qux", 2);
+    assert.equal(out, "foo bar qux baz foo");
 });
