@@ -4,6 +4,7 @@
  */
 
 import type { ChatMessage } from "../adapters/openai/types";
+import { expandStartToToolBoundary } from "../adapters/openai/toolHistory";
 import type { CompressionStrategyParams } from "./types";
 
 /**
@@ -42,8 +43,13 @@ export class SummarizeCompressionStrategy implements CompressionStrategy {
             return messages;
         }
 
-        const toSummarize = messages.slice(0, messages.length - this.keepRecent);
-        const recent = messages.slice(-this.keepRecent);
+        const recentStart = expandStartToToolBoundary(messages, messages.length - this.keepRecent);
+        const toSummarize = messages.slice(0, recentStart);
+        const recent = messages.slice(recentStart);
+
+        if (toSummarize.length === 0) {
+            return messages;
+        }
 
         // Criar mensagem de resumo
         const summaryContent = this.summarizeMessages(toSummarize);

@@ -16,8 +16,9 @@ import { consumeStream } from "./streamConsume";
 import {
     RequestEstimate, windowMessages, isWindowTruncated, estimateRequest, requestEstimateDiagnostic,
 } from "./requestWindow";
-import { compressMessages, CompressionManager } from "../../compression";
+import { compressMessages, CompressionManager, CompressionPreset } from "../../compression";
 import { mergeToolDefinitions, stripSourcePrefix } from "./toolMerge";
+import { findToolHistoryIssues } from "./toolHistory";
 
 /**
  * One conversation turn for an OpenAISession: the streaming tool-call loop that
@@ -78,23 +79,33 @@ export class TurnRunner {
         const url = base + (responses ? "/responses" : "/chat/completions");
         const effort = this.d.options.reasoning;
         const loginToken = await this.d.authToken();   // logged-in Bearer, if needed
-        // Apply compression if configured
         const compressionPresetId = this.d.options.compressionPresetId;
-        let workingMessages = messages;
+        let compressionPreset: CompressionPreset | undefined;
+        let compressionNoticeEmitted = false;
+        let compressionFailureEmitted = false;
         if (compressionPresetId && compressionPresetId !== "none") {
-            try {
-                const preset = CompressionManager.getInstance().getPreset(compressionPresetId);
-                if (preset) {
-                    workingMessages = compressMessages(messages, preset.strategy, preset.params);
-                    this.d.emit({ kind: "info", message: `[Compression: applied preset "${compressionPresetId}" - ${messages.length} → ${workingMessages.length} messages]` });
-                } else {
-                    this.d.emit({ kind: "warn", message: `[Compression: preset "${compressionPresetId}" not found]` });
-                }
-            } catch (err) {
-                this.d.emit({ kind: "error", message: `[Compression: failed to apply preset "${compressionPresetId}": ${err instanceof Error ? err.message : String(err)}` });
-                workingMessages = messages; // fallback to original messages
+            compressionPreset = CompressionManager.getInstance().getPreset(compressionPresetId);
+            if (!compressionPreset) {
+                this.d.emit({ kind: "warn", message: `[Compression: preset "${compressionPresetId}" not found]` });
             }
         }
+        const requestMessages = (): ChatMessage[] => {
+            if (!compressionPreset || !compressionPresetId) { return messages; }
+            try {
+                const compressed = compressMessages(messages, compressionPreset.strategy, compressionPreset.params);
+                if (!compressionNoticeEmitted) {
+                    this.d.emit({ kind: "info", message: `[Compression: applied preset "${compressionPresetId}" - ${messages.length} → ${compressed.length} messages]` });
+                    compressionNoticeEmitted = true;
+                }
+                return compressed;
+            } catch (err) {
+                if (!compressionFailureEmitted) {
+                    this.d.emit({ kind: "error", message: `[Compression: failed to apply preset "${compressionPresetId}": ${err instanceof Error ? err.message : String(err)}` });
+                    compressionFailureEmitted = true;
+                }
+                return messages;
+            }
+        };
         // Auth guard: when the gateway has no explicit apiKey/Authorization
         // configured, it relies on the logged-in Sufficit token. If that token
         // is missing (not logged in, or the token didn't persist — e.g. a
@@ -166,12 +177,22 @@ export class TurnRunner {
             // Tool-call loop: keep round-tripping while the model requests tools.
             for (let hop = 0; hop < maxHops; hop++) {
                 this.abort = new AbortController();
-                const windowed = windowMessages(workingMessages, this.d.cfg.maxHistoryMessages ?? 40);
+                const currentMessages = requestMessages();
+                const windowed = windowMessages(currentMessages, this.d.cfg.maxHistoryMessages ?? 40);
                 // Continuous follow-up: once history is being windowed out (or after
                 // a few hops into the tool-loop), append a fresh objective+progress
                 // anchor at the tail so a small-context model keeps the thread.
                 const anchor = (isWindowTruncated(messages, this.d.cfg.maxHistoryMessages ?? 40) || hop >= 3) ? this.d.followupAnchor() : undefined;
                 const outMessages = anchor ? [...windowed, anchor] : windowed;
+                const toolHistoryIssues = findToolHistoryIssues(outMessages);
+                if (toolHistoryIssues.length > 0) {
+                    const orphanCount = toolHistoryIssues.filter((issue) => issue.type === "orphan_tool_message").length;
+                    const missingCount = toolHistoryIssues.length - orphanCount;
+                    this.d.emit({
+                        kind: "warn",
+                        message: `OpenAI dispatch history has invalid tool pairing; request sent unchanged. orphan_tools=${orphanCount} missing_tool_results=${missingCount}`,
+                    });
+                }
                 const body: Record<string, unknown> = responses
                     ? { model: this.d.model(), input: toResponsesInput(outMessages), stream: true }
                     : { model: this.d.model(), messages: outMessages, stream: true, stream_options: { include_usage: true } };

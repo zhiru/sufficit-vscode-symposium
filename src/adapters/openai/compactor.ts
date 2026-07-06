@@ -1,5 +1,6 @@
 import { ChatMessage, OpenAIAdapterConfig } from "./types";
 import { contentText, toResponsesInput } from "./transform";
+import { expandStartToToolBoundary } from "./toolHistory";
 import * as ledger from "../../ledger";
 
 /**
@@ -71,8 +72,9 @@ export class Compactor {
             const priorIdx = prefix.findIndex((m) => typeof m.content === "string" && m.content.startsWith("[Summary so far"));
             let prior: ChatMessage[] = [];
             if (priorIdx >= 0) { prior = prefix.slice(priorIdx); prefix = prefix.slice(0, priorIdx); }
-            const tail = conv.slice(conv.length - keepTurns);
-            const middle = [...prior, ...conv.slice(0, conv.length - keepTurns)];
+            const tailStart = expandStartToToolBoundary(conv, conv.length - keepTurns);
+            const tail = conv.slice(tailStart);
+            const middle = [...prior, ...conv.slice(0, tailStart)];
             const summary = await this.summarizeMessages(middle);
             if (!summary) {
                 if (reason === "manual") { note("compaction failed (summary unavailable) — keeping full context"); }

@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildOpenAIModelList } from "../adapters/openaiModels";
 import { sanitizeToolParametersForOpenAI } from "../adapters/openaiSchema";
+import { compressMessages } from "../compression/webhook";
+import { findToolHistoryIssues } from "../adapters/openai/toolHistory";
+import { ChatMessage } from "../adapters/openai/types";
 
 test("buildOpenAIModelList does not invent OpenAI fallback models", () => {
     assert.deepEqual(buildOpenAIModelList([], ""), []);
@@ -42,5 +45,58 @@ test("sanitizeToolParametersForOpenAI removes unsupported nested schema keys", (
                 },
             },
         },
+    );
+});
+
+test("compressMessages preserves tool-call boundary when keeping recent history", () => {
+    const messages: ChatMessage[] = [
+        { role: "system", content: "system" },
+        { role: "user", content: "older user" },
+        {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+                { id: "call_old", type: "function", function: { name: "shell", arguments: "{}" } },
+            ],
+        },
+        { role: "tool", tool_call_id: "call_old", name: "shell", content: "old result" },
+        { role: "user", content: "new user" },
+        {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+                { id: "call_new", type: "function", function: { name: "read_file", arguments: "{}" } },
+            ],
+        },
+        { role: "tool", tool_call_id: "call_new", name: "read_file", content: "new result" },
+        { role: "assistant", content: "done" },
+    ];
+
+    const compressed = compressMessages(messages, "summarize", { keepRecent: 5 });
+
+    assert.deepEqual(
+        compressed.map((m) => m.role === "tool" ? `tool:${m.tool_call_id}` : m.role),
+        ["system", "assistant", "tool:call_old", "user", "assistant", "tool:call_new", "assistant"],
+    );
+    assert.deepEqual(findToolHistoryIssues(compressed), []);
+});
+
+test("findToolHistoryIssues reports invalid dispatch windows without repairing them", () => {
+    const messages: ChatMessage[] = [
+        { role: "system", content: "system" },
+        { role: "tool", tool_call_id: "call_old", name: "shell", content: "old result" },
+        { role: "user", content: "new user" },
+        {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+                { id: "call_new", type: "function", function: { name: "read_file", arguments: "{}" } },
+            ],
+        },
+    ];
+
+    assert.deepEqual(
+        findToolHistoryIssues(messages).map((issue) => issue.type),
+        ["orphan_tool_message", "missing_tool_result"],
     );
 });
