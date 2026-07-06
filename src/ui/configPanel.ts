@@ -368,7 +368,7 @@ export class ConfigPanel {
             // reads them). git.* / macos.* stay as third-party. tp() reads any raw
             // settings.json key (getConfiguration returns "" for unregistered ones).
             vscodeConfig: {
-                "symposium.commit.model": vscode.workspace.getConfiguration("symposium.commit").get<string>("model", ""),
+                "symposium.commit.preset": vscode.workspace.getConfiguration("symposium.commit").get<string>("preset", ""),
                 "symposium.commit.origin": vscode.workspace.getConfiguration("symposium.commit").get<string>("origin", ""),
                 "git.enableSmartCommit": vscode.workspace.getConfiguration("git").get<boolean>("enableSmartCommit", true),
                 "macos.mouse.trackingSpeed": vscode.workspace.getConfiguration("macos.mouse").get<number>("trackingSpeed", 0)?.toString() || "",

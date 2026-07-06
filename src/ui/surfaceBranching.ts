@@ -61,15 +61,10 @@ export function restartFromMessage(
     if (!from || !Number.isInteger(index) || index < 0) {
         return;
     }
-    // Adjust index: webview idx includes all rendered messages (user/assistant/thinking/tool/error),
-    // but transcriptMessages only includes user/assistant. We need to map the index by assuming
-    // that the N-th user/assistant in conversationRows corresponds to the N-th in transcriptMessages.
-    // We approximate this by using the index directly, which works when there are no thinking/tool/error
-    // rows, or when we iterate through the messages to find the correct position.
-    // For now, use a simple approach: since we cannot access conversationRows from the host,
-    // we'll use the index as-is but handle the case where it's out of bounds.
+    // The webview sends a conversation-row index (one entry per user/assistant
+    // bubble). transcriptMessages() rebuilds that same row sequence from the
+    // render log, so the index maps 1:1; clamp only for stale UI clicks.
     const transcriptMessages = from.transcriptMessages();
-    // Clamp the index to the valid range
     const adjustedIndex = Math.min(index, transcriptMessages.length - 1);
     if (adjustedIndex < 0) {
         return;
@@ -126,9 +121,9 @@ export function editResend(
         void d.getController()?.handleMessage({ ...sendMsg, editFrom: undefined } as WebviewToHost);
         return;
     }
-    // Adjust index: webview idx includes all rendered messages (user/assistant/thinking/tool/error),
-    // but transcriptMessages only includes user/assistant. We use the same approach as restartFromMessage:
-    // clamp the index to the valid range and use it as-is.
+    // Same conversation-row index space as restartFromMessage. anchorIndex 0
+    // yields keepTo = -1 below, so the branch starts from scratch when editing
+    // the first message.
     const transcriptMessages = from.transcriptMessages();
     const adjustedIndex = Math.min(anchorIndex, transcriptMessages.length - 1);
     if (adjustedIndex < 0) {

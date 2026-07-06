@@ -116,12 +116,6 @@ export function cancelEdit() {
     input.style.height = "auto";
     markEditing();
 }
-let lastSendPayload = null;   // last user submission, for error Retry
-export function retryLast() {
-    if (!lastSendPayload) { return; }
-    vscode.postMessage(lastSendPayload);
-    if (!busy) { setBusy(true); setStatus(); }
-}
 export function send(modeOverride) {
     const text = input.value.trim();
     // While busy with an empty composer, the button acts as Stop (nothing to send).
@@ -147,7 +141,6 @@ export function send(modeOverride) {
         autonomy: autonomyValue,
         editFrom: editFrom,
     };
-    lastSendPayload = { ...payload, editFrom: null };   // remember for Retry
     vscode.postMessage(payload);
     if (editAnchor != null) { editAnchor = null; markEditing(); }
     if (!busy && editFrom == null) { setBusy(true); }

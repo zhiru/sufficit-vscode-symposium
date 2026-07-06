@@ -154,9 +154,9 @@ function chooseVoicePath(): 'webspeech' | 'local' | 'none' {
 if (SpeechRecognition) {
     recognition = new SpeechRecognition();
     applyRecognitionPreferences();
-    const prefs = getVoicePreferences();
 
     recognition.onstart = () => {
+        const prefs = getVoicePreferences();
         isRecording = true;
         micBtn.classList.add('recording');
         setStatus('Listening...');
@@ -208,6 +208,7 @@ if (SpeechRecognition) {
     };
 
     recognition.onerror = (event: any) => {
+        const prefs = getVoicePreferences();
         isRecording = false;
         micBtn.classList.remove('recording');
         setStatus('Error: ' + event.error);

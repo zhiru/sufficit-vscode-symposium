@@ -14,7 +14,9 @@ export function transcriptMessages(log: unknown[]): TranscriptRow[] {
     const flushAssistant = () => {
         const text = assistantBuf.trim();
         const thinking = thinkingBuf.trim();
-        if (text || thinking) {
+        // Mirror the webview row model: only streamed assistant TEXT creates a
+        // conversation row. Thinking blocks are scaffolding with no row index.
+        if (text) {
             rows.push({ role: "assistant", text, thinking: thinking || undefined });
         }
         assistantBuf = "";
@@ -33,7 +35,7 @@ export function transcriptMessages(log: unknown[]): TranscriptRow[] {
                 if (h?.role === "user" && typeof h.text === "string") {
                     rows.push({ role: "user", text: h.text });
                 } else if (h?.role === "assistant") {
-                    if (text || thinking) {
+                    if (text) {
                         rows.push({ role: "assistant", text, thinking });
                     }
                 }
@@ -48,6 +50,13 @@ export function transcriptMessages(log: unknown[]): TranscriptRow[] {
         } else if (message?.type === "event" && message.event?.kind === "thinking") {
             thinkingBuf += message.event.text || "";
         } else if (message?.type === "event" && message.event?.kind === "turn-end") {
+            flushAssistant();
+        } else if (message?.type === "event"
+            && (message.event?.kind === "tool-start" || message.event?.kind === "error"
+                || message.event?.kind === "status-notice" || message.event?.kind === "session")) {
+            // The webview closes the active assistant bubble before these
+            // rows. Flush here too, so text -> tool/status/error/session ->
+            // text becomes two assistant rows in the same index space.
             flushAssistant();
         } else if (message?.type === "event" && message.event?.kind === "turn-start") {
             // No-op: just a delimiter, handled by flush on turn-end.
@@ -71,9 +80,4 @@ export function transcriptMessagesUpTo(log: unknown[], index: number): Transcrip
 export function transcriptText(log: unknown[]): string {
     const rows = transcriptMessages(log);
     return rows.map((r) => `${r.role === "user" ? "user" : "assistant"}: ${r.text}`).join("\n\n");
-}
-
-/** Raw log slice up to a given index (for replay). */
-export function transcriptUpTo(log: unknown[], index: number): unknown[] {
-    return log.slice(0, index);
 }

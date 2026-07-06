@@ -321,8 +321,8 @@ export const configViews = `    function resourceList(kind) {
         html += '<datalist id="' + MODELS_LIST + '"></datalist>';
 
         html += section(t("config.vscode.section.commit"),
-            item(t("config.vscode.commitModel.name"), t("config.vscode.commitModel.desc"),
-                input("symposium.commit.model", vsccfg["symposium.commit.model"] || "", t("config.vscode.commitModel.placeholder"), null, MODELS_LIST)) +
+            item(t("config.vscode.commitPreset.name"), t("config.vscode.commitPreset.desc"),
+                input("symposium.commit.preset", vsccfg["symposium.commit.preset"] || "", t("config.vscode.commitPreset.placeholder"), null, MODELS_LIST)) +
             item(t("config.vscode.commitOrigin.name"), t("config.vscode.commitOrigin.desc"),
                 '<div class="model-source-row">' +
                 input("symposium.commit.origin", vsccfg["symposium.commit.origin"] || "", t("config.vscode.commitOrigin.placeholder"), "sufficit-commit-origin") +

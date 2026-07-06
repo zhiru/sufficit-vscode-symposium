@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { FollowHandle, SessionInfo, SessionStartOptions } from "../adapters/types";
+import { FollowHandle, HistoryMessage, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatController } from "./chatController";
 import { TerminalSession } from "./terminalSession";
 import type { ChatSurfaceDeps } from "./chatSurface";
@@ -40,6 +40,13 @@ export interface SurfaceDialoguesDeps {
 
 export class SurfaceDialogues {
     constructor(private readonly d: SurfaceDialoguesDeps) { }
+
+    /**
+     * Bumped whenever this surface binds a different dialogue. followSession()
+     * awaits history; if another dialogue opens meanwhile, the stale history and
+     * tail handle must not attach to the new pane.
+     */
+    private generation = 0;
 
     /** Restores the last active session on open, or starts a default dialogue. */
     async restoreOrStart(): Promise<void> {
@@ -117,6 +124,7 @@ export class SurfaceDialogues {
             this.openSession(info);
             return;
         }
+        const generation = ++this.generation;
         this.d.detachActive();
         this.d.post({ type: "clear" });
         const sessionsSide = vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto");
@@ -137,11 +145,17 @@ export class SurfaceDialogues {
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
         if (adapter.history) {
+            let messages: HistoryMessage[] | undefined;
             try {
-                const messages = await adapter.history(info);
-                this.d.post({ type: "history", messages });
+                messages = await adapter.history(info);
             } catch {
                 // ignore; live tail still attaches below
+            }
+            if (generation !== this.generation) {
+                return;
+            }
+            if (messages) {
+                this.d.post({ type: "history", messages });
             }
         }
         const handle = adapter.follow(info, (message) => {
@@ -169,6 +183,7 @@ export class SurfaceDialogues {
         if (!adapter) {
             return;
         }
+        this.generation++;
         this.d.detachActive();
         this.d.post({ type: "clear" });
         const sessionsSide = vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto");
@@ -222,6 +237,7 @@ export class SurfaceDialogues {
         if (!adapter) {
             return;
         }
+        this.generation++;
         this.d.detachActive();
         this.d.post({ type: "clear" });
 

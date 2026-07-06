@@ -51,6 +51,7 @@ async function run(context: vscode.ExtensionContext, auth: SufficitAuth, arg?: u
         }
 
         const cfg = vscode.workspace.getConfiguration("symposium.commit");
+        const preset = cfg.get<string>("preset") || "";
         let origin = (cfg.get<string>("origin") || DEFAULT_ORIGIN).replace(/\/+$/, "");
         if (!/^https?:\/\//.test(origin)) { origin = DEFAULT_ORIGIN; }
 
@@ -71,10 +72,10 @@ async function run(context: vscode.ExtensionContext, auth: SufficitAuth, arg?: u
                     return;
                 }
 
-                const model = pickModel(cfg.get<string>("model") || "", gw.presets);
-                symposiumLog(`[commit] model=${model || "<none>"}`);
+                const model = pickModel(preset, gw.presets);
+                symposiumLog(`[commit] preset=${model || "<none>"}`);
                 if (!model) {
-                    void vscode.window.showErrorMessage("Sufficit: no AI model available for commit generation.");
+                    void vscode.window.showErrorMessage("Sufficit: no AI preset available for commit generation.");
                     return;
                 }
 

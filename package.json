@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.72.46",
+  "version": "2026.72.48",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -214,10 +214,10 @@
     "configuration": {
       "title": "Symposium",
       "properties": {
-        "symposium.commit.model": {
+        "symposium.commit.preset": {
           "type": "string",
           "default": "Sufficit AI - VS Code",
-          "markdownDescription": "Sufficit AI preset used to generate Source Control commit messages. Must match a preset name from the gateway's `/api/tags`; leave as-is to auto-pick a VS Code preset."
+          "markdownDescription": "Sufficit AI **preset** used to generate Source Control commit messages. Must match a preset name from the gateway's `/api/tags`; leave as-is to auto-pick a VS Code preset."
         },
         "symposium.commit.origin": {
           "type": "string",

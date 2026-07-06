@@ -1,6 +1,7 @@
 import { OpenAIAdapterConfig } from "./types";
 import { modelContextLength, setDiscovered } from "./models";
 import { buildHeaders } from "./httpAuth";
+import { setCached } from "../modelCache";
 
 /**
  * Best-effort model discovery from <baseUrl>/models, populating the shared
@@ -46,6 +47,7 @@ export async function discoverModels(
     }
     if (list.length) {
         setDiscovered(cfg.baseUrl, list, labels, context);
+        setCached(`openai:${cfg.baseUrl}`, { models: list, labels, context, lastUpdate: new Date().toISOString() });
         cfg.log?.(`[${backend}] discovered ${list.length} models from ${url}`);
     }
 }
