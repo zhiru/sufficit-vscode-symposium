@@ -106,7 +106,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     setHubTokenProvider(() => auth.getAccessToken());
     // The native "Sufficit AI" backend authenticates with the same login token —
     // so right after login it works with no manual adapter config.
-    setOpenAITokenProvider(() => auth.getAccessToken());
+    setOpenAITokenProvider((forceRefresh) => auth.getAccessToken(forceRefresh));
     // Verify the Sufficit AI backend in the background (never blocks the UI):
     // on activation/reload and whenever login state changes. Discovery primes
     // the model picker; only warn (non-modal) when logged in but unreachable.

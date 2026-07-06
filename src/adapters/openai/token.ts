@@ -4,12 +4,14 @@
  * the Bearer — so the native "Sufficit AI" backend works right after login with
  * no manual config.
  */
-let openaiTokenProvider: (() => Promise<string | null>) | undefined;
+export type OpenAITokenProvider = (forceRefresh?: boolean) => Promise<string | null>;
 
-export function setOpenAITokenProvider(fn: () => Promise<string | null>): void {
+let openaiTokenProvider: OpenAITokenProvider | undefined;
+
+export function setOpenAITokenProvider(fn: OpenAITokenProvider): void {
     openaiTokenProvider = fn;
 }
 
-export function getOpenAITokenProvider(): (() => Promise<string | null>) | undefined {
+export function getOpenAITokenProvider(): OpenAITokenProvider | undefined {
     return openaiTokenProvider;
 }

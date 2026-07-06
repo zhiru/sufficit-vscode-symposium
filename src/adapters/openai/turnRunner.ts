@@ -46,7 +46,7 @@ export interface TurnRunnerDeps {
     label: (id: string) => string;
     contextWindow: () => number;
     headers: (loginToken?: string | null) => Record<string, string>;
-    authToken: () => Promise<string | null>;
+    authToken: (forceRefresh?: boolean) => Promise<string | null>;
     discoverModels: (loginToken?: string | null) => Promise<void>;
     followupAnchor: () => ChatMessage | undefined;
     emitRequestEstimate: (estimate: RequestEstimate) => void;
@@ -78,7 +78,7 @@ export class TurnRunner {
         const base = this.d.cfg.baseUrl.replace(/\/+$/, "");
         const url = base + (responses ? "/responses" : "/chat/completions");
         const effort = this.d.options.reasoning;
-        const loginToken = await this.d.authToken();   // logged-in Bearer, if needed
+        let loginToken = await this.d.authToken();   // logged-in Bearer, if needed
         const compressionPresetId = this.d.options.compressionPresetId;
         let compressionPreset: CompressionPreset | undefined;
         let compressionNoticeEmitted = false;
@@ -216,13 +216,16 @@ export class TurnRunner {
                 const estimate = estimateRequest(bodyJson, outMessages.length, toolList.length);
                 this.d.emitRequestEstimate(estimate);
                 this.d.cfg.log?.(`[${this.d.backend}] POST ${url} api=${this.d.cfg.api} model=${this.d.model()} tools=${toolList.length} hop=${hop}`);
-                // Ledger audit: record the LITERAL request body (truth of what the
-                // LLM received this hop) — feeds the "Request" inspection view.
                 ledger.recordRequest(this.d.sessionId, body);
                 const requestStartedAt = Date.now();
-                const res = await fetch(url, {
-                    method: "POST", headers: this.d.headers(loginToken), body: bodyJson, signal: this.abort.signal,
-                });
+                const signal = this.abort.signal;
+                const post = (token: string | null | undefined) => fetch(url, { method: "POST", headers: this.d.headers(token), body: bodyJson, signal });
+                let res = await post(loginToken);
+                if (res.status === 401 && noExplicitAuth && loginToken) {
+                    this.d.emit({ kind: "status-notice", text: "Sufficit AI authorization refreshed; retrying once." });
+                    loginToken = await this.d.authToken(true);
+                    if (loginToken) { res = await post(loginToken); }
+                }
                 const responseStartedAt = Date.now();
                 if (!res.ok || !res.body) {
                     const detail = await res.text().catch(() => "");
@@ -235,8 +238,7 @@ export class TurnRunner {
                 const m = this.d.model();
                 const { text, toolCalls, aborted, usage } = await consumeStream(res.body, m, { requestStartedAt, responseStartedAt }, responses, {
                     onText: (delta) => this.d.emit({ kind: "text", text: delta, model: m, modelLabel: this.d.label(m) }),
-                    onError: (message) => this.d.emit({ kind: "error", message }),
-                    onStatusNotice: (notice) => this.d.emit({ kind: "status-notice", text: notice }),
+                    onError: (message) => this.d.emit({ kind: "error", message }), onStatusNotice: (notice) => this.d.emit({ kind: "status-notice", text: notice }),
                 });
 
                 // Context monitor: report token usage for this request. inputTokens
@@ -255,11 +257,9 @@ export class TurnRunner {
                         model: usage.model,
                         modelLabel: usage.model ? this.d.label(usage.model) : undefined,
                         providerKey: usage.providerKey,
-                        providerType: usage.providerType,
-                        requestedModel: usage.requestedModel,
+                        providerType: usage.providerType, requestedModel: usage.requestedModel,
                         attempts: usage.attempts,
-                        fallbackAttempts: usage.fallbackAttempts,
-                        compression: usage.compression,
+                        fallbackAttempts: usage.fallbackAttempts, compression: usage.compression,
                         durationMs: usage.durationMs,
                         ttfbMs: usage.ttfbMs,
                         firstDeltaMs: usage.firstDeltaMs,

@@ -282,28 +282,28 @@ export class SufficitAuth {
      * logged in or when the refresh fails — in which case the dead session is
      * cleared and the user is notified once, so callers never send a dead token.
      */
-    async getAccessToken(): Promise<string | null> {
+    async getAccessToken(forceRefresh = false): Promise<string | null> {
         const t = await this.readTokens();
         if (!t) { return null; }
-        if (Date.now() < t.expiresAtMs - 60_000) {
+        if (!forceRefresh && Date.now() < t.expiresAtMs - 60_000) {
             this.expiredNoticeShown = false;
             return t.accessToken;
         }
-        // Expired: refresh, serialized so concurrent callers share ONE refresh
-        // (rotating refresh tokens 400 on a parallel second use, killing the session).
-        const refreshed = await this.refreshOnce();
+        // Expired or server-rejected: serialize refresh so rotating refresh
+        // tokens are not spent twice. forceRefresh is used after an API 401.
+        const refreshed = await this.refreshOnce(forceRefresh);
         if (refreshed) { return refreshed.accessToken; }
         await this.clearExpiredSession();
         return null;
     }
 
     private refreshInFlight?: Promise<StoredTokens | undefined>;
-    private async refreshOnce(): Promise<StoredTokens | undefined> {
+    private async refreshOnce(forceRefresh = false): Promise<StoredTokens | undefined> {
         if (this.refreshInFlight) { return this.refreshInFlight; }
         this.refreshInFlight = (async () => {
             // Re-read: another caller may have refreshed while we queued.
             const cur = await this.readTokens();
-            if (cur && Date.now() < cur.expiresAtMs - 60_000) { return cur; }
+            if (!forceRefresh && cur && Date.now() < cur.expiresAtMs - 60_000) { return cur; }
             const rt = cur?.refreshToken;
             if (!rt) { return undefined; }
             try {

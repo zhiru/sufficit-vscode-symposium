@@ -39,9 +39,9 @@ export function buildHeaders(
  *
  * Extracted from OpenAISession.authToken().
  */
-export async function resolveAuthToken(cfg: OpenAIAdapterConfig): Promise<string | null> {
+export async function resolveAuthToken(cfg: OpenAIAdapterConfig, forceRefresh = false): Promise<string | null> {
     const provider = getOpenAITokenProvider();
     const hasAuth = Object.keys(cfg.headers).some((k) => k.toLowerCase() === "authorization");
     if (hasAuth || cfg.apiKey || !provider) { return null; }
-    try { return await provider(); } catch { return null; }
+    try { return await provider(forceRefresh); } catch { return null; }
 }

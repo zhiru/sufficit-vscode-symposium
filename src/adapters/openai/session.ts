@@ -248,8 +248,8 @@ export class OpenAISession extends EventEmitter implements AgentSession {
     }
 
     /** Resolves the login token only when needed (no explicit auth configured). */
-    private async authToken(): Promise<string | null> {
-        return resolveAuthToken(this.cfg);
+    private async authToken(forceRefresh = false): Promise<string | null> {
+        return resolveAuthToken(this.cfg, forceRefresh);
     }
 
     /**
