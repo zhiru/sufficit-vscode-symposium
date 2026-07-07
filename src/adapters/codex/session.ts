@@ -15,10 +15,30 @@ export interface CodexAdapterConfig {
     reasoning: string;
     approvalPolicy: string;
     sandboxMode: string;
+    /** VS Code workspace roots that should be writable in workspace-write mode. */
+    workspaceDirs?: string[];
     /** Add the Playwright MCP server (browser navigation tools). */
     playwright?: boolean;
     /** Extra MCP servers ({ name: { command, args } }). */
     mcpServers?: Record<string, { command?: string; args?: string[] }>;
+}
+
+export function codexWorkspaceArgs(cwd: string, workspaceDirs: readonly string[] = []): string[] {
+    const args = ["--cd", cwd];
+    const cwdResolved = path.resolve(cwd);
+    const added = new Set<string>();
+    for (const dir of workspaceDirs) {
+        if (!dir || !path.isAbsolute(dir)) {
+            continue;
+        }
+        const resolved = path.resolve(dir);
+        if (resolved === cwdResolved || added.has(resolved)) {
+            continue;
+        }
+        added.add(resolved);
+        args.push("--add-dir", resolved);
+    }
+    return args;
 }
 
 /**
@@ -189,7 +209,12 @@ export class CodexSession extends EventEmitter implements AgentSession {
             this.current.kill("SIGINT");
             this.current = undefined;
         }
-        const base = ["exec", "--json", "--skip-git-repo-check"];
+        const base = [
+            "exec",
+            "--json",
+            "--skip-git-repo-check",
+            ...codexWorkspaceArgs(this.options.cwd, this.config.workspaceDirs),
+        ];
         const model = this.options.model || this.config.model;
         if (model) {
             base.push("--model", model);

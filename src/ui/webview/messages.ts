@@ -60,10 +60,46 @@ export function renderStatusNotice(text) {
     endStream(); // flush any in-flight assistant bubble before the notice
     const el = document.createElement("div");
     el.className = "msg statusNotice";
-    el.textContent = text;
+    renderStatusNoticeText(el, text);
     log.appendChild(el);
     autoScroll(stick);
     return el;
+}
+
+const STATUS_MANUAL_TOKENS = new Map([
+    ["folded_orphan_tools", "openai-history"],
+    ["folded_missing_tool_calls", "openai-history"],
+    ["orphan_tools", "openai-history"],
+    ["missing_tool_results", "openai-history"],
+]);
+
+function renderStatusNoticeText(el, text) {
+    const value = String(text ?? "");
+    const tokenPattern = /\b(folded_orphan_tools|folded_missing_tool_calls|orphan_tools|missing_tool_results)(?==)/g;
+    let last = 0;
+    let match;
+    while ((match = tokenPattern.exec(value)) !== null) {
+        if (match.index > last) {
+            el.appendChild(document.createTextNode(value.slice(last, match.index)));
+        }
+        const token = match[1];
+        const manualId = STATUS_MANUAL_TOKENS.get(token);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "statusNoticeLink";
+        btn.textContent = token;
+        btn.title = "Open manual";
+        btn.addEventListener("click", () => {
+            if (manualId) {
+                vscode.postMessage({ type: "show-manual", manualId });
+            }
+        });
+        el.appendChild(btn);
+        last = match.index + token.length;
+    }
+    if (last < value.length) {
+        el.appendChild(document.createTextNode(value.slice(last)));
+    }
 }
 export function branchBanner(title, detail) {
     const stick = nearBottom();

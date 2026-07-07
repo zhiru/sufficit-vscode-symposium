@@ -21,6 +21,10 @@ const AVAILABLE_MANUALS: Record<string, { en: string; "pt-br": string }> = {
         en: "Compression",
         "pt-br": "Compressão"
     },
+    "openai-history": {
+        en: "OpenAI History",
+        "pt-br": "Histórico OpenAI"
+    },
     // Add more manuals here as they are created
 };
 

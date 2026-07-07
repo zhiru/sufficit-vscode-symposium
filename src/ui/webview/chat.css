@@ -512,6 +512,19 @@
         border-left: 2px solid var(--vscode-descriptionForeground, rgba(128,128,128,0.4));
         color: var(--vscode-descriptionForeground);
     }
+    .statusNoticeLink {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+        font: inherit;
+        font-style: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+    .statusNoticeLink:hover {
+        color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground, var(--vscode-focusBorder)));
+    }
     /* Clear separation between message blocks (not between tool rows): a hairline
        rule + breathing room above each user/assistant turn marks where one ends
        and the next begins. */

@@ -56,6 +56,7 @@ export function codexConfig(): CodexAdapterConfig {
         reasoning: config.get<string>("reasoning", "default"),
         approvalPolicy: config.get<string>("approvalPolicy", "default"),
         sandboxMode: config.get<string>("sandboxMode", "workspace-write"),
+        workspaceDirs: vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
         playwright: config.get<boolean>("playwright", false),
         mcpServers: config.get<Record<string, { command?: string; args?: string[] }>>("mcpServers", {}),
     };

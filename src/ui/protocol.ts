@@ -99,6 +99,7 @@ export type WebviewToHost =
     | { type: "file-reject"; path: string }
     | { type: "file-approve-all"; paths?: string[] }
     | { type: "file-reject-all"; paths?: string[] }
+    | { type: "show-manual"; manualId: string }
     | { type: "show-tool-manual"; toolName: string }
     | { type: "show-tool-context-menu"; toolName: string; toolDetail?: string; toolPath?: string }
     | { type: "session-action"; sessionId: string; backend: string; action: SessionActionKind }

@@ -286,6 +286,12 @@ export class SurfaceMessages {
                     await this.d.changedFiles.openDiff(message.path);
                     return;
                 }
+                case "show-manual": {
+                    if (typeof message.manualId === "string" && message.manualId.trim()) {
+                        await vscode.commands.executeCommand("symposium.showManual", message.manualId);
+                    }
+                    return;
+                }
                 case "show-tool-manual": {
                     await vscode.commands.executeCommand("symposium.showToolManual", message.toolName);
                     return;

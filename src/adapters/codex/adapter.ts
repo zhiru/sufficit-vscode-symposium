@@ -18,6 +18,55 @@ import { getCached, setCached, ModelCacheEntry } from "../modelCache";
 import { CodexAdapterConfig, CodexSession } from "./session";
 import { looksInjected, readCodexMeta } from "./transcript";
 
+export function parseCodexModelCatalog(json: unknown, configured = ""): { models: string[]; labels: Record<string, string> } {
+    const root = typeof json === "object" && json !== null ? json as Record<string, unknown> : {};
+    const raw = Array.isArray(root.models) ? root.models : (Array.isArray(json) ? json : []);
+    const entries: Array<{ id: string; priority: number; index: number }> = [];
+    const labels: Record<string, string> = {};
+    raw.forEach((item, index) => {
+        if (typeof item !== "object" || item === null) { return; }
+        const model = item as Record<string, unknown>;
+        const id = typeof model.slug === "string"
+            ? model.slug
+            : (typeof model.id === "string" ? model.id : "");
+        if (!id || model.visibility === "hide") { return; }
+        const priority = typeof model.priority === "number" ? model.priority : Number.POSITIVE_INFINITY;
+        entries.push({ id, priority, index });
+        const label = typeof model.display_name === "string"
+            ? model.display_name
+            : (typeof model.name === "string" ? model.name : "");
+        if (label && label !== id) { labels[id] = label; }
+    });
+    entries.sort((a, b) => (a.priority - b.priority) || (a.index - b.index));
+    const discovered = entries.map((entry) => entry.id);
+    return {
+        models: [...new Set([...(configured ? [configured] : []), ...discovered])],
+        labels,
+    };
+}
+
+function runCodexDebugModels(executable: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+        const child = spawn(resolveExecutable(executable), ["debug", "models"], { stdio: ["ignore", "pipe", "pipe"] });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+        child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+        child.on("error", reject);
+        child.on("exit", (code) => {
+            if (code !== 0) {
+                reject(new Error(`codex debug models exited with code ${code}: ${stderr.trim()}`));
+                return;
+            }
+            try {
+                resolve(JSON.parse(stdout));
+            } catch (error) {
+                reject(error);
+            }
+        });
+    });
+}
+
 export class CodexAdapter implements AgentAdapter {
     readonly backend = "codex" as const;
 
@@ -147,43 +196,16 @@ export class CodexAdapter implements AgentAdapter {
         return [...new Set([...(configured ? [configured] : []), ...base])];
     }
 
-    /**
-     * Fetch current OpenAI models from the API (requires OPENAI_API_KEY in
-     * process env). Filters to codex-relevant models (codex/gpt-5/o4).
-     * Updates file cache on success.
-     */
     async refreshModels(): Promise<{ models: string[]; labels?: Record<string, string> }> {
         const cfg = this.getConfig();
-        const apiKey = process.env.OPENAI_API_KEY;
-        const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com").replace(/\/+$/, "");
-
         const cached = getCached("codex");
-        if (!apiKey) {
-            return { models: this.models(), labels: cached?.labels };
-        }
-
         try {
-            const res = await fetch(`${baseUrl}/v1/models`, {
-                headers: { authorization: `Bearer ${apiKey}` },
-            });
-            if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
-            const json = await res.json() as { data?: unknown[]; models?: unknown[] };
-            const raw = json?.data ?? json?.models ?? [];
-            const models: string[] = [];
-            const labels: Record<string, string> = {};
-            for (const m of raw) {
-                if (typeof m !== "object" || m === null) { continue; }
-                const id = "id" in m && typeof m.id === "string" ? m.id : "";
-                if (!id) { continue; }
-                // Only include models relevant to Codex (codex/gpt/o-series)
-                if (!/codex|gpt|o\d/i.test(id)) { continue; }
-                models.push(id);
-            }
+            const json = await runCodexDebugModels(cfg.executable);
+            const { models, labels } = parseCodexModelCatalog(json, cfg.model);
             if (models.length) {
                 const entry: ModelCacheEntry = { models, labels, lastUpdate: new Date().toISOString() };
                 setCached("codex", entry);
-                const configured = cfg.model;
-                return { models: [...new Set([...(configured ? [configured] : []), ...models])], labels };
+                return { models, labels };
             }
         } catch {
             // fall through to cache/fallback
