@@ -54,7 +54,7 @@ export interface TurnRunnerDeps {
     resolveToolPath: (p: unknown) => string | undefined;
     safePersist: () => void;
     led: (role: string, content: unknown, extra?: Record<string, unknown>) => void;
-    maybeAutoCompact: () => void;
+    maybeAutoCompact: () => Promise<void>;
 }
 
 export class TurnRunner {
@@ -267,6 +267,12 @@ export class TurnRunner {
                     });
                 }
 
+                // Fold context BETWEEN hops (awaited): a long tool-calling turn
+                // (many hops) must never wait until turn-end to compact — by then
+                // the prompt may already be well past the window. Checking here
+                // means the very next hop's request sees the folded history.
+                await this.d.maybeAutoCompact();
+
                 // Stream paused/interrupted mid-turn: keep the partial assistant
                 // reply (and any partial tool calls) in history so context is not
                 // lost on the next message, then stop this turn.
@@ -400,7 +406,7 @@ export class TurnRunner {
         void ledger.commitTurn(this.d.sessionId, `turn ${this.d.getTurnNo()} — user→assistant (model=${this.d.model()})`);
         // Auto-compaction: if the context crossed the threshold this turn, fold it
         // before the next send (lazy, so it never delays this turn-end).
-        this.d.maybeAutoCompact();
+        void this.d.maybeAutoCompact();
         emitTurnEnd();
     }
 }

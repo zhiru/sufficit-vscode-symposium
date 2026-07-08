@@ -31,14 +31,17 @@ export class Compactor {
     constructor(private readonly d: CompactorDeps) { }
 
     /** Auto-compaction: fold the context when the last prompt crossed the
-     *  configured fraction of the window. Lazy (runs after turn-end). */
-    maybeAutoCompact(): void {
+     *  configured fraction of the window. Called both mid-turn (awaited,
+     *  between tool hops, so a long tool-calling turn can't balloon past the
+     *  window before it ever gets a chance to fold) and after turn-end
+     *  (fire-and-forget, so it never delays the turn finishing). */
+    async maybeAutoCompact(): Promise<void> {
         const at = this.d.cfg.autoCompactAt ?? 0;
         if (at <= 0 || this.compacting) { return; }
         const win = this.d.contextWindow();
         const lastInputTokens = this.d.getLastInputTokens();
         if (!win || !lastInputTokens) { return; }
-        if (lastInputTokens / win >= at) { void this.compact("auto"); }
+        if (lastInputTokens / win >= at) { await this.compact("auto"); }
     }
 
     /**
