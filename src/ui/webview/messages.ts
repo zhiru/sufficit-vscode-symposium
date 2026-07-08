@@ -57,7 +57,10 @@ export function append(cls, text) {
 // Rendered as a quiet system annotation, NOT model output — never persisted.
 export function renderStatusNotice(text) {
     const stick = nearBottom();
-    endStream(); // flush any in-flight assistant bubble before the notice
+    // Close any open tool-action group too: a notice fired mid tool-loop
+    // (auth retry, mid-turn compaction) must not let the next tool-start
+    // silently re-attach to the group that was open before this notice.
+    endToolGroup(); endStream();
     const el = document.createElement("div");
     el.className = "msg statusNotice";
     renderStatusNoticeText(el, text);

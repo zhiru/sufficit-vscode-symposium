@@ -54,19 +54,22 @@ export class Compactor {
     async compact(reason: "manual" | "auto"): Promise<void> {
         if (this.compacting) { return; }
         this.compacting = true;
-        const note = (t: string) => this.d.emit({ kind: "text", text: `\n_(${t})_\n` });
+        // Rendered as a quiet system annotation (same style as "authorization
+        // refreshed" etc.) instead of an assistant text bubble, so a compaction
+        // reads as a system event, not as something the model said.
+        const note = (t: string) => this.d.emit({ kind: "status-notice", text: t });
         try {
             const keepTurns = 6;
             const messages = this.d.getMessages();
             const firstUserIdx = messages.findIndex((m) => m.role === "user");
             if (firstUserIdx === -1) {
-                if (reason === "manual") { note("nothing to compact yet"); }
+                if (reason === "manual") { note("Nothing to compact yet."); }
                 return;
             }
             let prefix = messages.slice(0, firstUserIdx);
             const conv = messages.slice(firstUserIdx);
             if (conv.length <= keepTurns + 2) {
-                if (reason === "manual") { note("conversation is short — nothing to compact yet"); }
+                if (reason === "manual") { note("Conversation is short — nothing to compact yet."); }
                 return;
             }
             // Idempotent: a prior summary lives in the prefix region (developer/
@@ -80,7 +83,7 @@ export class Compactor {
             const middle = [...prior, ...conv.slice(0, tailStart)];
             const summary = await this.summarizeMessages(middle);
             if (!summary) {
-                if (reason === "manual") { note("compaction failed (summary unavailable) — keeping full context"); }
+                if (reason === "manual") { note("Compaction failed (summary unavailable) — keeping full context."); }
                 return;   // fail-safe
             }
             const role = this.d.cfg.supportsDeveloperRole !== false ? "developer" : "system";
@@ -98,7 +101,7 @@ export class Compactor {
             });
             void ledger.commitTurn(this.d.sessionId, `compact — folded ${folded} msgs (${reason}, model=${this.d.model()})`);
             this.d.safePersist();
-            note(`compacted ${folded} messages — context shrunk; full history preserved (read_session to recover)`);
+            note(`Compacted ${folded} messages — context shrunk; full history preserved (read_session to recover).`);
         } finally {
             this.compacting = false;
             // A manual /compact is its own "turn" from the controller's view — close
