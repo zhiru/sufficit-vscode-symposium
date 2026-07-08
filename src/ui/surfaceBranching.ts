@@ -96,15 +96,21 @@ export function restartFromMessage(
     const cwd = from.cwd;
 
     openDialogue(backend, { cwd, seedHistory, lineageId: inheritedLineage(backend, from) }, title);
-    d.post({
-        type: "history",
-        messages,
-        carried: true,
-        branchLabel: {
-            title: "Branched from earlier message",
-            detail: `${messages.length} message${messages.length === 1 ? "" : "s"} carried into this new conversation`,
-        },
-    });
+    // Carry the history BEFORE the restarted message into the new branch — the
+    // restarted user message itself is re-sent just below, so including it here
+    // would render the user's bubble twice (once carried, once on resend).
+    const carried = messages.slice(0, -1);
+    if (carried.length) {
+        d.post({
+            type: "history",
+            messages: carried,
+            carried: true,
+            branchLabel: {
+                title: "Branched from earlier message",
+                detail: `${carried.length} message${carried.length === 1 ? "" : "s"} carried into this new conversation`,
+            },
+        });
+    }
     // Resend the user message to start the agent
     void d.getController()?.handleMessage({
         type: "send",

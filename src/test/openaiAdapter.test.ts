@@ -7,6 +7,53 @@ import { windowMessages } from "../adapters/openai/requestWindow";
 import { findToolHistoryIssues, materializeToolSafeHistory } from "../adapters/openai/toolHistory";
 import { ChatMessage } from "../adapters/openai/types";
 import { mergeToolDefinitions } from "../adapters/openai/toolMerge";
+import { consumeStream } from "../adapters/openai/streamConsume";
+
+/** Builds a ReadableStream that emits the given SSE text as UTF-8 bytes. */
+function sseStream(body: string): ReadableStream<Uint8Array> {
+    const bytes = new TextEncoder().encode(body);
+    return new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(bytes); controller.close(); },
+    });
+}
+
+const timing = { requestStartedAt: 0, responseStartedAt: 0 };
+
+test("consumeStream surfaces chat-completions reasoning_content as thinking", async () => {
+    const seen: string[] = [];
+    const body =
+        `data: {"choices":[{"delta":{"reasoning_content":"pondering"}}]}\n` +
+        `data: {"choices":[{"delta":{"reasoning_content":" more"}}]}\n` +
+        `data: [DONE]\n`;
+    const out = await consumeStream(sseStream(body), "m", timing, false, {
+        onText: (d) => seen.push(`text:${d}`),
+        onReasoning: (d) => seen.push(`reason:${d}`),
+        onError: () => {},
+    });
+    assert.equal(out.text, "");
+    assert.equal(out.reasoning, "pondering more");
+    assert.deepEqual(seen, ["reason:pondering", "reason: more"]);
+});
+
+test("consumeStream surfaces OpenRouter-style delta.reasoning as thinking", async () => {
+    const body = `data: {"choices":[{"delta":{"reasoning":"hmm"}}]}\n` + `data: [DONE]\n`;
+    const out = await consumeStream(sseStream(body), "m", timing, false, {
+        onText: () => {}, onReasoning: () => {}, onError: () => {},
+    });
+    assert.equal(out.reasoning, "hmm");
+});
+
+test("consumeStream surfaces responses-API reasoning_text delta as thinking", async () => {
+    const body =
+        `data: {"type":"response.reasoning_text.delta","delta":"think"}\n` +
+        `data: {"type":"response.output_text.delta","delta":"answer"}\n` +
+        `data: [DONE]\n`;
+    const out = await consumeStream(sseStream(body), "m", timing, true, {
+        onText: () => {}, onReasoning: () => {}, onError: () => {},
+    });
+    assert.equal(out.reasoning, "think");
+    assert.equal(out.text, "answer");
+});
 
 test("buildOpenAIModelList does not invent OpenAI fallback models", () => {
     assert.deepEqual(buildOpenAIModelList([], ""), []);

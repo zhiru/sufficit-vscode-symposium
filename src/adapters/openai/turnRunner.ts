@@ -236,8 +236,9 @@ export class TurnRunner {
                     break;
                 }
                 const m = this.d.model();
-                const { text, toolCalls, aborted, usage } = await consumeStream(res.body, m, { requestStartedAt, responseStartedAt }, responses, {
+                const { text, reasoning, toolCalls, aborted, usage } = await consumeStream(res.body, m, { requestStartedAt, responseStartedAt }, responses, {
                     onText: (delta) => this.d.emit({ kind: "text", text: delta, model: m, modelLabel: this.d.label(m) }),
+                    onReasoning: (delta) => this.d.emit({ kind: "thinking", text: delta }),
                     onError: (message) => this.d.emit({ kind: "error", message }), onStatusNotice: (notice) => this.d.emit({ kind: "status-notice", text: notice }),
                 });
 
@@ -292,6 +293,12 @@ export class TurnRunner {
                     // 400 on the next message because roles no longer alternate.
                     messages.push({ role: "assistant", content: text || "", model: this.d.model() });
                     if (text) { this.d.led("assistant", text); }
+                    // Never-silent guard: no visible reply AND no reasoning shown means
+                    // the turn would end dead-silent (empty completion / dropped
+                    // channel). Surface a notice so the user sees the turn happened.
+                    if (!text.trim() && !reasoning.trim()) {
+                        this.d.emit({ kind: "status-notice", text: "The model returned an empty response (no content). Try resending, a different model, or a lower reasoning effort." });
+                    }
                     hitCap = false;
                     break;
                 }

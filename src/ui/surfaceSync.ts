@@ -70,8 +70,15 @@ export class SurfaceSync {
                 items = cached?.sessionId === sessionId ? (cached.items ?? []) : [];
             } catch { items = []; }
         }
-        this.lastTasks = items;
-        this.d.post({ type: "tasks", items, project: sessionId });
+        // Merge rather than overwrite: the search endpoint is async-indexed, so a
+        // task added moments ago (already shown optimistically by bumpTasksByIds)
+        // can be briefly missing from `items`. Tasks are never hard-deleted here
+        // (only tagged done), so treating a missing id as "not indexed yet" rather
+        // than "removed" avoids the panel flashing a just-added task away.
+        const have = new Set(items.map((t) => t.id));
+        const merged = [...items, ...this.lastTasks.filter((t) => !have.has(t.id))];
+        this.lastTasks = merged;
+        this.d.post({ type: "tasks", items: merged, project: sessionId });
     }
 
     /**

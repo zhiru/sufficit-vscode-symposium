@@ -8,6 +8,8 @@ export interface StreamTiming {
 export interface ConsumeCallbacks {
     /** A streamed assistant text delta (the session adds model/label + emits). */
     onText: (delta: string) => void;
+    /** A streamed reasoning/thinking delta (reasoning-channel models). Optional. */
+    onReasoning?: (delta: string) => void;
     /** A streamed error event from the provider. */
     onError: (message: string) => void;
     /** A transient, non-content status notice (e.g. "image transcribed"). Optional. */
@@ -29,11 +31,12 @@ export async function consumeStream(
     timing: StreamTiming,
     responses: boolean,
     cb: ConsumeCallbacks,
-): Promise<{ text: string; toolCalls: ToolCall[]; aborted: boolean; usage?: ApiUsage }> {
+): Promise<{ text: string; reasoning: string; toolCalls: ToolCall[]; aborted: boolean; usage?: ApiUsage }> {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buf = "";
     let assistant = "";
+    let reasoning = "";  // reasoning-channel text (thinking); kept separate from content
     let usage: ApiUsage | undefined;  // final token counts, when the API reports them
     let effectiveModel = m;
     let firstDeltaMs: number | undefined;
@@ -68,7 +71,7 @@ export async function consumeStream(
     const markDelta = () => {
         firstDeltaMs ??= Date.now() - timing.requestStartedAt;
     };
-    const done = () => ({ text: assistant, toolCalls: calls.filter((c) => c && c.function.name), aborted: false, usage: usage ? stampUsage(usage) : undefined });
+    const done = () => ({ text: assistant, reasoning, toolCalls: calls.filter((c) => c && c.function.name), aborted: false, usage: usage ? stampUsage(usage) : undefined });
     try {
     for (; ;) {
         const r = await reader.read();
@@ -94,6 +97,9 @@ export async function consumeStream(
                     if (ty === "response.output_text.delta" && typeof json.delta === "string") {
                         markDelta();
                         assistant += json.delta; cb.onText(json.delta);
+                    } else if ((ty === "response.reasoning_summary_text.delta" || ty === "response.reasoning_text.delta") && typeof json.delta === "string") {
+                        markDelta();
+                        reasoning += json.delta; cb.onReasoning?.(json.delta);
                     } else if (ty === "response.output_item.added" && json?.item?.type === "function_call") {
                         markDelta();
                         // New function call: index by output_index; carry call_id + name.
@@ -162,6 +168,15 @@ export async function consumeStream(
                 if (typeof delta?.status_notice === "string" && delta.status_notice.trim()) {
                     cb.onStatusNotice?.(delta.status_notice.trim());
                 }
+                // Reasoning-channel text: gateways route reasoning-model output to a
+                // separate field (reasoning_content: DeepSeek/Qwen/Anthropic-compat;
+                // reasoning: OpenRouter). Surface it as thinking so a reasoning-only
+                // reply (empty content) is never a dead-silent turn.
+                const reasoningDelta = delta?.reasoning_content ?? delta?.reasoning;
+                if (typeof reasoningDelta === "string" && reasoningDelta) {
+                    markDelta();
+                    reasoning += reasoningDelta; cb.onReasoning?.(reasoningDelta);
+                }
                 if (typeof delta?.content === "string" && delta.content) {
                     markDelta();
                     assistant += delta.content; cb.onText(delta.content);
@@ -185,7 +200,7 @@ export async function consumeStream(
         // discard what we already received — return the partial accumulation
         // so the caller can persist the partial assistant turn and keep context.
         try { void reader.cancel(); } catch { /* ignore */ }
-        return { text: assistant, toolCalls: calls.filter((c) => c && c.function.name), aborted: true };
+        return { text: assistant, reasoning, toolCalls: calls.filter((c) => c && c.function.name), aborted: true };
     }
     return done();
 }
