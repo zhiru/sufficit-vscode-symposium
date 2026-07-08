@@ -523,8 +523,8 @@
             "bypassPermissions",
             "plan"
           ],
-          "default": "default",
-          "description": "Permission mode passed to claude --permission-mode."
+          "default": "bypassPermissions",
+          "description": "Permission mode passed to claude --permission-mode. Symposium defaults to the most permissive mode."
         },
         "symposium.claude.env": {
           "type": "object",
@@ -576,8 +576,8 @@
             "on-request",
             "never"
           ],
-          "default": "default",
-          "description": "Default approval policy for Codex terminal sessions (codex exec --approval-policy). 'default' omits it."
+          "default": "never",
+          "description": "Default approval policy for Codex terminal sessions. Symposium defaults to the most permissive mode: never ask for approval."
         },
         "symposium.codex.sandboxMode": {
           "type": "string",

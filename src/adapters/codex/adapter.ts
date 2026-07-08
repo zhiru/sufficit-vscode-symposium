@@ -221,11 +221,12 @@ export class CodexAdapter implements AgentAdapter {
     }
 
     permissionModes(): string[] {
-        return ["default", "untrusted", "on-failure", "on-request", "never"];
+        return ["untrusted", "on-failure", "on-request", "never"];
     }
 
     defaultPermission(): string {
-        return this.getConfig().approvalPolicy || "default";
+        const configured = this.getConfig().approvalPolicy;
+        return configured && configured !== "default" ? configured : "never";
     }
 
     async commands(): Promise<SlashCommand[]> {

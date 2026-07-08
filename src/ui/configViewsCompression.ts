@@ -69,14 +69,6 @@ export const configViewsCompression = `
                         [{ v: "0", l: t("config.value.unlimited") }, { v: "20", l: t("config.messages.20") }, { v: "40", l: t("config.messages.40") },
                          { v: "60", l: t("config.messages.60") }, { v: "100", l: t("config.messages.100") }, { v: "200", l: t("config.messages.200") }]))
             ) +
-            section(t("config.compaction.section.turnLimits"),
-                item(t("config.prefs.maxToolHops.name"), t("config.compaction.maxToolHops.desc"),
-                    sel("symposium.openai.maxToolHops", String(p.maxToolHops || 50),
-                        [{ v: "10", l: "10" }, { v: "25", l: "25" }, { v: "50", l: "50" }, { v: "100", l: "100" }, { v: "200", l: "200" }])) +
-                item(t("config.prefs.noProgressStop.name"), t("config.compaction.noProgressStop.desc"),
-                    sel("symposium.openai.noProgressStop", String(p.noProgressStop || 0),
-                        [{ v: "0", l: t("config.value.unlimited") }, { v: "8", l: t("config.steps.8") }, { v: "12", l: t("config.steps.12") }, { v: "16", l: t("config.steps.16") }, { v: "24", l: t("config.steps.24") }]))
-            ) +
             '<section class="section"><div class="section-title">' + esc(t("config.compaction.section.presets")) +
                 '<button class="secondary" id="btn-compression-manual" style="margin-left:auto; text-transform:none; letter-spacing:normal;" title="' + esc(t("config.compaction.btn.manual")) + '">'
                 + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'

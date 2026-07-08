@@ -219,7 +219,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
         if (model) {
             base.push("--model", model);
         }
-        const approvalPolicy = this.options.permission || this.config.approvalPolicy;
+        const approvalPolicy = (this.options.permission || this.config.approvalPolicy || "never").replace(/^default$/, "never");
         if (approvalPolicy && approvalPolicy !== "default") {
             base.push("-c", `approval_policy="${approvalPolicy}"`);
         }
@@ -321,7 +321,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
                 }
                 if (event.type !== "item.completed") {
                     if (itemType === "command_execution" && typeof item.command === "string") {
-                        this.emit("event", { kind: "tool-start", toolName: "exec", detail: item.command.slice(0, 120) });
+                        this.emit("event", { kind: "tool-start", toolName: "exec", detail: item.command });
                     }
                     break;
                 }

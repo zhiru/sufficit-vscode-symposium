@@ -123,10 +123,13 @@ import { applyStaticI18n } from "./staticI18n";
         list_dir: "List directory", read_session: "Re-read session history",
     };
     const PERM_DESC = {
-        "default": "Ask for permission as needed",
-        "acceptEdits": "Auto-accept file edits",
-        "bypassPermissions": "Run everything without prompts",
-        "plan": "Plan only — no edits/commands",
+        "acceptEdits": "Auto-accept file edits; ask before broader actions",
+        "bypassPermissions": "Run tools and edits without prompts",
+        "plan": "Plan only; do not edit files or run commands",
+        "untrusted": "Read-only until explicitly approved",
+        "on-request": "Ask before actions that need approval",
+        "on-failure": "Run normally; ask only after a failure",
+        "never": "Never ask; run with the configured sandbox",
     };
     configBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -140,7 +143,13 @@ import { applyStaticI18n } from "./staticI18n";
                 const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = isActive ? "✓" : "";
                 const lbl = document.createElement("span"); lbl.className = "milbl";
                 const lblText = document.createElement("span"); lblText.className = "milbl-text";
-                lblText.textContent = p + (p === permissionDefault ? " (default)" : "");
+                lblText.appendChild(document.createTextNode(p));
+                if (p === permissionDefault) {
+                    const def = document.createElement("span");
+                    def.className = "miDefaultMark";
+                    def.textContent = " (default)";
+                    lblText.appendChild(def);
+                }
                 const lblDesc = document.createElement("span"); lblDesc.className = "milbl-desc";
                 lblDesc.textContent = PERM_DESC[p] || "";
                 lbl.appendChild(lblText); lbl.appendChild(lblDesc);

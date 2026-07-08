@@ -105,6 +105,9 @@ export function prettyToolName(name) {
     if (!s) { return String(name || "tool"); }
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
+function detailLabel(name) {
+    return /^(Bash|BashOutput|exec|shell)$/i.test(String(name || "")) ? "Command" : "Detail";
+}
 // Expandable tool panel (icon + verb + target, click to reveal input/result).
 export function renderTool(name, detail, opts) {
     opts = opts || {};
@@ -155,8 +158,10 @@ export function renderTool(name, detail, opts) {
         if (d.childNodes.length) { head.appendChild(d); }
     }
     const body = document.createElement("div"); body.className = "toolbody";
+    const detailText = detail && String(detail).trim();
     if (opts.diff && opts.diff.length) { body.appendChild(diffSection(opts.diff)); }
     else if (opts.input) { body.appendChild(toolSection("Input", opts.input)); }
+    else if (detailText && !opts.path) { body.appendChild(toolSection(detailLabel(name), detailText)); }
     let resultSec = null;
     let resultText = "";
     const showResult = (text, replace) => {
@@ -170,7 +175,7 @@ export function renderTool(name, detail, opts) {
         else { resultSec.querySelector("pre").textContent = shown; }
     };
     if (opts.result) { showResult(opts.result); }
-    const expandable = !!(opts.input || opts.result || opts.toolId);
+    const expandable = !!(body.childNodes.length || opts.result || opts.toolId);
     if (expandable) {
         const chev = document.createElement("span"); chev.className = "tChev"; chev.appendChild(svgIcon("chevron"));
         head.appendChild(chev);

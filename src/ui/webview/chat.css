@@ -449,6 +449,7 @@
     #ctxMenu .mi .milbl { flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
     #ctxMenu .mi .milbl-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #ctxMenu .mi.active .milbl-text { color: var(--vscode-focusBorder); font-weight: 600; }
+    #ctxMenu .mi .miDefaultMark { font-weight: 700; }
     #ctxMenu .mi .milbl-desc { font-size: 0.77em; opacity: 0.52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
     #ctxMenu .mi .midetail { opacity: 0.5; font-size: 0.85em; flex-shrink: 0; }
     #ctxMenu .mi .miacts { display: none; flex-shrink: 0; gap: 1px; }

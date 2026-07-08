@@ -160,11 +160,12 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     permissionModes(): string[] {
-        return ["default", "acceptEdits", "bypassPermissions", "plan"];
+        return ["acceptEdits", "bypassPermissions", "plan"];
     }
 
     defaultPermission(): string {
-        return this.getConfig().permissionMode || "default";
+        const configured = this.getConfig().permissionMode;
+        return configured && configured !== "default" ? configured : "bypassPermissions";
     }
 
     async commands(): Promise<SlashCommand[]> {
@@ -275,6 +276,18 @@ export class ClaudeAdapter implements AgentAdapter {
                 emitStatus("idle");
             }
         };
+        const inferInitialStatus = async (): Promise<"working" | "idle" | undefined> => {
+            if (!file) { return undefined; }
+            const stat = await fs.promises.stat(file);
+            const start = Math.max(0, stat.size - 65536);
+            const tail = await fs.promises.readFile(file, "utf8").then((s) => s.slice(start));
+            for (const line of tail.split("\n").reverse()) {
+                const t = rawLineType(line);
+                if (t === "result") { return "idle"; }
+                if (t === "user" || t === "assistant") { return "working"; }
+            }
+            return undefined;
+        };
 
         const drain = async () => {
             if (closed || reading || !file) {
@@ -323,6 +336,8 @@ export class ClaudeAdapter implements AgentAdapter {
             }
             try {
                 offset = (await fs.promises.stat(file)).size;
+                const initial = await inferInitialStatus();
+                if (initial) { setStatus(initial); }
             } catch {
                 offset = 0;
             }
@@ -343,7 +358,7 @@ export class ClaudeAdapter implements AgentAdapter {
         void begin();
 
         return {
-            onStatus: (cb) => { statusCb = cb; },
+            onStatus: (cb) => { statusCb = cb; if (lastStatus) { cb(lastStatus); } },
             dispose: () => {
                 closed = true;
                 clearIdleTimer();

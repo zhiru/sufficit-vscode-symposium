@@ -238,7 +238,7 @@ export class OpenAIAdapter implements AgentAdapter {
     // (run everything without prompts) — the Sufficit AI gateway is trusted to
     // act, and the per-session tool picker above still gates WHICH tools exist.
     permissionModes(): string[] {
-        return ["default", "acceptEdits", "bypassPermissions", "plan"];
+        return ["acceptEdits", "bypassPermissions", "plan"];
     }
 
     defaultPermission(): string {

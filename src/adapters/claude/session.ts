@@ -95,6 +95,9 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
             args.push("--effort", this.options.reasoning);
         }
         let permission = this.options.permission || this.config.permissionMode;
+        if (!permission || permission === "default") {
+            permission = "bypassPermissions";
+        }
         this.spawnedPermission = permission;   // remember so send() can detect a live picker change
         // Claude refuses bypassPermissions (= --dangerously-skip-permissions) when
         // the process runs as root (e.g. code-server@root) and exits with an error.

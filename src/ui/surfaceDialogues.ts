@@ -168,6 +168,7 @@ export class SurfaceDialogues {
         this.d.setFollowedSessionId(info.sessionId);
         handle.onStatus?.((status) => {
             this.d.deps.runtime.setFollowStatus(info.sessionId, status);
+            this.d.post({ type: "busy", busy: status === "working" });
         });
         this.d.onTitleChange?.(`👁 ${info.title} · ${adapter.backend}`);
     }
