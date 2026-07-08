@@ -16,6 +16,26 @@ import { Compactor } from "./compactor";
 import { TurnRunner } from "./turnRunner";
 import { RequestEstimate } from "./requestWindow";
 
+/** symposium.openai.timeGapNotice thresholds, in ms ("never" is absent = disabled). */
+const TIME_GAP_THRESHOLDS_MS: Record<string, number> = {
+    "5m": 5 * 60_000,
+    "30m": 30 * 60_000,
+    "2h": 2 * 60 * 60_000,
+    "12h": 12 * 60 * 60_000,
+};
+
+/** Compact human duration for the time-gap notice, e.g. "3h14m", "2d5h". */
+function formatGap(ms: number): string {
+    const totalMinutes = Math.floor(ms / 60_000);
+    if (totalMinutes < 60) { return `${Math.max(1, totalMinutes)}m`; }
+    const totalHours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (totalHours < 24) { return minutes ? `${totalHours}h${minutes}m` : `${totalHours}h`; }
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    return hours ? `${days}d${hours}h` : `${days}d`;
+}
+
 /**
  * A direct OpenAI-compatible chat session (no CLI): streams /chat/completions
  * over HTTP with a custom base URL + headers, to talk straight to sufficit-ai
@@ -267,6 +287,24 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         ledger.appendMessage(this.sessionId, { role, content, turn: this.turnNo, ...extra });
     }
 
+    /**
+     * Builds a compact developer note when the real-world gap since the
+     * ledger's last entry meets the configured threshold — so the model
+     * knows it may be resuming a stale conversation (a different day/session)
+     * instead of silently assuming continuity. undefined = no note needed.
+     */
+    private timeGapNotice(): string | undefined {
+        const setting = this.cfg.timeGapNotice ?? "5m";
+        const thresholdMs = TIME_GAP_THRESHOLDS_MS[setting];
+        if (!thresholdMs) { return undefined; }   // "never" or unrecognized
+        const lastAt = ledger.lastMessageAtMs(this.sessionId);
+        if (lastAt == null) { return undefined; } // no prior entry (first message)
+        const gapMs = Date.now() - lastAt;
+        if (gapMs < thresholdMs) { return undefined; }
+        return `[Time gap: ~${formatGap(gapMs)} since your last message in this conversation — ` +
+            "you may be resuming this on a different day/session; don't assume very recent context is still fresh.]";
+    }
+
     send(text: string, images?: string[], preamble?: string[]): void {
         // Intercept /compact: a local command (summarize the conversation to shrink
         // the model context), NOT a user turn to ship to the gateway.
@@ -288,7 +326,9 @@ export class OpenAISession extends EventEmitter implements AgentSession {
             this.messages.push({ role: "assistant", content: "(previous turn interrupted)" });
             ledger.appendMessage(this.sessionId, { role: "assistant", content: "(previous turn interrupted)", turn: this.turnNo });
         }
-        for (const p of preamble ?? []) {
+        const gapNote = this.timeGapNotice();
+        const fullPreamble = gapNote ? [gapNote, ...(preamble ?? [])] : (preamble ?? []);
+        for (const p of fullPreamble) {
             if (p && p.trim()) {
                 this.messages.push({ role, content: p });
                 ledger.appendMessage(this.sessionId, { role, content: p, turn: this.turnNo + 1 });

@@ -101,7 +101,6 @@ export type WebviewToHost =
     | { type: "file-reject-all"; paths?: string[] }
     | { type: "show-manual"; manualId: string }
     | { type: "show-tool-manual"; toolName: string }
-    | { type: "show-tool-context-menu"; toolName: string; toolDetail?: string; toolPath?: string }
     | { type: "session-action"; sessionId: string; backend: string; action: SessionActionKind }
     | { type: "session-list-backends"; backend: string }
     | { type: "session-switch-backend"; sessionId: string; backend: string; targetBackend: string }

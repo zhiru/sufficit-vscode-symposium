@@ -2,7 +2,7 @@
 import { vscode } from "./vscode";
 import { svgIcon, fileIcon } from "./icons";
 import { middleEllipsisPath, allDigits } from "./format";
-import { showFileMenu } from "./menus";
+import { showFileMenu, showToolMenu } from "./menus";
 import { nearBottom, autoScroll } from "./scroll";
 import { toolGroupBody, bumpToolGroup, endToolGroup } from "./messages";
 import { renderTodos } from "./panels";
@@ -183,12 +183,9 @@ export function renderTool(name, detail, opts) {
         head.addEventListener("click", () => wrap.classList.toggle("open"));
     }
 
-    // Context menu for tool actions (right-click on tool name/verb)
-    verb.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        vscode.postMessage({ type: "show-tool-context-menu", toolName: name, toolDetail: detail, toolPath: opts.path });
-    });
+    // Context menu for tool actions (right-click on tool name/verb): an
+    // in-webview menu at the click position, not a native VS Code quickpick.
+    verb.addEventListener("contextmenu", (e) => showToolMenu(e, name, opts.path));
     verb.title = "Right-click for options";
     verb.style.cursor = "context-menu";
 

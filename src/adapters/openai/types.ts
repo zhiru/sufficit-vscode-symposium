@@ -108,5 +108,13 @@ export interface OpenAIAdapterConfig {
     maxHistoryMessages?: number;
     /** How local shell tool execution is surfaced: silent, inline stream, or visible VS Code terminal. */
     shellExecution?: ShellExecutionMode;
+    /**
+     * Tells the model when it's resuming after a large real-world gap (e.g. the
+     * user came back a day later) instead of leaving it to assume the
+     * conversation is continuous. "never" | "5m" | "30m" | "2h" | "12h" — a
+     * compact note is injected only when the gap since the last message meets
+     * or exceeds this threshold. Default "5m".
+     */
+    timeGapNotice?: string;
     log?: (message: string) => void;
 }

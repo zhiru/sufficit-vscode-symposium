@@ -54,6 +54,7 @@ export const configViewsCompression = `
         // Auto-compaction settings (merged from old compaction tab)
         const compactAt = String(p.autoCompactAt != null ? p.autoCompactAt : 0.8);
         const histMsgs = String(p.maxHistoryMessages != null ? p.maxHistoryMessages : 40);
+        const timeGapNotice = String(p.timeGapNotice != null ? p.timeGapNotice : "5m");
 
         return '<div class="compression-view">' +
             section(t("config.compaction.section.auto"),
@@ -68,6 +69,12 @@ export const configViewsCompression = `
                     sel("symposium.openai.maxHistoryMessages", histMsgs,
                         [{ v: "0", l: t("config.value.unlimited") }, { v: "20", l: t("config.messages.20") }, { v: "40", l: t("config.messages.40") },
                          { v: "60", l: t("config.messages.60") }, { v: "100", l: t("config.messages.100") }, { v: "200", l: t("config.messages.200") }]))
+            ) +
+            section(t("config.compaction.section.timeGap"),
+                item(t("config.compaction.timeGapNotice.name"), t("config.compaction.timeGapNotice.desc"),
+                    sel("symposium.openai.timeGapNotice", timeGapNotice,
+                        [{ v: "never", l: t("config.value.never") }, { v: "5m", l: t("config.timeGap.5m") }, { v: "30m", l: t("config.timeGap.30m") },
+                         { v: "2h", l: t("config.timeGap.2h") }, { v: "12h", l: t("config.timeGap.12h") }]))
             ) +
             '<section class="section"><div class="section-title">' + esc(t("config.compaction.section.presets")) +
                 '<button class="secondary" id="btn-compression-manual" style="margin-left:auto; text-transform:none; letter-spacing:normal;" title="' + esc(t("config.compaction.btn.manual")) + '">'

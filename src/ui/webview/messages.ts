@@ -312,6 +312,12 @@ const THINK_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5
 export function renderThinkBlock(text) {
     if (!String(text || "").trim()) { return null; }
     const stick = nearBottom();
+    // A new thinking block marks a genuinely new step: close any open tool
+    // group so the NEXT burst of tool calls starts a fresh group appended
+    // after this point, instead of silently re-attaching to a group that was
+    // already rendered earlier — which made later tool calls appear ABOVE
+    // thinking blocks that actually happened before them.
+    endToolGroup();
     const wrap = document.createElement("div"); wrap.className = "msg thinkWrap";
     const det = document.createElement("details"); det.className = "thinkBlock";
     const sum = document.createElement("summary"); sum.className = "thinkSum";

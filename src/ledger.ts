@@ -122,6 +122,25 @@ export function appendMessage(sessionId: string, msg: LedgerMessage): void {
 }
 
 /**
+ * Epoch ms of the ledger's last entry (any role) — the true "last activity"
+ * time for the session, regardless of how the previous turn ended. Feeds the
+ * time-gap notice (see OpenAISession.send): read once per new user message,
+ * not per hop, so the cost of scanning the file is bounded by turn count.
+ */
+export function lastMessageAtMs(sessionId: string): number | undefined {
+    try {
+        const raw = fs.readFileSync(messagesFile(ledgerDir(sessionId)), "utf8");
+        const lines = raw.split("\n").filter((l) => l.trim());
+        if (!lines.length) { return undefined; }
+        const last = JSON.parse(lines[lines.length - 1]) as { at?: string };
+        const ms = last.at ? Date.parse(last.at) : NaN;
+        return Number.isFinite(ms) ? ms : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
  * Records the LITERAL request body sent to the gateway this turn — the absolute
  * truth of what the LLM received (system/developer/user + tools + model + effort).
  */

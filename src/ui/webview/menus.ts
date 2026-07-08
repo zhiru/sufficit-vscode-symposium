@@ -258,3 +258,27 @@ export function showFileMenu(ev, path) {
     ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - w - 4) + "px";
     ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
 }
+
+// Right-click on a tool row's verb: same in-webview menu style as showFileMenu
+// (not a native VS Code quickpick — that renders at the top of the window,
+// far from the row the user actually clicked).
+export function showToolMenu(ev, toolName, toolPath) {
+    ev.preventDefault(); ev.stopPropagation();
+    ctxMenu.textContent = "";
+    const add = (icon, label, onClick) => {
+        const mi = document.createElement("div"); mi.className = "mi";
+        const ic = svgIcon(icon); ic.classList.add("miIcon");
+        mi.appendChild(ic); mi.appendChild(document.createTextNode(label));
+        mi.addEventListener("click", () => { hideCtx(); onClick(); });
+        ctxMenu.appendChild(mi);
+    };
+    add("mdfile", "Show manual", () => vscode.postMessage({ type: "show-tool-manual", toolName }));
+    if (toolPath) {
+        add("file", "Open file", () => vscode.postMessage({ type: "open-file", path: toolPath }));
+        add("diff", "Show diff", () => vscode.postMessage({ type: "file-diff", path: toolPath }));
+    }
+    ctxMenu.style.display = "block";
+    const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
+    ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - w - 4) + "px";
+    ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - h - 4) + "px";
+}

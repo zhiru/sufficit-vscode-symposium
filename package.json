@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.708.7",
+  "version": "2026.708.10",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -273,6 +273,25 @@
           "type": "number",
           "default": 40,
           "description": "Max recent conversation messages sent to OpenAI-compatible backends per request. System/developer prompts are preserved separately. Lower this when long tool-heavy sessions hit provider context limits; 0 disables local trimming."
+        },
+        "symposium.openai.timeGapNotice": {
+          "type": "string",
+          "enum": [
+            "never",
+            "5m",
+            "30m",
+            "2h",
+            "12h"
+          ],
+          "enumDescriptions": [
+            "Never mention elapsed time — the model is never told about real-world gaps between messages.",
+            "Note it once the gap since your last message is at least 5 minutes (default).",
+            "Note it once the gap since your last message is at least 30 minutes.",
+            "Note it once the gap since your last message is at least 2 hours.",
+            "Note it once the gap since your last message is at least 12 hours."
+          ],
+          "default": "5m",
+          "description": "Tell the model when it's resuming after a large real-world gap (e.g. you're back a day later) so it doesn't assume the conversation is continuous. A compact note (e.g. '~14h since your last message') is injected only when the gap meets this threshold."
         },
         "symposium.openai.shellExecution": {
           "type": "string",
