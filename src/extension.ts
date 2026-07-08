@@ -21,6 +21,7 @@ import { claudeConfig, codexConfig, copilotConfig, openaiConfig, normalizeAdapte
 import { buildChatSurfaceDeps } from "./extension/surfaceDeps";
 import { registerCommands } from "./extension/commands";
 import { initSttStorage } from "./voice/sttService";
+import { setCodexSufficitTokenProvider, syncCodexSufficitMcp } from "./adapters/codex/sufficitMcp";
 
 // Re-exported so consumers (e.g. ui/chatSurface) can keep importing from here.
 export { symposiumLog } from "./extension/log";
@@ -100,6 +101,10 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     context.subscriptions.push(auth.onDidChange(() => ConfigPanel.refresh()));
     context.subscriptions.push({ dispose: () => auth.dispose() });
     void auth.startAutoRefresh();   // silent token refresh so the session never lapses
+    // Plug the Sufficit token into the Codex MCP sufficit_ai server automatically.
+    setCodexSufficitTokenProvider((forceRefresh) => auth.getAccessToken(forceRefresh));
+    context.subscriptions.push(auth.onDidChange(async () => { await syncCodexSufficitMcp(); }));
+    void syncCodexSufficitMcp();
     // Native Accounts-menu integration (avatar/login at the bottom of the activity bar).
     SufficitAuthProvider.register(context, auth);
     // Hub/MCP requests use the logged-in identity token when available.

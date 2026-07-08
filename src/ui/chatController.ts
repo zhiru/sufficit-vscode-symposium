@@ -1,6 +1,6 @@
 import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { parseTodoFence } from "../adapters/todos";
-import { buildOutboundPrompt } from "./outboundPrompt";
+import { buildOutboundPrompt, type TrackingMode } from "./outboundPrompt";
 import { probeRtk, rtkCached } from "../adapters/rtk";
 import { HubClient } from "../sync/hubClient";
 import { fetchLatestCheckpoint } from "../sync/tasks";
@@ -27,6 +27,7 @@ export class ChatController {
     private sessionIdInjected = false;
     private bootstrapInjected = false;
     private checkpointInjected = false;
+    private trackingInjected = false;
     private readonly hub = new HubClient();
     // Id of the session checkpoint already injected as resume context, so the
     // same one isn't re-prepended every continuity turn.
@@ -288,6 +289,15 @@ export class ChatController {
             // Role-aware backends (HTTP API) carry one-shot app instructions as
             // `developer` messages; CLIs get them prepended to the user text.
             const roleAware = this.adapter.roleAware?.() === true;
+            // Plan/tracking discipline is injected on EVERY backend so the agent
+            // always plans up front and keeps the next step visible. The mode
+            // matches the backend's tracking capability: native todo tool (CLIs),
+            // Symposium session task tools (OpenAI w/ Hub), or a ```todo fence.
+            const hasHubTaskTools = ((this.aiToolsInfo()?.available) ?? []).includes("add_task");
+            const trackingMode: TrackingMode =
+                this.adapter.hasNativeTodo?.() === true ? "native"
+                : hasHubTaskTools ? "hub-tools"
+                : "fence";
             const outbound = buildOutboundPrompt({
                 text: msg.text,
                 fileAttachments: fileAtts,
@@ -299,11 +309,14 @@ export class ChatController {
                 sessionIdInjected: this.sessionIdInjected,
                 bootstrapInjected: this.bootstrapInjected,
                 checkpointInjected: this.checkpointInjected,
+                trackingInjected: this.trackingInjected,
                 sessionId: this.sessionId,
                 rtk: rtkCached(),
-                // Checkpoint discipline only where it's needed: a context-windowing
-                // backend (roleAware/native) that has the Sufficit memory tool.
+                // Checkpoint (context-window) discipline only where it's needed:
+                // a context-windowing backend (roleAware/native) that has the
+                // Sufficit memory tool. Tracking discipline is separate (below).
                 checkpoints: roleAware && ((this.aiToolsInfo()?.available) ?? []).includes("memory_save"),
+                trackingMode,
                 todoInjection: this.adapter.hasNativeTodo?.() === false ? this.adapter.todoInjection?.() : undefined,
                 seedHistory: this.options.seedHistory,
                 bootstrap: this.options.bootstrap,
@@ -318,6 +331,7 @@ export class ChatController {
             this.seedInjected = outbound.state.seedInjected;
             this.bootstrapInjected = !!outbound.state.bootstrapInjected;
             this.checkpointInjected = !!outbound.state.checkpointInjected;
+            this.trackingInjected = !!outbound.state.trackingInjected;
             this.autonomyInjected = outbound.state.autonomyInjected;
             this.rtkInjected = !!outbound.state.rtkInjected;
             this.sessionIdInjected = !!outbound.state.sessionIdInjected;

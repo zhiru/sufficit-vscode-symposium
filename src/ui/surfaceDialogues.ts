@@ -325,24 +325,49 @@ export class SurfaceDialogues {
             }
             // Capture a freshly-assigned session id so a brand-new dialogue
             // also becomes the restorable "last active" one.
-            const ev = msg?.event as { kind?: string; sessionId?: string; toolName?: string } | undefined;
+            const ev = msg?.event as { kind?: string; sessionId?: string; toolName?: string; result?: string } | undefined;
             if (ev?.kind === "session" && ev.sessionId) {
                 this.d.deps.lastActive.set({ backend, sessionId: ev.sessionId });
             }
             // Repaint the affected panel the moment a session-mutating tool finishes,
             // so an agent-added guardrail / task shows immediately instead of only at
-            // turn-end. (A short retry covers the hub search index settling.)
+            // turn-end. We parse the tool's own result to read the freshly-created
+            // record by its id (instant, deterministic — never waits for the hub's
+            // async search index), then let the search-based refresh reconcile.
             if (ev?.kind === "tool-end" && typeof ev.toolName === "string") {
                 const n = ev.toolName;
-                if (n === "add_guardrail" || n === "clear_guardrails") {
-                    // The memory hub indexes asynchronously, so the just-saved
-                    // guardrail may not be visible to search for a moment.
-                    // Retry a few times with backoff so the panel reliably
-                    // shows the change even on a high-latency hub (code-server).
+                // Tools return "" on success to save tokens; a JSON body signals a
+                // result we can mine for ids (add_task returns ids[]; add_guardrail
+                // returns "" on hub success or {id,_memory_source} on local fallback).
+                let parsed: { ids?: string[]; id?: string; _memory_source?: string } | null = null;
+                if (typeof ev.result === "string" && ev.result.trim().startsWith("{")) {
+                    try { parsed = JSON.parse(ev.result); } catch { parsed = null; }
+                }
+                if (n === "add_guardrail") {
+                    if (parsed?.id) {
+                        // Read-by-id: the guardrail shows immediately even before the
+                        // hub search index settles. Local fallback reads from disk.
+                        const src = parsed._memory_source === "local_fallback" ? "local" : "hub";
+                        void this.d.sync.bumpGuardrailById(String(parsed.id), src);
+                    }
+                    // Reconcile via search with backoff (covers clear_guardrails and
+                    // any high-latency hub).
                     const repaint = () => void this.d.getController()?.reloadGuardrails().then(() => this.d.sync.refreshGuardrails());
                     void repaint();
                     for (const delay of [400, 1000, 2000]) { setTimeout(repaint, delay); }
-                } else if (n === "add_task" || n === "task_complete" || (n === "memory_save")) {
+                } else if (n === "clear_guardrails") {
+                    const repaint = () => void this.d.getController()?.reloadGuardrails().then(() => this.d.sync.refreshGuardrails());
+                    void repaint();
+                    for (const delay of [400, 1000, 2000]) { setTimeout(repaint, delay); }
+                } else if (n === "add_task" || n === "TaskCreate") {
+                    const ids = Array.isArray(parsed?.ids) ? parsed.ids.filter((x): x is string => typeof x === "string") : [];
+                    if (ids.length) {
+                        void this.d.sync.bumpTasksByIds(ids);
+                    } else {
+                        void this.d.sync.refreshTasks();
+                    }
+                    setTimeout(() => void this.d.sync.refreshTasks(), 700);
+                } else if (n === "task_complete" || n === "TaskUpdate" || n === "memory_save") {
                     void this.d.sync.refreshTasks(); setTimeout(() => void this.d.sync.refreshTasks(), 700);
                 }
             }

@@ -4,6 +4,7 @@ import {
     AUTONOMY_PREAMBLE,
     buildOutboundPrompt,
     CANCELED_RETRY_PREAMBLE,
+    planTrackingPreamble,
 } from "../ui/outboundPrompt";
 
 test("buildOutboundPrompt injects canceled policy once", () => {
@@ -57,6 +58,9 @@ test("buildOutboundPrompt injects checkpoint discipline once when enabled", () =
         checkpoints: true,
     });
     assert.ok(first.text.includes("[Context window & checkpoints"));
+    // Checkpoint preamble is now ONLY about context-window/checkpoint memory;
+    // the plan/tracking instruction lives in its own preamble.
+    assert.equal(first.text.includes("add_task"), false);
     assert.equal(first.state.checkpointInjected, true);
     const second = buildOutboundPrompt({
         text: "Next", fileAttachments: [], checkpoints: true, ...first.state,
@@ -68,6 +72,59 @@ test("buildOutboundPrompt injects checkpoint discipline once when enabled", () =
         policyInjected: true, todoInjected: false, seedInjected: false, autonomyInjected: false,
     });
     assert.equal(off.text.includes("[Context window & checkpoints"), false);
+});
+
+test("buildOutboundPrompt injects plan/tracking discipline for every backend", () => {
+    // Native (CLI with TodoWrite/update_plan) — even without checkpoints/roleAware.
+    const native = buildOutboundPrompt({
+        text: "Do it", fileAttachments: [],
+        policyInjected: true, todoInjected: false, seedInjected: false, autonomyInjected: false,
+        trackingMode: "native",
+    });
+    assert.ok(native.text.includes("[PLAN & TRACK TASKS"));
+    assert.ok(native.text.includes("TodoWrite"));
+    assert.equal(native.text.includes("add_task"), false);
+    assert.equal(native.state.trackingInjected, true);
+
+    // hub-tools (OpenAI w/ Hub) — mentions add_task/task_complete.
+    const hub = buildOutboundPrompt({
+        text: "Do it", fileAttachments: [],
+        policyInjected: true, todoInjected: false, seedInjected: false, autonomyInjected: false,
+        trackingMode: "hub-tools",
+    });
+    assert.ok(hub.text.includes("add_task"));
+    assert.ok(hub.text.includes("task_complete"));
+    assert.equal(hub.state.trackingInjected, true);
+
+    // fence mode is owned by todoInjection, so trackingMode: "fence" is NOT
+    // injected here (avoids restating the ```todo instruction twice).
+    const fence = buildOutboundPrompt({
+        text: "Do it", fileAttachments: [],
+        policyInjected: true, todoInjected: false, seedInjected: false, autonomyInjected: false,
+        trackingMode: "fence",
+    });
+    assert.equal(fence.text.includes("[PLAN & TRACK TASKS"), false);
+    assert.equal(fence.state.trackingInjected, false);
+
+    // Injected once: second call with propagated state does not re-inject.
+    const nativeSecond = buildOutboundPrompt({
+        text: "More", fileAttachments: [], trackingMode: "native", ...native.state,
+    });
+    assert.equal(nativeSecond.text.includes("[PLAN & TRACK TASKS"), false);
+});
+
+test("planTrackingPreamble adapts wording to the backend capability", () => {
+    const hub = planTrackingPreamble("hub-tools");
+    const native = planTrackingPreamble("native");
+    const fence = planTrackingPreamble("fence");
+    // Common head present in all three.
+    assert.ok(hub.startsWith("[PLAN & TRACK TASKS"));
+    assert.ok(native.startsWith("[PLAN & TRACK TASKS"));
+    assert.ok(fence.startsWith("[PLAN & TRACK TASKS"));
+    // Backend-specific tails.
+    assert.ok(hub.includes("add_task"));
+    assert.ok(native.includes("TodoWrite"));
+    assert.ok(fence.includes("```todo"));
 });
 
 test("buildOutboundPrompt prepends resume checkpoint when provided", () => {

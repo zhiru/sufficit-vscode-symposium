@@ -10,6 +10,7 @@ export interface OutboundPromptState {
     bootstrapInjected?: boolean;
     checkpointInjected?: boolean;
     tasksReminderInjected?: boolean;
+    trackingInjected?: boolean;
 }
 
 export interface BuildOutboundPromptOptions extends OutboundPromptState {
@@ -46,6 +47,13 @@ export interface BuildOutboundPromptOptions extends OutboundPromptState {
      * older turns scrolling out. Injects CHECKPOINT_PREAMBLE once.
      */
     checkpoints?: boolean;
+    /**
+     * How this backend tracks multi-step work. Injects the per-backend
+     * PLAN_TRACKING_PREAMBLE once per session, UNCONDITIONALLY (every backend),
+     * so the agent always knows to plan up front and keep the next step visible.
+     * Omit when you also pass `todoInjection` (fence mode) to avoid duplication.
+     */
+    trackingMode?: TrackingMode;
     /**
      * Current chat session GUID. Injected once so the agent always knows which
      * Symposium session it is in and can call `read_session` to recover context.
@@ -89,10 +97,36 @@ export const CHECKPOINT_PREAMBLE =
     "[Context window & checkpoints — IMPORTANT] Only the most RECENT messages of this conversation stay in your context; older turns scroll out and you will NOT see them again (the full history remains visible to the user in the chat, but not to you). " +
     "So you MUST externalize anything you will need later: call memory_save (type \"task-checkpoint\") for every result, decision, root cause, file path, id, and \"what's done / what's next\" — written densely enough to resume from that note alone, with no other context. Checkpoint at the start of a non-trivial task and at each milestone. " +
     "And RECALL often: call memory_search whenever you resume, change sub-task, or feel unsure of the current goal, so you never drift back to an earlier task or lose the thread. Treat your checkpoints as your real memory; the chat scrollback is not. " +
-    "Your task-checkpoints are automatically bound to THIS chat session (shown in the session's Tasks panel); always reference the current session id in the checkpoint so it stays traceable. " +
-    "PLAN AS TASKS: when you propose a multi-step plan and the user approves it (or you commit to multi-step work), FIRST call add_task with every step — recording the whole plan up front, BEFORE you start acting — so it's tracked in the Tasks panel. " +
-    "Use list_tasks to see your PENDING tasks for this session (pass all=true to include completed ones), and call task_complete(id) the moment you finish what a task described, so it leaves the pending list. " +
-    "Proactively work down the PENDING tasks and briefly remind the user which pendencies remain. If the user explicitly asks for something else, do that first and REORDER your tasks around it (re-checkpoint the new priority) instead of losing the thread — but never silently drop pending tasks.";
+    "Your task-checkpoints are automatically bound to THIS chat session (shown in the session's Tasks panel); always reference the current session id in the checkpoint so it stays traceable.";
+
+/**
+ * How the agent should track multi-step work, per backend capability:
+ *  - "hub-tools": no native todo tool, but the Symposium session task tools
+ *    (add_task / list_tasks / task_complete) are available (OpenAI adapter w/ Hub).
+ *  - "native":    the CLI has its own todo/plan tool (Claude TodoWrite, Codex
+ *    update_plan). The agent must use that — Symposium parses and renders it.
+ *  - "fence":     neither; the agent keeps a fenced ```todo block (Copilot).
+ */
+export type TrackingMode = "hub-tools" | "native" | "fence";
+
+/** Per-backend tracking instruction, injected once per session, unconditionally. */
+export function planTrackingPreamble(mode: TrackingMode): string {
+    const head = "[PLAN & TRACK TASKS — IMPORTANT] When you propose a multi-step plan and the user approves it (or you commit to multi-step work), FIRST record the WHOLE plan up front, BEFORE you start acting, so it is tracked and the next step is always visible. " +
+        "Keep execution order stable, mark exactly one step in progress at a time, update the plan the moment a step's state changes, and never silently drop pending tasks. Proactively work down pending steps and briefly remind the user which remain. " +
+        "If the user explicitly asks for something else, do that first and REORDER the plan around it (re-checkpoint the new priority) instead of losing the thread.";
+    if (mode === "hub-tools") {
+        return head + " " +
+            "Call add_task with every step to register the plan in the Tasks panel, " +
+            "use list_tasks to see your PENDING tasks for this session (pass all=true to include completed ones), " +
+            "and call task_complete(id) the moment you finish what a task described, so it leaves the pending list.";
+    }
+    if (mode === "native") {
+        return head + " " +
+            "Use your native plan/todo tool (e.g. TodoWrite, update_plan) to record the plan and re-emit the full list whenever a step changes state — Symposium renders it and keeps the next step in view.";
+    }
+    return head + " " +
+        "Keep the plan as a fenced ```todo code block and re-print the whole block whenever a step's state changes.";
+}
 
 export const AUTONOMY_PREAMBLE =
     "[Autonomy mode] The user is not present to answer questions or make decisions and has given you full autonomy. " +
@@ -121,6 +155,7 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
         bootstrapInjected: options.bootstrapInjected ?? false,
         checkpointInjected: options.checkpointInjected ?? false,
         tasksReminderInjected: false,
+        trackingInjected: options.trackingInjected ?? false,
     };
 
     // Pending tasks reminder (injected EVERY message, before guardrails)
@@ -142,6 +177,14 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
         prefixes.push(AGENT_ROLE_PREAMBLE);
         prefixes.push(CANCELED_RETRY_PREAMBLE);
         state.policyInjected = true;
+    }
+    // Plan/tracking discipline: injected UNCONDITIONALLY (every backend) so the
+    // agent plans up front and keeps the next step visible — never again lost
+    // mid-conversation. Fence mode is covered by `todoInjection` below, so skip
+    // here to avoid restating the same ```todo instruction twice.
+    if (options.trackingMode && options.trackingMode !== "fence" && !state.trackingInjected) {
+        prefixes.push(planTrackingPreamble(options.trackingMode));
+        state.trackingInjected = true;
     }
     if (options.checkpoints && !state.checkpointInjected) {
         prefixes.push(CHECKPOINT_PREAMBLE);

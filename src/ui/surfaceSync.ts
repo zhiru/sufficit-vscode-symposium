@@ -4,7 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { lmToolInvocationOptions } from "../adapters/lmToolInvocation";
 import { AgentAdapter, SlashCommand } from "../adapters/types";
-import { HubClient } from "../sync/hubClient";
+import { HubClient, Observation } from "../sync/hubClient";
 import { fetchSessionTasks, TaskItem } from "../sync/tasks";
 import { fetchSessionGuardrails } from "../sync/guardrails";
 import { ledgerDir } from "../ledger";
@@ -28,6 +28,14 @@ export interface SurfaceSyncDeps {
 
 export class SurfaceSync {
     private readonly hub = new HubClient();
+    // Last-known panel state, kept so a just-created item can be merged in
+    // optimistically (read-by-id is instant and doesn't depend on the hub's
+    // async search index settling) instead of waiting for searchMemory to see it.
+    private lastTasks: TaskItem[] = [];
+    private lastGuardrails: { id: string; text: string }[] = [];
+    // Session id the caches belong to; on change the optimistic cache is dropped
+    // so items from a previous session never leak into the panel.
+    private lastSessionId = "";
 
     constructor(private readonly d: SurfaceSyncDeps) { }
 
@@ -40,6 +48,11 @@ export class SurfaceSync {
     /** Loads the session's Sufficit-memory tasks and pushes them to the panel. */
     async refreshTasks(): Promise<void> {
         const sessionId = this.d.getController()?.sessionId ?? "";
+        if (sessionId !== this.lastSessionId) {
+            this.lastSessionId = sessionId;
+            this.lastTasks = [];
+            this.lastGuardrails = [];
+        }
         const mirror = this.taskMirrorFile();
         let items: TaskItem[] = [];
         try {
@@ -57,7 +70,45 @@ export class SurfaceSync {
                 items = cached?.sessionId === sessionId ? (cached.items ?? []) : [];
             } catch { items = []; }
         }
+        this.lastTasks = items;
         this.d.post({ type: "tasks", items, project: sessionId });
+    }
+
+    /**
+     * Optimistic, index-latency-proof refresh: a freshly created task is read
+     * directly by its id (instant, deterministic) and merged into the panel,
+     * so it shows the moment add_task returns — without waiting for the hub's
+     * async search index to pick it up. Falls back to a full refresh.
+     */
+    async bumpTasksByIds(ids: string[]): Promise<void> {
+        if (!ids.length) { return this.refreshTasks(); }
+        try {
+            if (!this.hub.configured()) { return this.refreshTasks(); }
+            const obs = await this.hub.getByIds(ids);
+            const created: TaskItem[] = obs
+                .filter((o) => o && o.id)
+                .map((o) => ({
+                    id: String(o.id),
+                    type: o.type ?? "task-anchor",
+                    title: o.title ?? "",
+                    summary: o.summary ?? "",
+                    ts: String((o as Observation & { createdAtUtc?: string }).createdAtUtc ?? Date.now()),
+                    tags: o.tags ?? "",
+                    done: String(o.tags ?? "").split(",").map((t) => t.trim()).includes("status:done"),
+                }));
+            if (!created.length) { return this.refreshTasks(); }
+            // Merge: prepend new ones not already present, keep order stable.
+            const have = new Set(this.lastTasks.map((t) => t.id));
+            const merged = [...created.filter((t) => !have.has(t.id)), ...this.lastTasks];
+            this.lastTasks = merged;
+            const sessionId = this.d.getController()?.sessionId ?? "";
+            this.d.post({ type: "tasks", items: merged, project: sessionId });
+        } catch {
+            // getByIds can fail on an older hub; fall back to the search path.
+            return this.refreshTasks();
+        }
+        // Best-effort: let the canonical search-based refresh reconcile later.
+        void this.refreshTasks();
     }
 
     /** Opens the compact model context or the literal last request as a read-only tab. */
@@ -93,7 +144,40 @@ export class SurfaceSync {
                 items = (await fetchSessionGuardrails(this.hub, sessionId)).map((g) => ({ id: g.id, text: g.text }));
             }
         } catch { items = []; }
+        this.lastGuardrails = items;
         this.d.post({ type: "guardrails", items });
+    }
+
+    /**
+     * Optimistic refresh of a just-added guardrail (read-by-id, instant; does
+     * not depend on the hub's async search index). Falls back to a full refresh.
+     * Pass source: "local" when add_guardrail fell back to LocalMemory so we read
+     * from there instead of the hub.
+     */
+    async bumpGuardrailById(id: string, source?: "hub" | "local"): Promise<void> {
+        if (!id) { return this.refreshGuardrails(); }
+        try {
+            let obs: Observation | undefined;
+            if (source === "local") {
+                const { LocalMemory } = await import("../adapters/aiTools/localMemory");
+                const [o] = await new LocalMemory().getByIds([id]);
+                obs = o;
+            } else {
+                if (!this.hub.configured()) { return this.refreshGuardrails(); }
+                [obs] = await this.hub.getByIds([id]);
+            }
+            if (!obs || !obs.id) { return this.refreshGuardrails(); }
+            const created = { id: String(obs.id), text: obs.summary || obs.title || "" };
+            const have = new Set(this.lastGuardrails.map((g) => g.id));
+            const merged = have.has(created.id) ? this.lastGuardrails : [...this.lastGuardrails, created];
+            this.lastGuardrails = merged;
+            this.d.post({ type: "guardrails", items: merged });
+        } catch {
+            return this.refreshGuardrails();
+        }
+        // Reconcile via search (hub only; local-only guardrails stay in the
+        // optimistic merge above and are re-read on session reopen).
+        if (source !== "local") { void this.refreshGuardrails(); }
     }
 
     /** Attaches a VS Code integrated-browser page snapshot as a context file. */
