@@ -49,17 +49,23 @@ export async function reloadTasks(ctx: HubStateContext): Promise<void> {
     } catch { /* keep the prior cache */ }
 }
 
-/** Builds a per-message reminder from pending tasks. */
+/**
+ * Builds a per-message reminder from pending tasks, always naming the CURRENT
+ * one explicitly (same idea as guardrails: injected on every dispatch so the
+ * agent can't lose track mid-execution). "Current" is the same task shown
+ * first in the Tasks panel — one shared order, one shared notion of "now".
+ */
 export function pendingTasksSummary(ctx: HubStateContext): string | undefined {
     if (ctx.state.pendingTasks.length === 0) { return undefined; }
-    const items = ctx.state.pendingTasks.map((t) => {
-        const userRequested = (t.tags ?? "").includes("user-requested");
-        const marker = userRequested ? "[USER]" : "";
-        return `- ${marker} ${t.title}`;
-    }).join("\n");
+    const isUserRequested = (t: TaskItem) => (t.tags ?? "").includes("creator:user");
+    const fmt = (t: TaskItem) => (isUserRequested(t) ? `[USER] ${t.title}` : t.title);
+    const [current, ...rest] = ctx.state.pendingTasks;
+    const upNext = rest.map((t) => `- ${fmt(t)}`).join("\n");
     return (
-        "[TASKS — You have pending tasks. Call task_complete(id) IMMEDIATELY after finishing each one]\n" +
-        items +
-        "\n(For user-requested tasks [USER], present justification and WAIT for user confirmation before completing.)"
+        "[TASKS — current task marked below. Call task_complete(id) IMMEDIATELY after finishing it; " +
+        "the response hands you the next current task.]\n" +
+        `→ CURRENT (id=${current.id}): ${fmt(current)}` +
+        (rest.length ? `\nUp next:\n${upNext}` : "") +
+        "\n(For [USER] tasks, present justification and WAIT for user confirmation before completing.)"
     );
 }

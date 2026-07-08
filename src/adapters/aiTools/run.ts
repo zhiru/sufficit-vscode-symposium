@@ -199,8 +199,20 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                     return JSON.stringify({ ok: true, message: "task unchanged (done=false)" });
                 }
                 const ok = await markTaskDone(hub, id);
-                // Silence success — empty string saves tokens; errors/JSON only on failure.
-                return ok ? "" : JSON.stringify({ error: "save failed — check hub configuration" });
+                if (!ok) { return JSON.stringify({ error: "save failed — check hub configuration" }); }
+                // Return the remaining pending tasks (current + up-next) as the
+                // success response instead of a silent "" — the agent gets its
+                // next step handed back immediately, with no separate list_tasks
+                // round-trip, so it can't lose track of the plan mid-execution.
+                if (!ctx.sessionId) { return JSON.stringify({ ok: true }); }
+                const remaining = (await fetchSessionTasks(hub, ctx.sessionId)).filter((t) => !t.done && t.id !== id);
+                if (!remaining.length) { return JSON.stringify({ ok: true, pending: [], message: "all tasks complete" }); }
+                const [current, ...rest] = remaining;
+                return JSON.stringify({
+                    ok: true,
+                    current: { id: current.id, title: current.title },
+                    pending: rest.map((t) => ({ id: t.id, title: t.title })),
+                });
             }
             case "add_guardrail": {
                 const text = String(args.text ?? "").trim();

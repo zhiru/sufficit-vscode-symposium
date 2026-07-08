@@ -150,7 +150,7 @@ const HUB_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "task_complete",
-            description: "Mark a session task (by its memory id) as completed. WORKFLOW: (1) Agent-created tasks (default): call IMMEDIATELY after finishing - don't wait. (2) User-requested tasks: present justification why task is complete and WAIT for user confirmation before calling this. The task drops from pending Tasks panel.",
+            description: "Mark a session task (by its memory id) as completed. WORKFLOW: (1) Agent-created tasks (default): call IMMEDIATELY after finishing - don't wait. (2) User-requested tasks: present justification why task is complete and WAIT for user confirmation before calling this. The task drops from pending Tasks panel. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
             parameters: {
                 type: "object",
                 properties: {
@@ -164,7 +164,7 @@ const HUB_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "TaskUpdate",
-            description: "Mark a session task as completed. Alias for task_complete, compatible with Claude Code naming. Pass the task id and done=true.",
+            description: "Mark a session task as completed. Alias for task_complete, compatible with Claude Code naming. Pass the task id and done=true. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
             parameters: {
                 type: "object",
                 properties: {
