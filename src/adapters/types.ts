@@ -22,6 +22,10 @@ export type AgentEvent =
     | { kind: "tool-start"; toolName: string; detail?: string; toolId?: string; input?: string; added?: number; removed?: number; todos?: TodoItem[]; path?: string; diff?: { old: string; new: string }[]; terminalName?: string }
     | { kind: "tool-output"; toolName?: string; toolId?: string; text: string }
     | { kind: "tool-end"; toolName: string; detail?: string; toolId?: string; result?: string }
+    /** Inline permission gate (admin/manager/user modes): the turn pauses on
+     *  this specific toolId until the webview posts an "approval-response". */
+    | { kind: "approval-request"; toolId: string; toolName: string; detail?: string; tier: "write" | "destructive" }
+    | { kind: "approval-resolved"; toolId: string; approved: boolean }
     | { kind: "turn-end"; costUsd?: number; durationMs?: number }
     | {
         kind: "usage";
@@ -262,6 +266,12 @@ export interface AgentSession extends EventEmitter {
     setAiTools?(names: string[]): void;
     /** Persistir o estado da sessão (apenas para backends que suportam persistência local). */
     safePersist?(): void;
+    /**
+     * Answers a pending "approval-request" event (admin/manager/user modes).
+     * Only implemented by adapters that gate their own tool execution
+     * in-process (currently openai); a no-op elsewhere.
+     */
+    resolveApproval?(toolId: string, approved: boolean): void;
 }
 
 /** Factory + discovery surface for one backend CLI. */

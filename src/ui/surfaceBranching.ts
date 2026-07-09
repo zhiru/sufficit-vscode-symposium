@@ -56,6 +56,26 @@ function sameTextRetry(backend: string, original: string | undefined, edited: st
 }
 
 /**
+ * Plain retry after a transient failure (timeout/dropped connection/504 —
+ * see messages.ts's isTimeoutError): re-sends the SAME text to the CURRENT
+ * session, never branching. Unlike restartFromMessage, this is not a
+ * deliberate "restart from an earlier point" — the text is identical and the
+ * user just wants the request re-issued in place. Each adapter's own send()
+ * already copes with a dangling unanswered user message from the failed turn
+ * (e.g. the openai adapter's "(previous turn interrupted)" filler).
+ */
+export function retryLastMessage(d: SurfaceDialoguesDeps, index: number): void {
+    const from = d.getController();
+    if (!from || !Number.isInteger(index) || index < 0) { return; }
+    const transcriptMessages = from.transcriptMessages();
+    const adjustedIndex = Math.min(index, transcriptMessages.length - 1);
+    if (adjustedIndex < 0) { return; }
+    const original = transcriptMessages[adjustedIndex];
+    if (!original || original.role !== "user") { return; }
+    void from.handleMessage({ type: "send", text: original.text, mode: "send" } as WebviewToHost);
+}
+
+/**
  * Starts a fresh session on the SAME backend, seeded only with the visible
  * conversation up to the chosen message. This is the Symposium equivalent
  * of VS Code chat's "restart from here": the old dialogue remains intact,

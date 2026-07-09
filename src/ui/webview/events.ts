@@ -1,5 +1,5 @@
 // event case body extracted from dispatch.ts. Mechanical move; no behaviour change.
-import { fillToolResult, renderTool } from "./tools";
+import { fillToolResult, renderTool, renderApprovalRequest } from "./tools";
 import { append, endStream, renderError, renderStatusNotice, streamDelta, streamThinkingDelta } from "./messages";
 import { bindWorkingSet } from "./panels";
 import { renderStatusbar, setLastTurn, setLastUsage, setSessionCostUsd, sessionCostUsd } from "./statusbar";
@@ -19,6 +19,7 @@ export function applyEvent(ev: any): void {
     else if (ev.kind === "tool-start") { endStream(); renderTool(ev.toolName, ev.detail || "", { toolId: ev.toolId, input: ev.input, added: ev.added, removed: ev.removed, todos: ev.todos, path: ev.path }); }
     else if (ev.kind === "tool-output") fillToolResult(ev.toolId, ev.text);
     else if (ev.kind === "tool-end") fillToolResult(ev.toolId, ev.result, true);
+    else if (ev.kind === "approval-request") renderApprovalRequest(ev.toolId, ev.toolName, ev.detail, ev.tier);
     else if (ev.kind === "usage") { setLastUsage(ev); renderStatusbar(); }
     else if (ev.kind === "error") {
         // The composer's send/stop button reflects ONLY the agent's

@@ -97,6 +97,7 @@ export function openaiConfig(context: vscode.ExtensionContext): OpenAIAdapterCon
         maxHistoryMessages: config.get<number>("maxHistoryMessages", 40),
         shellExecution: config.get<ShellExecutionMode>("shellExecution", "silent"),
         timeGapNotice: config.get<string>("timeGapNotice", "5m"),
+        permissionMode: config.get<string>("permissionMode", "admin"),
         log: symposiumLog,
     };
 }
@@ -181,6 +182,7 @@ export function buildCustomAdapters(context: vscode.ExtensionContext, defs: Cust
                 maxHistoryMessages: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxHistoryMessages", 40),
                 shellExecution: vscode.workspace.getConfiguration("symposium.openai").get<ShellExecutionMode>("shellExecution", "silent"),
                 timeGapNotice: vscode.workspace.getConfiguration("symposium.openai").get<string>("timeGapNotice", "5m"),
+                permissionMode: vscode.workspace.getConfiguration("symposium.openai").get<string>("permissionMode", "admin"),
                 log: symposiumLog,
             };
         }));

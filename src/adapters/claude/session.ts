@@ -26,6 +26,26 @@ export interface ClaudeAdapterConfig {
 }
 
 /**
+ * Maps the unified permission mode to Claude Code CLI's own native
+ * --permission-mode flag. admin/plan reuse a real native mode 1:1 (safe:
+ * neither one ever asks the CLI to prompt interactively). manager/user have
+ * no safe native equivalent — Claude's own "acceptEdits"/"default" modes
+ * expect to ask over stdin, which Symposium spawns headlessly and never
+ * answers, so they'd hang on the first gated tool call. Until Claude's hook
+ * system is wired up to reimplement that gate ourselves (matching what
+ * turnRunner.ts already does for the openai adapter), manager/user clamp to
+ * bypassPermissions and the caller shows a one-time notice explaining why.
+ */
+function mapUnifiedToClaudeFlag(mode: string): { flag: string; unenforced: boolean } {
+    switch (mode) {
+        case "admin": return { flag: "bypassPermissions", unenforced: false };
+        case "plan": return { flag: "plan", unenforced: false };
+        case "manager": case "user": return { flag: "bypassPermissions", unenforced: true };
+        default: return { flag: mode, unenforced: false }; // legacy stored value (acceptEdits/bypassPermissions/plan)
+    }
+}
+
+/**
  * Drives the Claude Code CLI through its bidirectional JSONL protocol:
  * `claude -p --input-format stream-json --output-format stream-json`.
  *
@@ -41,6 +61,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
     private streamedText = false;     // got text_delta this turn (skip full block)
     private streamedThinking = false; // got thinking_delta this turn (skip full block)
     private warnedRootBypass = false; // emitted the root+bypassPermissions notice once
+    private warnedUnenforcedMode = false; // emitted the manager/user "not yet enforced" notice once
     private cancelled = false;        // cancel() was called (steer) — suppress exit error
     private spawnedPermission = "";   // permission mode the live child was spawned with
 
@@ -96,7 +117,13 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
         }
         let permission = this.options.permission || this.config.permissionMode;
         if (!permission || permission === "default") {
-            permission = "bypassPermissions";
+            permission = "admin";
+        }
+        const mapped = mapUnifiedToClaudeFlag(permission);
+        permission = mapped.flag;
+        if (mapped.unenforced && !this.warnedUnenforcedMode) {
+            this.warnedUnenforcedMode = true;
+            this.emit("event", { kind: "status-notice", text: "Manager/user approval enforcement isn't implemented yet for the Claude CLI — this session is running with full permissions (admin) until that's built. The inline approval flow is live today for the Sufficit AI / OpenAI-compatible backend." });
         }
         this.spawnedPermission = permission;   // remember so send() can detect a live picker change
         // Claude refuses bypassPermissions (= --dangerously-skip-permissions) when
@@ -284,7 +311,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
         // When it changes, kill the live child and let ensureStarted() respawn with
         // --resume (the session id) so the new mode takes effect on THIS next message
         // while the conversation context is preserved.
-        const desired = this.options.permission || this.config.permissionMode;
+        const desired = mapUnifiedToClaudeFlag(this.options.permission || this.config.permissionMode || "admin").flag;
         if (this.child && desired !== this.spawnedPermission) {
             this.config.log?.(`[claude] permission ${this.spawnedPermission} -> ${desired}; respawning with --resume`);
             this.child.kill();

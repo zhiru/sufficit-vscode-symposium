@@ -116,5 +116,7 @@ export interface OpenAIAdapterConfig {
      * or exceeds this threshold. Default "5m".
      */
     timeGapNotice?: string;
+    /** Unified permission mode default: "admin" (default) | "manager" | "user" | "plan". */
+    permissionMode?: string;
     log?: (message: string) => void;
 }

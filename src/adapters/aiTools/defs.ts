@@ -150,11 +150,12 @@ const HUB_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "task_complete",
-            description: "Mark a session task (by its memory id) as completed. WORKFLOW: (1) Agent-created tasks (default): call IMMEDIATELY after finishing - don't wait. (2) User-requested tasks: present justification why task is complete and WAIT for user confirmation before calling this. The task drops from pending Tasks panel. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
+            description: "Mark a session task as completed, by its exact id — NEVER by title or a text description. REQUIRED: id (a UUID; copy it verbatim from the '→ CURRENT (id=...)' line in your task reminder, or from list_tasks — do not guess or omit it). Optional: summary, a short note on what you did, saved with the completion. WORKFLOW: (1) Agent-created tasks (default): call IMMEDIATELY after finishing - don't wait. (2) User-requested tasks: present justification why task is complete and WAIT for user confirmation before calling this. The task drops from pending Tasks panel. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
             parameters: {
                 type: "object",
                 properties: {
-                    id: { type: "string", description: "The task observation id (from list_tasks / memory)." },
+                    id: { type: "string", description: "REQUIRED. The exact task observation id (UUID) — from the '→ CURRENT (id=...)' reminder or list_tasks. Not the task's title." },
+                    summary: { type: "string", description: "Optional short note on what you did, saved onto the task." },
                 },
                 required: ["id"],
             },
@@ -164,12 +165,13 @@ const HUB_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "TaskUpdate",
-            description: "Mark a session task as completed. Alias for task_complete, compatible with Claude Code naming. Pass the task id and done=true. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
+            description: "Mark a session task as completed, by its exact id — NEVER by title or a text description. Alias for task_complete, compatible with Claude Code naming. REQUIRED: id (a UUID; copy it verbatim from the '→ CURRENT (id=...)' line in your task reminder, or from list_tasks — do not guess or omit it), done=true. Optional: summary, a short note on what you did. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
             parameters: {
                 type: "object",
                 properties: {
-                    id: { type: "string", description: "The task observation id (from TaskCreate / list_tasks / memory)." },
+                    id: { type: "string", description: "REQUIRED. The exact task observation id (UUID) — from the '→ CURRENT (id=...)' reminder or list_tasks/TaskCreate. Not the task's title." },
                     done: { type: "boolean", description: "Set true to mark as completed. Default true." },
+                    summary: { type: "string", description: "Optional short note on what you did, saved onto the task." },
                 },
                 required: ["id"],
             },

@@ -45,8 +45,19 @@ const TERMINAL_MATCH = /terminal|task|test|exec|browser|playwright|navigate/i;
 // have first-class Symposium equivalents (Edit/write_file, Grep, fetch_url).
 const DEFAULT_TOOL_BLOCKLIST = /copilot_memory|^memory$|_memory|memory_|read[_-]?file|write[_-]?file|list[_-]?dir|find[_-]?file|search[_-]?file|grep|glob|workspace[_-]?symbol|text[_-]?search|find[_-]?text|view[_-]?image|read[_-]?image|copilot_\w*image|switch[_-]?agent|sub[_-]?agent|new[_-]?workspace|create[_-]?(file|directory|folder|workspace)|edit[_-]?file|insert[_-]?edit|apply[_-]?patch|replace[_-]?string|(?:^|[_-])usages|get[_-]?errors|copilot_fetch/i;
 
+// Exact names of Symposium's own hub tools (aiTools/defs.ts). "task" is inside
+// TERMINAL_MATCH (for runTask/tasks.json), so any other extension's LM tool
+// that happens to share one of these exact names — e.g. a built-in
+// todo/task-tracking tool — would otherwise get bridged and silently collide.
+// mergeToolDefinitions() only prefixes SAME-NAME/DIFFERENT-DESCRIPTION
+// collisions rather than blocking them, so the model can end up calling the
+// bridged impostor (returns plain text, never touches the session task list)
+// instead of Symposium's own task_complete/TaskUpdate — exact-match blocked
+// here so ours is the only tool that can ever own these names.
+const SYMPOSIUM_OWN_TOOL_NAMES = /^(add_task|taskcreate|list_tasks|task_complete|taskupdate|add_guardrail|clear_guardrails)$/i;
+
 function isBlocked(name: string): boolean {
-    if (DEFAULT_TOOL_BLOCKLIST.test(name)) { return true; }
+    if (DEFAULT_TOOL_BLOCKLIST.test(name) || SYMPOSIUM_OWN_TOOL_NAMES.test(name)) { return true; }
     const extra = vscode.workspace
         .getConfiguration("symposium")
         .get<string[]>("lmToolsBlocklist", []);

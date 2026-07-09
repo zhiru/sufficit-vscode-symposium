@@ -139,6 +139,15 @@ export async function consumeStream(
                     }
                     continue;
                 }
+                // Mid-stream error (chat/completions): once the gateway has already
+                // sent the 200 + SSE headers, an upstream failure can no longer change
+                // the HTTP status — it arrives as its own `data:` line carrying the
+                // real OpenAI-shaped error envelope instead. Without this the failure
+                // was indistinguishable from a normal, silent "stop" finish.
+                if (json?.error) {
+                    cb.onError(String(json.error?.message ?? "stream error"));
+                    continue;
+                }
                 // Final usage chunk (stream_options.include_usage): choices is
                 // empty and `usage` carries the turn's token totals.
                 if (json?.usage) {

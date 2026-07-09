@@ -6,6 +6,7 @@ import { builtinCommands } from "../builtins";
 import { resolveExecutable } from "../exec";
 import { removeMatchingFiles, scrubJsonlLines } from "../scrub";
 import { findNamedDirs, loadSlashCommands, mergeCommands } from "../skills";
+import { PERMISSION_MODES } from "../aiTools";
 import {
     AgentAdapter,
     AgentSession,
@@ -159,13 +160,18 @@ export class ClaudeAdapter implements AgentAdapter {
         return ["default", "low", "medium", "high", "xhigh", "max"];
     }
 
+    // Unified modes shared with every adapter's picker. admin/plan map 1:1 to
+    // real native --permission-mode flags (session.ts's mapUnifiedToClaudeFlag);
+    // manager/user aren't enforced yet for this CLI (would need Claude's hook
+    // system to reimplement the gate ourselves, matching the openai adapter) —
+    // selecting them clamps to admin under the hood with a one-time notice.
     permissionModes(): string[] {
-        return ["acceptEdits", "bypassPermissions", "plan"];
+        return PERMISSION_MODES;
     }
 
     defaultPermission(): string {
         const configured = this.getConfig().permissionMode;
-        return configured && configured !== "default" ? configured : "bypassPermissions";
+        return configured && configured !== "default" ? configured : "admin";
     }
 
     async commands(): Promise<SlashCommand[]> {

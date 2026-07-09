@@ -193,6 +193,7 @@ export class ChatController {
             emitQueue: () => this.emitQueue(),
             dispatch: (queued) => { void this.dispatch(queued); },
             onSend: (pending, mode) => this.onSend(pending, mode),
+            resolveApproval: (toolId, approved) => this.session?.resolveApproval?.(toolId, approved),
         });
     }
 

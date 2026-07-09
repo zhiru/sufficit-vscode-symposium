@@ -31,8 +31,10 @@ export function renderError(message) {
         b.appendChild(document.createTextNode(isTimeoutError ? " Retry" : " Edit & retry"));
         b.addEventListener("click", () => {
             if (isTimeoutError) {
-                // Retry without edit: just restart from the last user message
-                vscode.postMessage({ type: "restart-from-message", index: lastUser.idx });
+                // Plain retry: resend the same text to the CURRENT session,
+                // no branching — restart-from-message always forks a new
+                // session, which is wrong for "the request just timed out".
+                vscode.postMessage({ type: "retry-last-message", index: lastUser.idx });
             } else {
                 // Edit & retry: load into composer
                 beginEdit(lastUser.idx, lastUser.text);
@@ -299,7 +301,7 @@ export function endStream() {
 // - renderThinkBlock(): cria um novo thinking block element
 // - streamThinkingDelta(): anexa conteúdo ao thinking block atual
 // - endThinkingStream(): finaliza e limpa o estado do thinking block
-let streamThink = null, streamThinkBody = null, streamThinkLen = null, streamThinkText = "";
+let streamThink = null, streamThinkBody = null, streamThinkLen = null, streamThinkText = "", streamThinkDet = null;
 const THINK_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5A5.5 5.5 0 1 0 13.5 7c0-.67-.12-1.32-.35-1.92A2 2 0 0 1 11 6.5a2 2 0 0 1-2-2c0-.31.07-.6.19-.86A5.5 5.5 0 0 0 8 1.5ZM1 7a7 7 0 1 1 7.96 6.94 1.5 1.5 0 1 1-1.33-2.67A7 7 0 0 1 1 7Z"/></svg>';
 /**
  * Renderiza um novo thinking block element e o anexa ao chat log.
@@ -320,6 +322,7 @@ export function renderThinkBlock(text) {
     endToolGroup();
     const wrap = document.createElement("div"); wrap.className = "msg thinkWrap";
     const det = document.createElement("details"); det.className = "thinkBlock";
+    det.open = true; // expanded while actively thinking; auto-collapses shortly after it ends
     const sum = document.createElement("summary"); sum.className = "thinkSum";
     const ic = document.createElement("span"); ic.innerHTML = THINK_ICON;
     const lbl = document.createElement("span"); lbl.textContent = "Pensando…";
@@ -329,7 +332,7 @@ export function renderThinkBlock(text) {
     const body = document.createElement("div"); body.className = "thinkBody"; body.textContent = text;
     det.append(sum, body); wrap.append(det);
     log.appendChild(wrap); refreshEmpty(); autoScroll(stick);
-    return { wrap, body, len };
+    return { wrap, body, len, det };
 }
 /**
  * Stream thinking block deltas - appends text to the current thinking block.
@@ -344,10 +347,10 @@ export function streamThinkingDelta(text) {
     // Se estamos continuando um thinking block existente e recebemos texto vazio,
     // isso pode indicar o início de um novo thinking block separado
     if (streamThink && text.trim() === "" && streamThinkText.length > 0) {
-        // Finaliza o thinking block atual para permitir criar um novo
-        streamThink = null; streamThinkBody = null; streamThinkLen = null; streamThinkText = "";
+        // Finaliza o thinking block atual (agenda o auto-collapse) para permitir criar um novo
+        endThinkingStream();
     }
-    
+
     // Não cria thinking blocks vazios - aguarda conteúdo real
     if (!streamThink) {
         // Só cria o thinking block se tiver conteúdo não-vazio
@@ -356,8 +359,8 @@ export function streamThinkingDelta(text) {
         }
         const rendered = renderThinkBlock(text);
         if (!rendered) { return; }
-        const { wrap, body, len } = rendered;
-        streamThink = wrap; streamThinkBody = body; streamThinkLen = len; streamThinkText = "";
+        const { wrap, body, len, det } = rendered;
+        streamThink = wrap; streamThinkBody = body; streamThinkLen = len; streamThinkDet = det; streamThinkText = "";
     }
     streamThinkText += text;
     streamThinkBody.textContent = streamThinkText;
@@ -368,7 +371,16 @@ export function streamThinkingDelta(text) {
  * Finaliza o stream de thinking atual e limpa o estado de thinking block.
  * Chamado quando o thinking block é encerrado ou quando um novo thinking block deve começar.
  */
-export function endThinkingStream() { streamThink = null; streamThinkBody = null; streamThinkLen = null; streamThinkText = ""; }
+export function endThinkingStream() {
+    // Auto-collapse the block that just finished, 3s after it ends — open
+    // while actively thinking gives visibility into the model's reasoning;
+    // collapsing shortly after keeps the transcript scannable once it's done.
+    if (streamThinkDet) {
+        const det = streamThinkDet;
+        setTimeout(() => { det.open = false; }, 3000);
+    }
+    streamThink = null; streamThinkBody = null; streamThinkLen = null; streamThinkText = ""; streamThinkDet = null;
+}
 
 
 

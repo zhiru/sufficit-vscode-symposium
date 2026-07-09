@@ -36,6 +36,13 @@ export class SurfaceSync {
     // Session id the caches belong to; on change the optimistic cache is dropped
     // so items from a previous session never leak into the panel.
     private lastSessionId = "";
+    // First-seen time per cached task id, so a missing-from-fetch item is only
+    // kept for a short grace window (index lag), not forever — otherwise a
+    // genuinely expired/cleared task becomes a permanent ghost in the panel
+    // (list_tasks reads the hub fresh and correctly shows it gone; the panel
+    // must eventually agree, not just optimistically diverge).
+    private taskFirstSeenAtMs = new Map<string, number>();
+    private static readonly TASK_GHOST_GRACE_MS = 5000;
 
     constructor(private readonly d: SurfaceSyncDeps) { }
 
@@ -52,6 +59,7 @@ export class SurfaceSync {
             this.lastSessionId = sessionId;
             this.lastTasks = [];
             this.lastGuardrails = [];
+            this.taskFirstSeenAtMs.clear();
         }
         const mirror = this.taskMirrorFile();
         let items: TaskItem[] = [];
@@ -72,11 +80,26 @@ export class SurfaceSync {
         }
         // Merge rather than overwrite: the search endpoint is async-indexed, so a
         // task added moments ago (already shown optimistically by bumpTasksByIds)
-        // can be briefly missing from `items`. Tasks are never hard-deleted here
-        // (only tagged done), so treating a missing id as "not indexed yet" rather
-        // than "removed" avoids the panel flashing a just-added task away.
+        // can be briefly missing from `items`. A missing id is treated as
+        // "not indexed yet" only within a short grace window from when it was
+        // first seen — past that, the fresh fetch is trusted as authoritative
+        // (the task really is gone: expired, cleared, or never existed here).
+        const now = Date.now();
         const have = new Set(items.map((t) => t.id));
-        const merged = [...items, ...this.lastTasks.filter((t) => !have.has(t.id))];
+        for (const t of items) {
+            if (!this.taskFirstSeenAtMs.has(t.id)) { this.taskFirstSeenAtMs.set(t.id, now); }
+        }
+        const stillInGrace = this.lastTasks.filter((t) => {
+            if (have.has(t.id)) { return false; }
+            const firstSeen = this.taskFirstSeenAtMs.get(t.id);
+            return firstSeen != null && (now - firstSeen) < SurfaceSync.TASK_GHOST_GRACE_MS;
+        });
+        const merged = [...items, ...stillInGrace];
+        // Drop bookkeeping for ids no longer present anywhere (expired grace or truly gone).
+        const keepIds = new Set(merged.map((t) => t.id));
+        for (const id of Array.from(this.taskFirstSeenAtMs.keys())) {
+            if (!keepIds.has(id)) { this.taskFirstSeenAtMs.delete(id); }
+        }
         this.lastTasks = merged;
         this.d.post({ type: "tasks", items: merged, project: sessionId });
     }
@@ -107,6 +130,10 @@ export class SurfaceSync {
             // Merge: prepend new ones not already present, keep order stable.
             const have = new Set(this.lastTasks.map((t) => t.id));
             const merged = [...created.filter((t) => !have.has(t.id)), ...this.lastTasks];
+            const now = Date.now();
+            for (const t of created) {
+                if (!this.taskFirstSeenAtMs.has(t.id)) { this.taskFirstSeenAtMs.set(t.id, now); }
+            }
             this.lastTasks = merged;
             const sessionId = this.d.getController()?.sessionId ?? "";
             this.d.post({ type: "tasks", items: merged, project: sessionId });

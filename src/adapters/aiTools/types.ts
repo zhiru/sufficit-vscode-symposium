@@ -13,7 +13,13 @@ export interface ToolContext {
     hub: HubClient;
     /** Session working directory — base for shell/fs tools and relative paths. */
     cwd: string;
-    /** Permission mode; "plan" forbids mutating/executing tools (read-only). */
+    /**
+     * Unified permission mode: "admin" (no gate) | "manager" (destructive tools
+     * need inline approval — see turnRunner.ts's requestApproval) | "user"
+     * (every write/destructive tool needs approval) | "plan" (read-only here;
+     * write_file/edit_file/shell/set_workspace_bootstrap are hard-blocked
+     * except creating a new *.md document).
+     */
     permission?: string;
     /** Symposium chat session id — tasks saved to memory are bound to it. */
     sessionId?: string;

@@ -262,6 +262,12 @@ export class SurfaceMessages {
                     }
                     return;
                 }
+                case "retry-last-message": {
+                    if (typeof message.index === "number") {
+                        this.d.dialogues.retryLastMessage(message.index);
+                    }
+                    return;
+                }
                 case "open-settings": {
                     await vscode.commands.executeCommand("symposium.openSettings");
                     return;

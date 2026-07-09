@@ -125,6 +125,10 @@ export async function runLocalTool(name: string, args: Record<string, unknown>, 
             : { key: workspaceKey(ctx.cwd), text: "", note: "no bootstrap set for this workspace" });
     }
     if (name === "set_workspace_bootstrap") {
+        // Gated in plan mode like any other write: this persists internal app
+        // state (~/.symposium), not a planning document in the user's repo, so
+        // it does NOT get the write_file *.md exception below.
+        if (planMode) { return JSON.stringify({ error: "plan mode: writing files is disabled" }); }
         const text = String(args.text ?? "").trim();
         if (!text) { return JSON.stringify({ error: "text is required" }); }
         ensureScaffold();
@@ -202,7 +206,11 @@ export async function runLocalTool(name: string, args: Record<string, unknown>, 
         return JSON.stringify({ path: p, content: data.slice(0, max), truncated: data.length > max });
     }
     if (name === "write_file") {
-        if (planMode) { return JSON.stringify({ error: "plan mode: writing files is disabled" }); }
+        // Plan mode's one exception: authoring a new *.md planning/notes
+        // document is still "planning", not "doing" — everything else stays blocked.
+        if (planMode && !/\.md$/i.test(String(args.path ?? ""))) {
+            return JSON.stringify({ error: "plan mode: writing files is disabled (except creating new *.md planning documents)" });
+        }
         const p = resolvePath(ctx.cwd, String(args.path ?? ""));
         fs.mkdirSync(path.dirname(p), { recursive: true });
         fs.writeFileSync(p, String(args.content ?? ""), "utf8");

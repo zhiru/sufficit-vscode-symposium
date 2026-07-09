@@ -11,6 +11,7 @@ export interface ControllerMessageContext {
     emitQueue(): void;
     dispatch(message: PendingMessage): void;
     onSend(message: PendingMessage, mode: SendMode): void;
+    resolveApproval(toolId: string, approved: boolean): void;
 }
 
 /** Handles webview-only commands for a live ChatController. */
@@ -49,6 +50,9 @@ export async function handleControllerMessage(message: WebviewToHost, ctx: Contr
             }
             return true;
         }
+        case "approval-response":
+            ctx.resolveApproval(message.toolId, message.approved);
+            return true;
         case "pick-attachments": {
             const picked = await vscode.window.showOpenDialog({
                 canSelectMany: true,

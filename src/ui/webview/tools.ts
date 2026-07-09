@@ -193,7 +193,7 @@ export function renderTool(name, detail, opts) {
     toolGroupBody().appendChild(wrap);
     bumpToolGroup(opts.added, opts.removed);
     autoScroll(stick);
-    if (opts.toolId) { toolRows[opts.toolId] = { showResult }; }
+    if (opts.toolId) { toolRows[opts.toolId] = { showResult, wrap, body }; }
     return wrap;
 }
 export function fillToolResult(toolId, result, final) {
@@ -205,3 +205,37 @@ export function fillToolResult(toolId, result, final) {
 }
 
 export function resetToolRows() { for (const k in toolRows) { delete toolRows[k]; } }
+
+// Inline permission gate (admin/manager/user modes): the turn is paused on
+// this exact toolId until Accept/Reject is clicked, so the prompt forces the
+// row open (no need to hunt for it collapsed) and disables itself once answered.
+export function renderApprovalRequest(toolId, toolName, detail, tier) {
+    const rec = toolId && toolRows[toolId];
+    if (!rec) { return; }
+    rec.wrap.classList.add("open");
+    const bar = document.createElement("div");
+    bar.className = "toolApproval" + (tier === "destructive" ? " destructive" : "");
+    const label = document.createElement("span");
+    label.className = "toolApprovalLabel";
+    label.textContent = (tier === "destructive" ? "Destructive action — " : "Write action — ")
+        + prettyToolName(toolName) + (detail ? ": " + detail : "") + ". Allow it?";
+    const actions = document.createElement("span");
+    actions.className = "toolApprovalActions";
+    const respond = (approved) => {
+        bar.classList.add("answered");
+        label.textContent = approved ? "Approved" : "Denied";
+        actions.textContent = "";
+        vscode.postMessage({ type: "approval-response", toolId, approved });
+    };
+    const accept = document.createElement("button");
+    accept.className = "toolApprovalBtn accept"; accept.textContent = "Accept";
+    accept.addEventListener("click", (e) => { e.stopPropagation(); respond(true); });
+    const reject = document.createElement("button");
+    reject.className = "toolApprovalBtn reject"; reject.textContent = "Reject";
+    reject.addEventListener("click", (e) => { e.stopPropagation(); respond(false); });
+    actions.appendChild(accept); actions.appendChild(reject);
+    bar.appendChild(label); bar.appendChild(actions);
+    rec.body.appendChild(bar);
+    rec.approvalBar = bar;
+    autoScroll(nearBottom());
+}

@@ -6,6 +6,7 @@ import { builtinCommands } from "../builtins";
 import { resolveExecutable } from "../exec";
 import { scrubJsonlLines, scrubSqliteRows } from "../scrub";
 import { findNamedDirs, loadSlashCommands, mergeCommands } from "../skills";
+import { PERMISSION_MODES } from "../aiTools";
 import {
     AgentAdapter,
     AgentSession,
@@ -220,13 +221,17 @@ export class CodexAdapter implements AgentAdapter {
         return ["default", "minimal", "low", "medium", "high"];
     }
 
+    // Unified modes shared with every adapter's picker. admin/plan map 1:1 to
+    // real native approval_policy+sandbox flags (session.ts's
+    // mapUnifiedToCodexFlags); manager/user aren't enforced yet for this CLI —
+    // selecting them clamps to admin's flags with a one-time notice.
     permissionModes(): string[] {
-        return ["untrusted", "on-failure", "on-request", "never"];
+        return PERMISSION_MODES;
     }
 
     defaultPermission(): string {
         const configured = this.getConfig().approvalPolicy;
-        return configured && configured !== "default" ? configured : "never";
+        return configured && configured !== "default" ? configured : "admin";
     }
 
     async commands(): Promise<SlashCommand[]> {

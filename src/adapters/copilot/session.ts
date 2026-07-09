@@ -44,6 +44,7 @@ export class CopilotSession extends EventEmitter implements AgentSession {
     sessionId: string | undefined;
     private current: ReturnType<typeof spawn> | undefined;
     private disposed = false;
+    private warnedUnenforcedMode = false; // emitted the "no permission enforcement" notice once
 
     constructor(
         private readonly config: CopilotAdapterConfig,
@@ -57,6 +58,14 @@ export class CopilotSession extends EventEmitter implements AgentSession {
         // Per-turn flag: one session.error must not suppress fallback errors
         // from later sends in the same session.
         this.reportedError = false;
+        // The GitHub Copilot CLI has no approval/sandbox flag Symposium can
+        // hook into, so manager/user/plan aren't enforced here — just notice
+        // once so picking a stricter mode doesn't silently do nothing.
+        const mode = this.options.permission;
+        if (mode && mode !== "admin" && mode !== "default" && !this.warnedUnenforcedMode) {
+            this.warnedUnenforcedMode = true;
+            this.emit("event", { kind: "status-notice", text: `Permission mode "${mode}" isn't enforced for the Copilot CLI yet (no approval/sandbox flag to hook into) — this session runs with full permissions regardless of the picker.` });
+        }
         const args = ["-p", text, "--output-format", "json"];
         const model = this.options.model || this.config.model;
         if (model) {

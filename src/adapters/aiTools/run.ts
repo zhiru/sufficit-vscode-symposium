@@ -191,14 +191,20 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
             case "TaskUpdate":
             case "task_complete": {
                 const id = String(args.id ?? "");
-                if (!id) { return JSON.stringify({ error: "id is required" }); }
+                if (!id) {
+                    return JSON.stringify({
+                        error: "id is required — this must be the exact task id (a UUID), not a title or summary. " +
+                            "Use the id from the '→ CURRENT (id=...)' line in your task reminder, or call list_tasks to get it.",
+                    });
+                }
                 if (!hub.configured()) { return JSON.stringify({ error: "memory hub not configured" }); }
                 // TaskUpdate uses done param, task_complete is implicit done=true
                 const isDone = name === "TaskUpdate" ? (args.done !== false) : true;
                 if (!isDone) {
                     return JSON.stringify({ ok: true, message: "task unchanged (done=false)" });
                 }
-                const ok = await markTaskDone(hub, id);
+                const completionSummary = typeof args.summary === "string" ? args.summary : undefined;
+                const ok = await markTaskDone(hub, id, completionSummary);
                 if (!ok) { return JSON.stringify({ error: "save failed — check hub configuration" }); }
                 // Return the remaining pending tasks (current + up-next) as the
                 // success response instead of a silent "" — the agent gets its

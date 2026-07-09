@@ -6,6 +6,7 @@ import { builtinCommands } from "../builtins";
 import { resolveExecutable } from "../exec";
 import { findNamedDirs, loadSlashCommands, mergeCommands } from "../skills";
 import { TODO_INJECTION } from "../todos";
+import { PERMISSION_MODES } from "../aiTools";
 import {
     AgentAdapter,
     AgentSession,
@@ -149,6 +150,18 @@ export class CopilotAdapter implements AgentAdapter {
     // copilot --reasoning-effort <level> (1.0.61). "default" = omit.
     reasoningLevels(): string[] {
         return ["default", "low", "medium", "high", "xhigh"];
+    }
+
+    // Unified modes shown for picker consistency with every other adapter.
+    // The GitHub Copilot CLI exposes no approval/sandbox flag Symposium can
+    // hook into, so none of these are actually enforced here yet — picking
+    // anything but admin only shows a one-time notice (session.ts).
+    permissionModes(): string[] {
+        return PERMISSION_MODES;
+    }
+
+    defaultPermission(): string {
+        return "admin";
     }
 
     async commands(): Promise<SlashCommand[]> {

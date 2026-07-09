@@ -123,9 +123,15 @@ import { applyStaticI18n } from "./staticI18n";
         list_dir: "List directory", read_session: "Re-read session history",
     };
     const PERM_DESC = {
+        // Unified modes (same vocabulary/semantics on every adapter's picker).
+        "admin": "No approval needed for any activity (default)",
+        "manager": "Approval needed only for destructive actions",
+        "user": "Approval needed for every write action",
+        "plan": "Plan only; new *.md docs allowed, no other writes or commands",
+        // Legacy per-adapter vocabulary, still shown for adapters not yet on
+        // the unified 4 modes (claude/codex native flags where reused as-is).
         "acceptEdits": "Auto-accept file edits; ask before broader actions",
         "bypassPermissions": "Run tools and edits without prompts",
-        "plan": "Plan only; do not edit files or run commands",
         "untrusted": "Read-only until explicitly approved",
         "on-request": "Ask before actions that need approval",
         "on-failure": "Run normally; ask only after a failure",

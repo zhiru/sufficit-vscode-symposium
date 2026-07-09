@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.708.10",
+  "version": "2026.708.17",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -293,6 +293,23 @@
           "default": "5m",
           "description": "Tell the model when it's resuming after a large real-world gap (e.g. you're back a day later) so it doesn't assume the conversation is continuous. A compact note (e.g. '~14h since your last message') is injected only when the gap meets this threshold."
         },
+        "symposium.openai.permissionMode": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "manager",
+            "user",
+            "plan"
+          ],
+          "enumDescriptions": [
+            "No approval needed for any activity (default).",
+            "Approval needed only for destructive actions (e.g. shell commands); writes run immediately.",
+            "Approval needed for every write action, not just destructive ones.",
+            "Read-only planning — the only write allowed is creating a new *.md document."
+          ],
+          "default": "admin",
+          "description": "Default permission mode for this session's composer (same 4 modes shared by every Symposium adapter; changeable per session from the composer's permission picker)."
+        },
         "symposium.openai.shellExecution": {
           "type": "string",
           "enum": [
@@ -537,13 +554,25 @@
         "symposium.claude.permissionMode": {
           "type": "string",
           "enum": [
-            "default",
+            "admin",
+            "manager",
+            "user",
+            "plan",
             "acceptEdits",
             "bypassPermissions",
-            "plan"
+            "default"
           ],
-          "default": "bypassPermissions",
-          "description": "Permission mode passed to claude --permission-mode. Symposium defaults to the most permissive mode."
+          "enumDescriptions": [
+            "No approval needed for any activity (default). Maps to claude --permission-mode bypassPermissions.",
+            "Not yet enforced for the Claude CLI — runs as admin until Claude's hook system is wired up for this.",
+            "Not yet enforced for the Claude CLI — runs as admin until Claude's hook system is wired up for this.",
+            "Read-only planning. Maps to claude --permission-mode plan.",
+            "Legacy value: Claude's own acceptEdits flag, passed through as-is.",
+            "Legacy value: Claude's own bypassPermissions flag, passed through as-is.",
+            "Legacy value: claude's built-in default (interactive prompts) — not usable headlessly."
+          ],
+          "default": "admin",
+          "description": "Default permission mode for this session's composer (same 4 modes shared by every Symposium adapter; changeable per session from the composer's permission picker)."
         },
         "symposium.claude.env": {
           "type": "object",
@@ -589,14 +618,29 @@
         "symposium.codex.approvalPolicy": {
           "type": "string",
           "enum": [
-            "default",
+            "admin",
+            "manager",
+            "user",
+            "plan",
             "untrusted",
             "on-failure",
             "on-request",
-            "never"
+            "never",
+            "default"
           ],
-          "default": "never",
-          "description": "Default approval policy for Codex terminal sessions. Symposium defaults to the most permissive mode: never ask for approval."
+          "enumDescriptions": [
+            "No approval needed for any activity (default). Runs with --sandbox danger-full-access.",
+            "Not yet enforced for the Codex CLI — runs as admin until Codex's approval protocol is wired up for this.",
+            "Not yet enforced for the Codex CLI — runs as admin until Codex's approval protocol is wired up for this.",
+            "Read-only planning. Runs with --sandbox read-only.",
+            "Legacy value: Codex's own untrusted approval_policy, passed through as-is (uses symposium.codex.sandboxMode).",
+            "Legacy value: Codex's own on-failure approval_policy, passed through as-is (uses symposium.codex.sandboxMode).",
+            "Legacy value: Codex's own on-request approval_policy, passed through as-is (uses symposium.codex.sandboxMode).",
+            "Legacy value: Codex's own never approval_policy, passed through as-is (uses symposium.codex.sandboxMode).",
+            "Legacy alias for admin."
+          ],
+          "default": "admin",
+          "description": "Default permission mode for this session's composer (same 4 modes shared by every Symposium adapter; changeable per session from the composer's permission picker)."
         },
         "symposium.codex.sandboxMode": {
           "type": "string",
@@ -606,7 +650,7 @@
             "danger-full-access"
           ],
           "default": "workspace-write",
-          "description": "Default sandbox mode for Codex terminal sessions (codex exec --sandbox-mode)."
+          "description": "Sandbox mode for Codex terminal sessions using a legacy approvalPolicy value (untrusted/on-failure/on-request/never). Ignored by the unified admin/manager/user/plan modes, which set their own sandbox."
         },
         "symposium.codex.playwright": {
           "type": "boolean",

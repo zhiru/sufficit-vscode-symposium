@@ -43,7 +43,7 @@ export async function fetchSessionTasks(hub: HubClient, sessionId: string): Prom
 }
 
 /** Sets/clears a task's completed state (DONE_TAG). User- or agent-driven. */
-export async function setTaskDone(hub: HubClient, id: string, done: boolean): Promise<boolean> {
+export async function setTaskDone(hub: HubClient, id: string, done: boolean, completionSummary?: string): Promise<boolean> {
     if (!hub.configured() || !id) { return false; }
     // Direct upsert: save is id-based. Append or remove DONE_TAG without
     // spreading stale API fields back into the payload.
@@ -52,18 +52,22 @@ export async function setTaskDone(hub: HubClient, id: string, done: boolean): Pr
         const existing = obs ? String(obs.tags ?? "") : "";
         const tags = existing.split(",").map((t) => t.trim()).filter(Boolean).filter((t) => t !== DONE_TAG);
         if (done) { tags.push(DONE_TAG); }
-        await hub.save({ id, type: obs?.type || "task-checkpoint", title: obs?.title || "task", summary: obs?.summary || "", tags: tags.join(",") });
+        const baseSummary = obs?.summary || "";
+        const summary = completionSummary?.trim()
+            ? (baseSummary ? `${baseSummary}\n\nCompleted: ${completionSummary.trim()}` : `Completed: ${completionSummary.trim()}`)
+            : baseSummary;
+        await hub.save({ id, type: obs?.type || "task-checkpoint", title: obs?.title || "task", summary, tags: tags.join(",") });
         return true;
     } catch { return false; }
 }
 
 /** Marks a task observation completed by adding the DONE_TAG (idempotent). */
-export async function markTaskDone(hub: HubClient, id: string): Promise<boolean> {
+export async function markTaskDone(hub: HubClient, id: string, completionSummary?: string): Promise<boolean> {
     // Delegate to setTaskDone which preserves existing tags (including the
     // critical symposium-session:xxx tag). A blind upsert with only DONE_TAG
     // wipes the session tag → fetchSessionTasks filter can never find the task
     // again → panel shows stale "pending" forever.
-    return setTaskDone(hub, id, true);
+    return setTaskDone(hub, id, true, completionSummary);
 }
 
 /** Latest PENDING task-checkpoint for a session (falls back to latest pending task, then any). */

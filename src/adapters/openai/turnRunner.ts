@@ -5,6 +5,7 @@ import {
     AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES,
     SUBAGENT_TOOLS, SUBAGENT_TOOLS_RESPONSES, getSubagentHost,
     filterTools, runAiTool, ShellExecutionMode,
+    classifyTool, classifyLmTool, needsApproval,
 } from "../aiTools";
 import { lmToolDefs, lmToolDefsResponses, isLmTool, invokeLmTool } from "../lmTools";
 import * as ledger from "../../ledger";
@@ -55,6 +56,9 @@ export interface TurnRunnerDeps {
     safePersist: () => void;
     led: (role: string, content: unknown, extra?: Record<string, unknown>) => void;
     maybeAutoCompact: () => Promise<void>;
+    /** Inline approval gate (admin/manager/user modes) — resolves once the
+     *  webview answers the matching approval-request. */
+    requestApproval: (toolId: string, toolName: string, detail: string | undefined, tier: "write" | "destructive") => Promise<boolean>;
 }
 
 export class TurnRunner {
@@ -65,6 +69,22 @@ export class TurnRunner {
     /** Aborts the in-flight request (cancel / dispose / steer). */
     cancel(): void {
         this.abort?.abort();
+    }
+
+    /** Runs one tool call (bridged VS Code LM tool or one of Symposium's own). */
+    private async executeTool(isLm: boolean, name: string, args: Record<string, unknown>, toolId: string): Promise<string> {
+        if (isLm) { return invokeLmTool(name, args); }
+        const shellMode = this.d.shellExecutionMode();
+        const progressCbs = {
+            onData: (chunk: string) => this.d.emit({ kind: "tool-output", toolName: name, toolId, text: chunk }),
+            onTerminal: (terminalName: string) => this.d.emit({ kind: "tool-start", toolName: name, detail: `watching in terminal: ${terminalName}`, toolId, terminalName }),
+            onNotify: (message: string) => this.d.emit({ kind: "tool-output", toolName: name, toolId, text: `\n[notify] ${message}\n` }),
+        };
+        return runAiTool(name, args, {
+            hub: this.d.hub, cwd: this.d.options.cwd, permission: this.d.options.permission,
+            sessionId: this.d.sessionId, shellExecution: shellMode, progress: progressCbs,
+            parentBackend: this.d.backend, subagents: getSubagentHost(), abortSignal: this.abort?.signal,
+        });
     }
 
     async run(): Promise<void> {
@@ -365,15 +385,20 @@ export class TurnRunner {
                         toolId: tc.id,
                         input: tc.function.arguments,
                     });
-                    const shellMode = this.d.shellExecutionMode();
-                    const progressCbs = {
-                        onData: (chunk: string) => this.d.emit({ kind: "tool-output", toolName: unprefixedName, toolId: tc.id, text: chunk }),
-                        onTerminal: (terminalName: string) => this.d.emit({ kind: "tool-start", toolName: unprefixedName, detail: `watching in terminal: ${terminalName}`, toolId: tc.id, terminalName }),
-                        onNotify: (message: string) => this.d.emit({ kind: "tool-output", toolName: unprefixedName, toolId: tc.id, text: `\n[notify] ${message}\n` }),
-                    };
-                    const result = isLmTool(unprefixedName)
-                        ? await invokeLmTool(unprefixedName, args)
-                        : await runAiTool(unprefixedName, args, { hub: this.d.hub, cwd: this.d.options.cwd, permission: this.d.options.permission, sessionId: this.d.sessionId, shellExecution: shellMode, progress: progressCbs, parentBackend: this.d.backend, subagents: getSubagentHost(), abortSignal: this.abort?.signal });
+                    // Inline permission gate (admin/manager/user modes): plan mode
+                    // hard-blocks write/destructive tools inside runAiTool itself
+                    // (no prompt needed), so it's excluded from needsApproval().
+                    const isLm = isLmTool(unprefixedName);
+                    const tier = isLm ? classifyLmTool(unprefixedName) : classifyTool(unprefixedName);
+                    let result: string;
+                    if (tier !== "read" && needsApproval(this.d.options.permission, tier)) {
+                        const approved = await this.d.requestApproval(tc.id, unprefixedName, friendlyToolDetail(unprefixedName, args), tier);
+                        result = approved
+                            ? await this.executeTool(isLm, unprefixedName, args, tc.id)
+                            : JSON.stringify({ error: "User denied this action." });
+                    } else {
+                        result = await this.executeTool(isLm, unprefixedName, args, tc.id);
+                    }
                     this.d.emit({ kind: "tool-end", toolName: unprefixedName, toolId: tc.id, result });
                     messages.push({ role: "tool", tool_call_id: tc.id, name: unprefixedName, content: result });
                     // Ledger (lossless): record the tool call + its result so the full

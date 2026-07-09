@@ -185,12 +185,32 @@ rl.on('line', async (line) => {
  * session id arrives in the `thread.started` event. Sessions are stored as
  * rollout-*.jsonl under ~/.codex/sessions/YYYY/MM/DD.
  */
+/**
+ * Maps the unified permission mode to Codex CLI's native approval_policy +
+ * sandbox flags. admin/plan reuse real native flags 1:1 (safe: neither ever
+ * asks Codex to prompt interactively). manager/user have no safe native
+ * equivalent yet — Codex's own "on-request"/"on-failure" policies expect to
+ * prompt over its own protocol, which Symposium doesn't answer here, so they
+ * clamp to admin's flags with a one-time notice (matching the claude adapter).
+ */
+function mapUnifiedToCodexFlags(mode: string, staticSandbox: string): { approvalPolicy: string; sandboxMode: string; unenforced: boolean } {
+    switch (mode) {
+        case "admin": return { approvalPolicy: "never", sandboxMode: "danger-full-access", unenforced: false };
+        case "plan": return { approvalPolicy: "never", sandboxMode: "read-only", unenforced: false };
+        case "manager": case "user": return { approvalPolicy: "never", sandboxMode: "danger-full-access", unenforced: true };
+        // Legacy stored value (untrusted/on-failure/on-request/never): keep the
+        // static sandbox setting unchanged, exactly as before this unification.
+        default: return { approvalPolicy: mode, sandboxMode: staticSandbox, unenforced: false };
+    }
+}
+
 export class CodexSession extends EventEmitter implements AgentSession {
     readonly backend = "codex" as const;
     sessionId: string | undefined;
     private current: ReturnType<typeof spawn> | undefined;
     private disposed = false;
     private reportedError = false;
+    private warnedUnenforcedMode = false; // emitted the manager/user "not yet enforced" notice once
     private vscodeMcpServers: Record<string, { command: string; args: string[] }>;
 
     constructor(
@@ -219,13 +239,17 @@ export class CodexSession extends EventEmitter implements AgentSession {
         if (model) {
             base.push("--model", model);
         }
-        const approvalPolicy = (this.options.permission || this.config.approvalPolicy || "never").replace(/^default$/, "never");
-        if (approvalPolicy && approvalPolicy !== "default") {
-            base.push("-c", `approval_policy="${approvalPolicy}"`);
+        const requestedMode = (this.options.permission || this.config.approvalPolicy || "admin").replace(/^default$/, "admin");
+        const mapped = mapUnifiedToCodexFlags(requestedMode, this.config.sandboxMode);
+        if (mapped.unenforced && !this.warnedUnenforcedMode) {
+            this.warnedUnenforcedMode = true;
+            this.emit("event", { kind: "status-notice", text: "Manager/user approval enforcement isn't implemented yet for the Codex CLI — this session is running with full permissions (admin) until that's built. The inline approval flow is live today for the Sufficit AI / OpenAI-compatible backend." });
         }
-        const sandboxMode = this.config.sandboxMode;
-        if (sandboxMode && sandboxMode !== "default") {
-            base.push("--sandbox", sandboxMode);
+        if (mapped.approvalPolicy && mapped.approvalPolicy !== "default") {
+            base.push("-c", `approval_policy="${mapped.approvalPolicy}"`);
+        }
+        if (mapped.sandboxMode && mapped.sandboxMode !== "default") {
+            base.push("--sandbox", mapped.sandboxMode);
         }
         const reasoning = this.options.reasoning || this.config.reasoning;
         if (reasoning && reasoning !== "default") {

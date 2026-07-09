@@ -90,6 +90,7 @@ export type WebviewToHost =
     | { type: "pick-agent"; backend: string }
     | { type: "install-agent"; backend: string }
     | { type: "restart-from-message"; index: number }
+    | { type: "retry-last-message"; index: number }
     | { type: "open-settings" }
     | { type: "inspect"; target: "context" | "request" }
     | { type: "open-file"; path: string }
@@ -123,7 +124,9 @@ export type WebviewToHost =
     | { type: "queue-remove"; id: number }
     | { type: "queue-edit"; id: number }
     | { type: "queue-promote"; id: number }
-    | { type: "pick-attachments" };
+    | { type: "pick-attachments" }
+    /** Reply to an inline "approval-request" event (admin/manager/user modes). */
+    | { type: "approval-response"; toolId: string; approved: boolean };
 
 /** `type` discriminants the ChatController consumes (the rest belong to the surface). */
 export type ControllerMessageType =
@@ -132,7 +135,8 @@ export type ControllerMessageType =
     | "queue-remove"
     | "queue-edit"
     | "queue-promote"
-    | "pick-attachments";
+    | "pick-attachments"
+    | "approval-response";
 
 /**
  * Messages the extension host sends to the webview.

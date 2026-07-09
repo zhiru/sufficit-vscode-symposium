@@ -58,6 +58,11 @@ export class OpenAISession extends EventEmitter implements AgentSession {
     private progress: string[] = [];
     // Last reported prompt size — feeds the compactor's auto-compact threshold.
     private lastInputTokens = 0;
+    // Inline tool-approval gate (admin/manager/user modes): one pending
+    // resolver per in-flight "approval-request", keyed by toolId. The turn
+    // loop awaits requestApproval() and blocks until resolveApproval() (fired
+    // by the webview's accept/reject click) resolves the matching entry.
+    private pendingApprovals = new Map<string, (approved: boolean) => void>();
     // Context compaction + the per-turn streaming loop; both constructor-
     // initialized (they eagerly read cfg/options/sessionId).
     private readonly compactor: Compactor;
@@ -131,6 +136,7 @@ export class OpenAISession extends EventEmitter implements AgentSession {
             safePersist: () => this.safePersist(),
             led: (role, content, extra) => this.led(role, content, extra),
             maybeAutoCompact: () => this.compactor.maybeAutoCompact(),
+            requestApproval: (toolId, toolName, detail, tier) => this.requestApproval(toolId, toolName, detail, tier),
         });
         if (resumed) {
             this.messages.push(...resumed.messages); this.title = resumed.title;
@@ -280,6 +286,28 @@ export class OpenAISession extends EventEmitter implements AgentSession {
      */
     private async discoverModels(loginToken?: string | null): Promise<void> {
         await discoverModelsFromCatalog(this.cfg, this.backend, loginToken);
+    }
+
+    /**
+     * Emits an inline approval-request and waits for the webview's answer.
+     * Never resolves on its own — a denied/lost turn (e.g. window reload)
+     * leaves the Promise pending, which is fine: the turn is gone either way,
+     * and a stale resolver is simply never called again.
+     */
+    private requestApproval(toolId: string, toolName: string, detail: string | undefined, tier: "write" | "destructive"): Promise<boolean> {
+        return new Promise<boolean>((resolve) => {
+            this.pendingApprovals.set(toolId, resolve);
+            this.emit("event", { kind: "approval-request", toolId, toolName, detail, tier });
+        });
+    }
+
+    /** Answers a pending approval-request (called from the webview's accept/reject click). */
+    resolveApproval(toolId: string, approved: boolean): void {
+        const resolve = this.pendingApprovals.get(toolId);
+        if (!resolve) { return; }
+        this.pendingApprovals.delete(toolId);
+        resolve(approved);
+        this.emit("event", { kind: "approval-resolved", toolId, approved });
     }
 
     /** Append one entry to the lossless ledger for the current turn (best-effort). */

@@ -25,6 +25,7 @@ import { friendlyToolDetail, toolPath } from "./toolDetail";
 import { historyFromLedger, ledgerWasCompacted } from "./history";
 import { discoverModels as discoverModelsFromCatalog } from "./discovery";
 import { OpenAISession } from "./session";
+import { PERMISSION_MODES } from "../aiTools";
 
 export class OpenAIAdapter implements AgentAdapter {
     /**
@@ -232,20 +233,19 @@ export class OpenAIAdapter implements AgentAdapter {
         return ["default", "minimal", "low", "medium", "high"];
     }
 
-    // Permission/approval modes for the composer menu. The OpenAI-compatible
-    // backend executes tools on the host itself (shell/fs/etc), so the same
-    // spectrum as the CLI backends makes sense. Default to bypassPermissions
-    // (run everything without prompts) — the Sufficit AI gateway is trusted to
-    // act, and the per-session tool picker above still gates WHICH tools exist.
+    // Unified permission modes (same vocabulary/semantics across every
+    // adapter): admin (no approval, default), manager (approval only for
+    // destructive tools), user (approval for every write/destructive tool),
+    // plan (read-only + new *.md planning docs). This is the one adapter
+    // where Symposium itself executes every tool call in-process, so all four
+    // modes are fully enforced here (see turnRunner.ts's requestApproval gate
+    // and localRun.ts's plan-mode block) — not just relabeled native flags.
     permissionModes(): string[] {
-        return ["acceptEdits", "bypassPermissions", "plan"];
+        return PERMISSION_MODES;
     }
 
     defaultPermission(): string {
-        // No per-backend setting today: Sufficit AI trusts the gateway to act,
-        // so default to running everything without prompts. The composer menu
-        // still lets the user pick a stricter mode per session (default/plan).
-        return "bypassPermissions";
+        return this.getConfig().permissionMode ?? "admin";
     }
 
     // No native plan tool over the raw API: inject one and parse a ```todo block.

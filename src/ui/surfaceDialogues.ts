@@ -9,7 +9,7 @@ import { readWorkspaceBootstrap } from "../config/root";
 import { activeEditorContext, isSimpleBrowserOpen } from "./chatSurfaceContext";
 import { symposiumLog } from "../extension";
 import type { WebviewToHost } from "./protocol";
-import { restartFromMessage, editResend } from "./surfaceBranching";
+import { restartFromMessage, retryLastMessage, editResend } from "./surfaceBranching";
 
 /**
  * Dialogue lifecycle for a chat surface: opening a dialogue (new / resumed /
@@ -89,6 +89,14 @@ export class SurfaceDialogues {
      */
     restartFromMessage(index: number): void {
         return restartFromMessage(this.d, (b, o, t, i) => this.openDialogue(b, o, t, i), index);
+    }
+
+    /**
+     * Plain retry after a transient failure: resends the same text to the
+     * CURRENT session, no branching. Implemented in surfaceBranching.ts.
+     */
+    retryLastMessage(index: number): void {
+        return retryLastMessage(this.d, index);
     }
 
     /**
