@@ -30,7 +30,7 @@ export class RenderStream {
         // "turn-start" with no matching "turn-end". Replaying that on reopen would
         // flip the webview into a stuck "thinking" state forever. Drop any trailing
         // turn-start that is never closed by a later turn-end before seeding.
-        const sanitized = dropOrphanTurnStart(messages);
+        const sanitized = neutralizeSupersededErrors(dropOrphanTurnStart(messages));
         for (const m of sanitized) { this.log.push(m); }
         return this.log.length;
     }
@@ -121,4 +121,24 @@ function dropOrphanTurnStart(messages: unknown[]): unknown[] {
     for (const idx of open) { orphans.add(idx); }
     if (orphans.size === 0) { return messages; }
     return messages.filter((_, i) => !orphans.has(i));
+}
+
+/**
+ * Marks every "error" event as historical, except one that is the very last
+ * message in the log. Without this, replaying a saved session re-renders a
+ * live, clickable Retry button for EVERY past stall/error it ever hit — even
+ * ones long since superseded by a successful retry and further conversation.
+ * Only a trailing, never-followed-up error is still "current" and worth a
+ * live button; the webview reads `historical` to render those without one.
+ */
+function neutralizeSupersededErrors(messages: unknown[]): unknown[] {
+    const lastIdx = messages.length - 1;
+    let sawSupersededError = false;
+    const result = messages.map((m, i) => {
+        if (i === lastIdx || eventKind(m) !== "error") { return m; }
+        sawSupersededError = true;
+        const envelope = m as { type: string; event: Record<string, unknown> };
+        return { ...envelope, event: { ...envelope.event, historical: true } };
+    });
+    return sawSupersededError ? result : messages;
 }

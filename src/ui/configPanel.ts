@@ -190,8 +190,10 @@ export class ConfigPanel {
                     // Coerce by key: numbers for hops, booleans for autoApprove and voice options.
                     let value: unknown = message.value;
                     if (message.key.endsWith("maxToolHops")) { value = Math.max(1, Number(message.value) || 50); }
+                    else if (message.key.endsWith("turnSilenceMinutes")) { value = Math.max(0, Number(message.value) || 0); }
                     else if (message.key.endsWith("noProgressStop")) { value = Math.max(0, Number(message.value) || 0); }
                     else if (message.key.endsWith("autoCompactAt")) { value = Math.min(1, Math.max(0, Number(message.value) || 0)); }
+                    else if (message.key.endsWith("autoCompactOnTasksComplete")) { value = message.value === "true"; }
                     else if (message.key.endsWith("maxHistoryMessages")) { value = Math.max(0, Number(message.value) || 0); }
                     else if (message.key === "chat.tools.global.autoApprove") {
                         value = message.value === "true";
@@ -352,9 +354,11 @@ export class ConfigPanel {
                 // textarea shows the built-in hint; a cleared field ("") stays "".
                 memoryInstruction: chat.get<string>("memoryInstruction"),
                 lmTools: root.get<string>("lmTools", "terminal"),
+                turnSilenceMinutes: root.get<number>("turnSilenceMinutes", 5),
                 maxToolHops: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxToolHops", 50),
                 noProgressStop: vscode.workspace.getConfiguration("symposium.openai").get<number>("noProgressStop", 0),
                 autoCompactAt: vscode.workspace.getConfiguration("symposium.openai").get<number>("autoCompactAt", 0.8),
+                autoCompactOnTasksComplete: vscode.workspace.getConfiguration("symposium.openai").get<boolean>("autoCompactOnTasksComplete", true),
                 maxHistoryMessages: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxHistoryMessages", 40),
                 timeGapNotice: vscode.workspace.getConfiguration("symposium.openai").get<string>("timeGapNotice", "5m"),
                 shellExecution: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),

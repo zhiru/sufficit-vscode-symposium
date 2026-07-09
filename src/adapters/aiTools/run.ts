@@ -1,4 +1,4 @@
-import { fetchSessionTasks, markTaskDone } from "../../sync/tasks";
+import { fetchSessionTasks, markTaskDone, rememberTaskCreated, rememberTaskDone } from "../../sync/tasks";
 import { saveGuardrail, clearSessionGuardrails } from "../../sync/guardrails";
 import { ToolContext } from "./types";
 import { LocalMemory } from "./localMemory";
@@ -156,7 +156,13 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 const ids: string[] = [];
                 for (const title of titles) {
                     const id = await hub.save({ type: "task-anchor", title: title.slice(0, 80), summary: title, tags, sessionId: ctx.sessionId, privacyLevel: "internal" });
-                    if (id) { ids.push(id); }
+                    if (id) {
+                        ids.push(id);
+                        // The hub's search index can lag behind this save — remember it
+                        // locally so task_complete's "remaining" check (a search read)
+                        // can't miss it and wrongly report allTasksComplete too early.
+                        rememberTaskCreated(ctx.sessionId, id, title);
+                    }
                 }
                 const reminder = userRequested
                     ? "USER-REQUESTED TASKS: When you finish, present justification and WAIT for user confirmation before calling task_complete."
@@ -206,13 +212,14 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 const completionSummary = typeof args.summary === "string" ? args.summary : undefined;
                 const ok = await markTaskDone(hub, id, completionSummary);
                 if (!ok) { return JSON.stringify({ error: "save failed — check hub configuration" }); }
+                if (ctx.sessionId) { rememberTaskDone(ctx.sessionId, id); }
                 // Return the remaining pending tasks (current + up-next) as the
                 // success response instead of a silent "" — the agent gets its
                 // next step handed back immediately, with no separate list_tasks
                 // round-trip, so it can't lose track of the plan mid-execution.
                 if (!ctx.sessionId) { return JSON.stringify({ ok: true }); }
                 const remaining = (await fetchSessionTasks(hub, ctx.sessionId)).filter((t) => !t.done && t.id !== id);
-                if (!remaining.length) { return JSON.stringify({ ok: true, pending: [], message: "all tasks complete" }); }
+                if (!remaining.length) { return JSON.stringify({ ok: true, pending: [], message: "all tasks complete", allTasksComplete: true }); }
                 const [current, ...rest] = remaining;
                 return JSON.stringify({
                     ok: true,

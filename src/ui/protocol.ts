@@ -90,7 +90,7 @@ export type WebviewToHost =
     | { type: "pick-agent"; backend: string }
     | { type: "install-agent"; backend: string }
     | { type: "restart-from-message"; index: number }
-    | { type: "retry-last-message"; index: number }
+    | { type: "retry-last-message"; index: number; errorMessage?: string }
     | { type: "open-settings" }
     | { type: "inspect"; target: "context" | "request" }
     | { type: "open-file"; path: string }
@@ -119,6 +119,8 @@ export type WebviewToHost =
           /** Index to rewind to for an edit-and-resend. */
           editFrom?: number;
           id?: number;
+          /** One-shot note on what error interrupted the previous turn (plain Retry only). */
+          interruptedBy?: string;
       }
     | { type: "cancel" }
     | { type: "queue-remove"; id: number }

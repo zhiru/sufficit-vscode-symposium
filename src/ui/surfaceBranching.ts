@@ -64,7 +64,7 @@ function sameTextRetry(backend: string, original: string | undefined, edited: st
  * already copes with a dangling unanswered user message from the failed turn
  * (e.g. the openai adapter's "(previous turn interrupted)" filler).
  */
-export function retryLastMessage(d: SurfaceDialoguesDeps, index: number): void {
+export function retryLastMessage(d: SurfaceDialoguesDeps, index: number, errorMessage?: string): void {
     const from = d.getController();
     if (!from || !Number.isInteger(index) || index < 0) { return; }
     const transcriptMessages = from.transcriptMessages();
@@ -72,7 +72,21 @@ export function retryLastMessage(d: SurfaceDialoguesDeps, index: number): void {
     if (adjustedIndex < 0) { return; }
     const original = transcriptMessages[adjustedIndex];
     if (!original || original.role !== "user") { return; }
-    void from.handleMessage({ type: "send", text: original.text, mode: "send" } as WebviewToHost);
+    // Tell the model WHY it's being nudged to continue — otherwise a bare
+    // resend looks like the user just said "continue" for no reason. Passed
+    // in from the webview's click (not captured host-side): an in-memory
+    // host field wouldn't survive a reload between the error and this click,
+    // but the rendered error text does (it's restored from persisted history).
+    const interruptedBy = errorMessage;
+    if (interruptedBy) {
+        // Visible confirmation (same status-notice channel as compaction/
+        // gap notices) — the note itself is a developer-role message the
+        // model sees but never renders as a chat bubble, so without this the
+        // user has no way to tell it was actually sent. anchorIndex links back
+        // to the original message instead of rendering a duplicate bubble.
+        d.post({ type: "event", event: { kind: "status-notice", text: `Continuing — told the model why: ${interruptedBy}`, anchorIndex: adjustedIndex } });
+    }
+    void from.handleMessage({ type: "send", text: original.text, mode: "send", interruptedBy } as WebviewToHost);
 }
 
 /**

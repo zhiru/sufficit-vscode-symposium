@@ -17,7 +17,8 @@ export interface TodoItem {
 export type AgentEvent =
     | { kind: "session"; sessionId: string; model?: string }
     | { kind: "text"; text: string; model?: string; modelLabel?: string }
-    | { kind: "status-notice"; text: string }
+    /** anchorIndex: conversation-row index to scroll to/highlight when clicked. */
+    | { kind: "status-notice"; text: string; anchorIndex?: number }
     | { kind: "thinking"; text: string }
     | { kind: "tool-start"; toolName: string; detail?: string; toolId?: string; input?: string; added?: number; removed?: number; todos?: TodoItem[]; path?: string; diff?: { old: string; new: string }[]; terminalName?: string }
     | { kind: "tool-output"; toolName?: string; toolId?: string; text: string }
@@ -80,7 +81,7 @@ export type AgentEvent =
         /** Time until first streamed text/tool delta, measured locally. */
         firstDeltaMs?: number;
     }
-    | { kind: "error"; message: string; retryable?: boolean; fatal?: boolean };
+    | { kind: "error"; message: string; retryable?: boolean; fatal?: boolean; historical?: boolean };
 
 /** A session known to a backend, listed in the sessions tree. */
 export interface SessionInfo {

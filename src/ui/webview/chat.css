@@ -526,6 +526,12 @@
     .statusNoticeLink:hover {
         color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground, var(--vscode-focusBorder)));
     }
+    /* Transient highlight when a status-notice's anchor link scrolls to a message. */
+    .anchorFlash { animation: anchorFlash 1.6s ease-out; border-radius: 4px; }
+    @keyframes anchorFlash {
+        0%, 15% { background: color-mix(in srgb, var(--vscode-focusBorder, #7C3AED) 22%, transparent); }
+        100% { background: transparent; }
+    }
     /* Clear separation between message blocks (not between tool rows): a hairline
        rule + breathing room above each user/assistant turn marks where one ends
        and the next begins. */
@@ -1113,7 +1119,15 @@
     .cfbtn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
     .cfbtn.ok:hover { color: var(--vscode-gitDecoration-addedResourceForeground, #4ec94e); }
     .cfbtn.no:hover { color: var(--vscode-gitDecoration-deletedResourceForeground, #d16969); }
-    .error { color: var(--vscode-errorForeground); }
+    /* Turn-ended/system error: boxed like .statusNotice/.toolApproval so it
+       reads as a system notice, not a real assistant response. */
+    .msg.error {
+        margin: 6px 0; padding: 6px 10px;
+        border-left: 2px solid var(--vscode-errorForeground, #f14c4c);
+        background: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 10%, transparent);
+        border-radius: 0 4px 4px 0;
+        color: var(--vscode-errorForeground);
+    }
     .errActions { margin-top: 6px; }
     .retryBtn {
         display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
@@ -1124,6 +1138,8 @@
     }
     .retryBtn:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.3)); }
     .retryBtn svg { width: 13px; height: 13px; }
+    .retryBtn:disabled { opacity: 0.55; cursor: default; }
+    .retryBtn:disabled:hover { background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2)); }
     .meta { opacity: 0.55; font-size: 0.82em; text-align: center; margin: 10px 0; }
 
     /* ---- inline tool-approval gate (admin/manager/user permission modes) ---- */
@@ -1251,6 +1267,13 @@
         filter: drop-shadow(0 0 3px var(--vscode-progressBar-background, var(--vscode-focusBorder, #2aa0ff)));
     }
     @keyframes symspin { to { --symAng: 360deg; } }
+    /* A panel (tasks/context) flush above the composer squares off its top
+       corners (see #composer.panelsAttached) — the busy sweep must match, or
+       it visibly curves past the panel's straight top edge. */
+    #composer.panelsAttached.working::after {
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }
     #chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px 0 8px; }
     #chips:empty { display: none; }
     .chip {

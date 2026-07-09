@@ -251,6 +251,9 @@ export const configViews = `    function resourceList(kind) {
                 item(t("config.prefs.noProgressStop.name"), t("config.prefs.noProgressStop.desc"),
                     sel("symposium.openai.noProgressStop", String(p.noProgressStop || 0),
                         [{ v: "0", l: t("config.value.unlimited") }, { v: "8", l: t("config.steps.8") }, { v: "12", l: t("config.steps.12") }, { v: "16", l: t("config.steps.16") }, { v: "24", l: t("config.steps.24") }])) +
+                item(t("config.prefs.turnSilenceMinutes.name"), t("config.prefs.turnSilenceMinutes.desc"),
+                    sel("symposium.turnSilenceMinutes", String(p.turnSilenceMinutes ?? 5),
+                        [{ v: "0", l: t("config.value.disabled") }, { v: "2", l: t("config.steps.2min") }, { v: "5", l: t("config.steps.5min") }, { v: "10", l: t("config.steps.10min") }, { v: "20", l: t("config.steps.20min") }, { v: "30", l: t("config.steps.30min") }])) +
                 item(t("config.prefs.autoApprove.name"), t("config.prefs.autoApprove.desc"),
                     sel("chat.tools.global.autoApprove", p.autoApprove ? "true" : "false",
                         [{ v: "true", l: t("config.prefs.autoApprove.yes") }, { v: "false", l: t("config.prefs.autoApprove.no") }]))

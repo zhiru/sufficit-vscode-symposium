@@ -1,6 +1,6 @@
 // event case body extracted from dispatch.ts. Mechanical move; no behaviour change.
 import { fillToolResult, renderTool, renderApprovalRequest } from "./tools";
-import { append, endStream, renderError, renderStatusNotice, streamDelta, streamThinkingDelta } from "./messages";
+import { append, endStream, renderError, renderStatusNotice, resolvePendingRetry, streamDelta, streamThinkingDelta } from "./messages";
 import { bindWorkingSet } from "./panels";
 import { renderStatusbar, setLastTurn, setLastUsage, setSessionCostUsd, sessionCostUsd } from "./statusbar";
 import { setStatus } from "./status";
@@ -10,12 +10,20 @@ import { activeSessionId, agentLabels, currentBackend, currentBackendName, setAc
 
 /** Apply an `event` message payload (streaming turn events). */
 export function applyEvent(ev: any): void {
+    // Any real turn-progress event proves a pending retry took effect (the
+    // stalled/errored attempt resumed) — clear its "Retrying…" button on the
+    // first sign of life, not just at full turn-end (which can be long after,
+    // through several more tool calls). status-notice is excluded: it's
+    // posted synchronously by retryLastMessage() itself, before the actual
+    // turn resumes, so treating it as "success" would clear the button
+    // instantly instead of on real progress.
+    if (ev.kind !== "status-notice") { resolvePendingRetry(); }
     // Claude streams extended thinking token-by-token. Consecutive thinking
     // deltas should stay in one block; text/tools/status events close it via
     // endStream(), so distinct phases still separate naturally.
     if (ev.kind === "thinking") { streamThinkingDelta(ev.text); }
     else if (ev.kind === "text") streamDelta(ev.text);
-    else if (ev.kind === "status-notice") renderStatusNotice(ev.text);
+    else if (ev.kind === "status-notice") renderStatusNotice(ev.text, ev.anchorIndex);
     else if (ev.kind === "tool-start") { endStream(); renderTool(ev.toolName, ev.detail || "", { toolId: ev.toolId, input: ev.input, added: ev.added, removed: ev.removed, todos: ev.todos, path: ev.path }); }
     else if (ev.kind === "tool-output") fillToolResult(ev.toolId, ev.text);
     else if (ev.kind === "tool-end") fillToolResult(ev.toolId, ev.result, true);
@@ -32,7 +40,7 @@ export function applyEvent(ev: any): void {
         if (ev.fatal !== false) {
             setBusy(false); sendBtn.disabled = false; setStatus();
         }
-        renderError(ev.message);
+        renderError(ev.message, ev.historical, ev.retryable);
     }
     else if (ev.kind === "session") {
         if (ev.model) {

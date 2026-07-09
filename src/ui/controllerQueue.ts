@@ -13,6 +13,13 @@ export interface PendingMessage {
     mode?: SendMode;
     /** One-shot resume context (latest session checkpoint) prepended for continuity. */
     resumeCheckpoint?: string;
+    /**
+     * One-shot note explaining what error interrupted the previous turn, set
+     * only on a plain "Retry" click (see surfaceBranching.ts's
+     * retryLastMessage). Tells the model the user wants to continue and why
+     * the flow stopped, instead of a bare "continue" with no context.
+     */
+    interruptedBy?: string;
 }
 
 /** FIFO queue for pending chat messages; assigns stable ids for webview edits. */

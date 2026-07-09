@@ -101,6 +101,13 @@ export interface OpenAIAdapterConfig {
     /** Auto-compact the context when a prompt reaches this fraction of the window (0 = off). */
     autoCompactAt?: number;
     /**
+     * Auto-compact the context the moment the last pending session task is
+     * completed (task_complete/TaskUpdate reports zero remaining) — a natural
+     * "unit of work is done" boundary, independent of the context-window
+     * percentage that autoCompactAt tracks. Default true.
+     */
+    autoCompactOnTasksComplete?: boolean;
+    /**
      * Sliding window: max conversation messages sent per request.
      * System/developer prefix and the first user turn are always preserved.
      * Default 40 (~20 turns). 0 = no trimming (old behaviour).

@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { parseTodoFence } from "../adapters/todos";
 import { buildOutboundPrompt, type TrackingMode } from "./outboundPrompt";
@@ -18,6 +19,12 @@ import { persistEmit as persistEmitFn, seedRenderLog as seedRenderLogFn } from "
 export class ChatController {
     private session: AgentSession | undefined;
     private busy = false;
+    // Set on any fatal error this turn (dispatch-setup failure, or a fatal
+    // AgentEvent) and reset when a new turn starts. Gates auto-draining the
+    // queue on turn-end: a failed turn must never silently swallow a queued
+    // message as if it were a normal continuation — the user gets to choose
+    // Retry or explicitly promote/steer the queued item instead.
+    private turnHadError = false;
     private firstTitle = "";
     private outboundPolicyInjected = false;
     private todoInjected = false;
@@ -86,9 +93,7 @@ export class ChatController {
             cancel: () => this.session?.cancel(),
             onStatusChange: () => this.onStatusChange?.(),
             emit: (m) => this.emit(m),
-            queue: this.queue,
-            emitQueue: () => this.emitQueue(),
-            dispatch: (m) => { void this.dispatch(m); },
+            silenceMinutes: () => vscode.workspace.getConfiguration("symposium").get<number>("turnSilenceMinutes", 5),
         };
     }
 
@@ -236,6 +241,7 @@ export class ChatController {
     private async dispatch(msg: PendingMessage): Promise<void> {
         // Gate concurrent sends before any awaited pre-dispatch work.
         this.busy = true;
+        this.turnHadError = false;
         this.onStatusChange?.();
         try {
             // Guardrails: refresh on EVERY dispatch (like tasks) so a guardrail
@@ -322,6 +328,7 @@ export class ChatController {
                 seedHistory: this.options.seedHistory,
                 bootstrap: this.options.bootstrap,
                 resumeCheckpoint: msg.resumeCheckpoint,
+                interruptedBy: msg.interruptedBy,
                 guardrails: this.hubState.guardrails,
                 pendingTasksSummary: this.pendingTasksSummary(),
                 autonomy: msg.autonomy,
@@ -338,21 +345,25 @@ export class ChatController {
             this.sessionIdInjected = !!outbound.state.sessionIdInjected;
             if (!this.firstTitle && msg.text.trim()) { this.firstTitle = msg.text.trim().slice(0, 60); }
             this.armWatchdog();
-            this.emit({ type: "user", text: msg.text, attachments: msg.attachments });
+            // A plain-retry resend (msg.interruptedBy set) re-sends the SAME
+            // text already visible in an earlier bubble — rendering it again
+            // would just duplicate it; the status-notice (with an anchor back
+            // to that bubble) is the visible signal instead.
+            if (!msg.interruptedBy) {
+                this.emit({ type: "user", text: msg.text, attachments: msg.attachments });
+            }
             this.session.send(outbound.text, images, outbound.preamble);
         } catch (error) {
             // Any failure before turn-end (adapter start, prompt build, transcript
             // persistence, process spawn setup) must never leave the controller
-            // permanently busy. Surface the error and continue draining the queue.
+            // permanently busy — but it also must NOT silently auto-send whatever
+            // is queued next (that would swallow a queued message as if it were a
+            // normal continuation of a failed turn). Surface the error and stop;
+            // the user chooses Retry or explicitly promotes/steers the queue.
             this.busy = false;
             this.clearWatchdog();
             this.onStatusChange?.();
             this.emit({ type: "event", event: { kind: "error", message: error instanceof Error ? error.message : String(error) } });
-            const next = this.queue.shift();
-            if (next) {
-                this.emitQueue();
-                void this.dispatch(next);
-            }
         }
     }
 
@@ -373,14 +384,23 @@ export class ChatController {
                 this.emit({ type: "event", event: { kind: "tool-start", toolName: "TodoWrite", detail: "", todos } });
             }
         }
+        if (event.kind === "error" && event.fatal !== false) {
+            this.turnHadError = true;
+        }
         if (event.kind === "turn-end") {
             this.busy = false;
             this.clearWatchdog();
             this.onStatusChange?.();
-            const next = this.queue.shift();
-            if (next) {
-                this.emitQueue();
-                void this.dispatch(next);
+            // A failed turn (fatal error just seen) must not auto-send whatever is
+            // queued next — that would look like a normal continuation instead of
+            // the failure it is. Leave the queue alone; the user chooses Retry or
+            // explicitly promotes/steers the queued item (see dispatch()'s catch).
+            if (!this.turnHadError) {
+                const next = this.queue.shift();
+                if (next) {
+                    this.emitQueue();
+                    void this.dispatch(next);
+                }
             }
         }
     }

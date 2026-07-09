@@ -53,6 +53,7 @@ export const configViewsCompression = `
 
         // Auto-compaction settings (merged from old compaction tab)
         const compactAt = String(p.autoCompactAt != null ? p.autoCompactAt : 0.8);
+        const compactOnTasksComplete = String(p.autoCompactOnTasksComplete !== false);
         const histMsgs = String(p.maxHistoryMessages != null ? p.maxHistoryMessages : 40);
         const timeGapNotice = String(p.timeGapNotice != null ? p.timeGapNotice : "5m");
 
@@ -62,7 +63,10 @@ export const configViewsCompression = `
                     sel("symposium.openai.autoCompactAt", compactAt,
                         [{ v: "0", l: t("config.value.disabled") }, { v: "0.6", l: t("config.compaction.ctx.60") }, { v: "0.7", l: t("config.compaction.ctx.70") },
                          { v: "0.75", l: t("config.compaction.ctx.75") }, { v: "0.8", l: t("config.compaction.ctx.80") }, { v: "0.85", l: t("config.compaction.ctx.85") },
-                         { v: "0.9", l: t("config.compaction.ctx.90") }]))
+                         { v: "0.9", l: t("config.compaction.ctx.90") }])) +
+                item(t("config.compaction.autoCompactOnTasksComplete.name"), t("config.compaction.autoCompactOnTasksComplete.desc"),
+                    sel("symposium.openai.autoCompactOnTasksComplete", compactOnTasksComplete,
+                        [{ v: "true", l: t("config.value.enabled") }, { v: "false", l: t("config.value.disabled") }]))
             ) +
             section(t("config.compaction.section.history"),
                 item(t("config.compaction.maxHistoryMessages.name"), t("config.compaction.maxHistoryMessages.desc"),

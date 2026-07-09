@@ -29,17 +29,57 @@ export interface TaskItem {
 const isTask = (type: unknown): boolean => String(type ?? "").startsWith("task");
 const hasTag = (tags: unknown, tag: string): boolean => String(tags ?? "").split(",").map((t) => t.trim()).includes(tag);
 
+/**
+ * Short-lived recent-create cache, keyed by session: the hub's search index
+ * (which fetchSessionTasks reads from) can lag well behind a save — a task
+ * created moments ago may not be visible yet. Without this, task_complete's
+ * "remaining" check reads a stale list missing that just-created sibling and
+ * wrongly reports allTasksComplete while real work is still pending. Mirrors
+ * surfaceSync.ts's ghost-task grace window, but protects the TOOL's own
+ * signal to the model rather than just the task panel's display.
+ */
+const RECENT_CREATE_GRACE_MS = 60_000;
+interface RecentTask { id: string; title: string; ts: number; done: boolean; }
+const recentBySession = new Map<string, RecentTask[]>();
+
+/** Records a just-created task so it survives a search-index lag window. */
+export function rememberTaskCreated(sessionId: string, id: string, title: string): void {
+    const list = recentBySession.get(sessionId) ?? [];
+    list.push({ id, title, ts: Date.now(), done: false });
+    recentBySession.set(sessionId, list);
+}
+
+/** Marks a recently-created task done, so it stops padding "remaining". */
+export function rememberTaskDone(sessionId: string, id: string): void {
+    const entry = recentBySession.get(sessionId)?.find((t) => t.id === id);
+    if (entry) { entry.done = true; }
+}
+
+/** Recently-created, still-pending tasks within the grace window (prunes stale entries as a side effect). */
+function recentPending(sessionId: string): RecentTask[] {
+    const list = recentBySession.get(sessionId);
+    if (!list) { return []; }
+    const fresh = list.filter((t) => Date.now() - t.ts < RECENT_CREATE_GRACE_MS);
+    recentBySession.set(sessionId, fresh);
+    return fresh.filter((t) => !t.done);
+}
+
 /** Lists the task observations bound to a Symposium session (newest first). */
 export async function fetchSessionTasks(hub: HubClient, sessionId: string): Promise<TaskItem[]> {
     if (!hub.configured() || !sessionId) { return []; }
     // Search is scoped to the session by the native sessionId field on the
     // server; keep only task-type records for this session, newest first.
     const recs = await hub.searchMemory({ limit: 100, sessionId });
-    return (recs as Array<{ type: string; sessionId?: string; tags?: string | string[]; id: unknown; title?: string; summary?: string; createdAtUtc?: string | number }>)
+    const fromSearch = (recs as Array<{ type: string; sessionId?: string; tags?: string | string[]; id: unknown; title?: string; summary?: string; createdAtUtc?: string | number }>)
         .filter((r) => isTask(r.type) && (r.sessionId ?? "") === sessionId)
         .sort((a, b) => Date.parse(String(b.createdAtUtc || "0")) - Date.parse(String(a.createdAtUtc || "0")))
         .slice(0, 30)
         .map((r) => ({ id: String(r.id), type: r.type, title: r.title ?? "", summary: r.summary ?? "", ts: String(r.createdAtUtc || ""), tags: Array.isArray(r.tags) ? r.tags.join(",") : r.tags ?? "", done: hasTag(r.tags, DONE_TAG) }));
+    const knownIds = new Set(fromSearch.map((t) => t.id));
+    const ghosts = recentPending(sessionId)
+        .filter((t) => !knownIds.has(t.id))
+        .map((t): TaskItem => ({ id: t.id, type: "task-anchor", title: t.title, summary: t.title, done: false }));
+    return [...fromSearch, ...ghosts];
 }
 
 /** Sets/clears a task's completed state (DONE_TAG). User- or agent-driven. */
@@ -80,6 +120,7 @@ export async function fetchLatestCheckpoint(hub: HubClient, sessionId: string): 
 
 /** Expires (soft-deletes) every task observation bound to a session. Returns count. */
 export async function expireSessionTasks(hub: HubClient, sessionId: string): Promise<number> {
+    recentBySession.delete(sessionId);
     if (!hub.configured() || !sessionId) { return 0; }
     const recs = await hub.searchMemory({ limit: 200, sessionId });
     const ids = (recs as Array<{ type: string; sessionId?: string; id: unknown }>).filter((r) => isTask(r.type) && (r.sessionId ?? "") === sessionId).map((r) => String(r.id)).filter(Boolean);

@@ -27,6 +27,12 @@ export interface BuildOutboundPromptOptions extends OutboundPromptState {
      */
     resumeCheckpoint?: string;
     /**
+     * One-shot note explaining what error interrupted the previous turn, set
+     * only on a plain "Retry" click. Without this the model sees a bare
+     * "continue" with no idea a stall/timeout/error happened.
+     */
+    interruptedBy?: string;
+    /**
      * User-defined absolute rules for this session, injected on EVERY message
      * (not one-shot) at the very top so the agent cannot drift from or ignore
      * them. Owned by the user via the UI, never the agent.
@@ -193,6 +199,14 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
     // Resume context for a continuity message (host-injected, per-message).
     if (options.resumeCheckpoint) {
         prefixes.push(options.resumeCheckpoint);
+    }
+    // Plain-retry continuity: the user just wants to continue, but the model
+    // otherwise has no idea a stall/timeout/error happened moments ago.
+    if (options.interruptedBy) {
+        prefixes.push(
+            `[Continue — your previous turn was interrupted: ${options.interruptedBy} ` +
+            "The user wants you to continue/retry from where you left off, not restart the task.]"
+        );
     }
     if (!state.sessionIdInjected && options.sessionId) {
         prefixes.push(sessionIdNote(options.sessionId));

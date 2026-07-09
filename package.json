@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.708.17",
+  "version": "2026.709.15",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
@@ -229,6 +229,12 @@
           "default": "",
           "description": "Local root for vendor-neutral agent knowledge (agents/skills/tools/instructions, sync state). Empty uses ~/.symposium."
         },
+        "symposium.turnSilenceMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0,
+          "description": "Minutes of no activity from the agent (no streamed text/tool events) before a turn is force-ended with a retryable error, so a stalled tool or dropped connection can't pin the session as \"working\" forever. Applies to all backends (Claude, Codex, Copilot, Sufficit AI/custom). Raise it for scenarios with long silent tool calls (e.g. slow test suites); set to 0 to disable the watchdog entirely."
+        },
         "symposium.hub.url": {
           "type": "string",
           "default": "",
@@ -268,6 +274,11 @@
           "type": "number",
           "default": 0.8,
           "description": "Auto-compact the conversation when a request reaches this fraction (0–1) of the model's context window: older turns are summarized into one note (full transcript stays in the lossless ledger; tool outputs recoverable via read_session) so the live context shrinks. 0 disables auto-compaction (manual /compact still works)."
+        },
+        "symposium.openai.autoCompactOnTasksComplete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-compact the conversation the moment the last pending session task is completed (task_complete/TaskUpdate reports zero remaining) — a natural end-of-work boundary, independent of the context-window percentage above."
         },
         "symposium.openai.maxHistoryMessages": {
           "type": "number",

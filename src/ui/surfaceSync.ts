@@ -42,7 +42,12 @@ export class SurfaceSync {
     // (list_tasks reads the hub fresh and correctly shows it gone; the panel
     // must eventually agree, not just optimistically diverge).
     private taskFirstSeenAtMs = new Map<string, number>();
-    private static readonly TASK_GHOST_GRACE_MS = 5000;
+    // 5s was too short in practice: the hub's search index can lag well past
+    // that under load, so a just-created task dropped out of the grace window
+    // before search ever caught up — it never reappeared. A missed task is far
+    // more disruptive than a cleared one lingering a bit longer, so this errs
+    // long; refreshTasks() re-includes it normally the moment search catches up.
+    private static readonly TASK_GHOST_GRACE_MS = 60_000;
 
     constructor(private readonly d: SurfaceSyncDeps) { }
 

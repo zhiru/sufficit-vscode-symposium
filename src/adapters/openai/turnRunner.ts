@@ -56,6 +56,9 @@ export interface TurnRunnerDeps {
     safePersist: () => void;
     led: (role: string, content: unknown, extra?: Record<string, unknown>) => void;
     maybeAutoCompact: () => Promise<void>;
+    /** Compacts now if symposium.openai.autoCompactOnTasksComplete is enabled
+     *  (a task_complete/TaskUpdate call just reported zero remaining tasks). */
+    compactOnTasksComplete: () => Promise<void>;
     /** Inline approval gate (admin/manager/user modes) — resolves once the
      *  webview answers the matching approval-request. */
     requestApproval: (toolId: string, toolName: string, detail: string | undefined, tier: "write" | "destructive") => Promise<boolean>;
@@ -63,6 +66,12 @@ export interface TurnRunnerDeps {
 
 export class TurnRunner {
     private abort: AbortController | undefined;
+    // Set when task_complete/TaskUpdate fires comfortably under the compaction
+    // threshold (see the task_complete branch below): the actual compact runs
+    // once this turn fully ends, alongside the existing post-turn auto-compact
+    // fire-and-forget — never mid-loop, where it would race the tool loop still
+    // appending to the same live `messages` array.
+    private pendingTasksCompact = false;
 
     constructor(private readonly d: TurnRunnerDeps) { }
 
@@ -409,6 +418,33 @@ export class TurnRunner {
                     progress.push((unprefixedName + (step ? " — " + step : "")).slice(0, 110));
                     if (progress.length > 60) { progress.shift(); }
                     this.d.safePersist();   // each completed tool round is durable immediately
+                    // Natural end-of-work boundary: the agent just cleared the last
+                    // pending session task. Independent of the context-window
+                    // percentage autoCompactAt tracks — gated by its own setting.
+                    if (unprefixedName === "task_complete" || unprefixedName === "TaskUpdate") {
+                        let parsedResult: { allTasksComplete?: boolean } | null = null;
+                        try { parsedResult = JSON.parse(result); } catch { /* not JSON, ignore */ }
+                        if (parsedResult?.allTasksComplete) {
+                            const at = this.d.cfg.autoCompactAt ?? 0;
+                            const win = this.d.contextWindow();
+                            const used = win > 0 ? this.d.getLastInputTokens() / win : 0;
+                            if (at > 0 && used >= at) {
+                                // Already past the configured window threshold — same
+                                // urgency as the percentage-based auto-compact: fold now
+                                // before continuing, same as maybeAutoCompact() above.
+                                this.d.emit({ kind: "status-notice", text: `All tasks complete — context is at ${Math.round(used * 100)}% of the window, compacting now before continuing.` });
+                                await this.d.compactOnTasksComplete();
+                            } else {
+                                // Comfortably under the threshold: not urgent, so don't
+                                // stall this turn on a summarization round-trip. Defer to
+                                // when the turn fully ends (see emitTurnEnd below) instead
+                                // of firing it here mid-loop, which would race the tool
+                                // loop still appending to the live messages array.
+                                this.d.emit({ kind: "status-notice", text: "All tasks complete — compacting context in the background once this turn ends." });
+                                this.pendingTasksCompact = true;
+                            }
+                        }
+                    }
                 }
                 // loop again so the model can use the tool results
             }
@@ -432,6 +468,13 @@ export class TurnRunner {
         // Auto-compaction: if the context crossed the threshold this turn, fold it
         // before the next send (lazy, so it never delays this turn-end).
         void this.d.maybeAutoCompact();
+        // Deferred task-complete compaction (see above): the turn is fully done
+        // now, so no more messages will be appended — safe to fold in the
+        // background without racing anything.
+        if (this.pendingTasksCompact) {
+            this.pendingTasksCompact = false;
+            void this.d.compactOnTasksComplete();
+        }
         emitTurnEnd();
     }
 }

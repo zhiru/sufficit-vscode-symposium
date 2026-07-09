@@ -1,7 +1,7 @@
 // Message + tool + stream rendering.
 import { vscode } from "./vscode";
 import { log } from "./dom";
-import { conversationRows, currentBackend, currentBackendName, activeModel, busy, setConversationRows } from "./state";
+import { conversationRows, currentBackend, currentBackendName, activeModel, busy, setBusy, setConversationRows } from "./state";
 import { setStatus, syncProgress, setLoading } from "./status";
 import { modelLabel } from "./models";
 import { showFileMenu } from "./menus";
@@ -12,8 +12,24 @@ import { middleEllipsisPath, allDigits } from "./format";
 import { beginEdit, lastUserRow } from "./composer";
 import { renderTodos, todoMark } from "./panels";
 
+// Tracks the Retry bar for the most recent retry click, so it can be
+// removed once that retry resolves (success or a fresh error) — see
+// resolvePendingRetry(). Only ever one in flight: a click disables its own
+// button before another retry can be issued.
+let pendingRetryBar = null;
+
+/** Removes the previous retry's button once its outcome is known (success
+ * or a new error) — a "Retrying…" button stuck forever is misleading. */
+export function resolvePendingRetry() {
+    if (pendingRetryBar) { pendingRetryBar.remove(); pendingRetryBar = null; }
+}
+
 // Error block with a Retry action (re-sends the last user message).
-export function renderError(message) {
+// `historical` marks an error replayed from a reopened session's saved log
+// that is no longer the last thing that happened (see renderStream.ts's
+// neutralizeSupersededErrors) — its Retry button is omitted, since retrying
+// it now would rewind past everything that already happened after it.
+export function renderError(message, historical, retryable) {
     const stick = nearBottom();
     endToolGroup(); endStream();
     const el = document.createElement("div"); el.className = "msg plain error";
@@ -22,11 +38,15 @@ export function renderError(message) {
     // message back into the composer (so you can change the model, text, or
     // mode) and resending rewinds the history to that point.
     const lastUser = lastUserRow();
-    if (lastUser) {
+    if (lastUser && !historical) {
         const bar = document.createElement("div"); bar.className = "errActions";
         const b = document.createElement("button"); b.className = "retryBtn";
-        // Detect timeout/inactivity errors: show only "Retry" (no Edit)
-        const isTimeoutError = message.includes("no activity") || message.includes("stalled tool") || message.includes("dropped connection") || message.includes("Turn ended automatically") || message.includes("504") || message.includes("Gateway");
+        // Trust the host's own classification (turnRunner.ts computes this from
+        // the actual HTTP status / network error, e.g. "fetch failed") when
+        // it's given; only guess from the message text for older error paths
+        // (CLI adapter spawn/exit failures) that don't set retryable at all.
+        const isTimeoutError = typeof retryable === "boolean" ? retryable
+            : (message.includes("no activity") || message.includes("stalled tool") || message.includes("dropped connection") || message.includes("Turn ended automatically") || message.includes("504") || message.includes("Gateway"));
         b.appendChild(svgIcon("history"));
         b.appendChild(document.createTextNode(isTimeoutError ? " Retry" : " Edit & retry"));
         b.addEventListener("click", () => {
@@ -34,7 +54,24 @@ export function renderError(message) {
                 // Plain retry: resend the same text to the CURRENT session,
                 // no branching — restart-from-message always forks a new
                 // session, which is wrong for "the request just timed out".
-                vscode.postMessage({ type: "retry-last-message", index: lastUser.idx });
+                // errorMessage is passed here (not captured host-side) because
+                // it must survive a reload between the error and this click —
+                // this closure's `message` does, an in-memory host field wouldn't.
+                vscode.postMessage({ type: "retry-last-message", index: lastUser.idx, errorMessage: message });
+                // Mirror composer.ts's send(): reflect the in-flight turn in
+                // the compose bar (stop icon, "thinking..." status), same as
+                // a normal send does. Without this the session list shows
+                // activity while the compose area still looks idle.
+                if (!busy) { setBusy(true); }
+                setStatus();
+                // One-shot: disable so it can't fire twice (e.g. a double
+                // click re-sending the same message). Stays disabled until a
+                // fresh error renders its own new button.
+                b.disabled = true;
+                b.textContent = "";
+                b.appendChild(svgIcon("history"));
+                b.appendChild(document.createTextNode(" Retrying…"));
+                pendingRetryBar = bar;
             } else {
                 // Edit & retry: load into composer
                 beginEdit(lastUser.idx, lastUser.text);
@@ -57,7 +94,7 @@ export function append(cls, text) {
 }
 // Transient status notice (e.g. vision transcription annotation).
 // Rendered as a quiet system annotation, NOT model output — never persisted.
-export function renderStatusNotice(text) {
+export function renderStatusNotice(text, anchorIndex) {
     const stick = nearBottom();
     // Close any open tool-action group too: a notice fired mid tool-loop
     // (auth retry, mid-turn compaction) must not let the next tool-start
@@ -66,9 +103,28 @@ export function renderStatusNotice(text) {
     const el = document.createElement("div");
     el.className = "msg statusNotice";
     renderStatusNoticeText(el, text);
+    if (typeof anchorIndex === "number") {
+        el.appendChild(document.createTextNode(" "));
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "statusNoticeLink";
+        btn.textContent = "view original message";
+        btn.title = "Scroll to the message this is continuing";
+        btn.addEventListener("click", () => scrollToMessageRow(anchorIndex));
+        el.appendChild(btn);
+    }
     log.appendChild(el);
     autoScroll(stick);
     return el;
+}
+
+/** Scrolls to and briefly highlights a conversation row (see message()'s data-msg-index). */
+function scrollToMessageRow(index) {
+    const row = log.querySelector('[data-msg-index="' + index + '"]');
+    if (!row) { return; }
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("anchorFlash");
+    setTimeout(() => row.classList.remove("anchorFlash"), 1600);
 }
 
 const STATUS_MANUAL_TOKENS = new Map([
