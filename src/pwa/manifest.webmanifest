@@ -1,0 +1,13 @@
+{
+  "name": "Symposium",
+  "short_name": "Symposium",
+  "description": "Drive your Symposium agent sessions remotely.",
+  "start_url": "/pwa/",
+  "scope": "/pwa/",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#1e1e1e",
+  "icons": [
+    { "src": "/pwa/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -586,6 +586,11 @@
           "default": [],
           "description": "Accepted HTTP Host header values (e.g. your-node.ts.net), for anti DNS-rebinding. Loopback is always accepted. Empty cannot enforce (the tunnel hostname is unknown) and logs a warning; set it once you have a stable hostname."
         },
+        "symposium.bridge.pwa": {
+          "type": "boolean",
+          "default": false,
+          "description": "Serve the installable web client (PWA) from the bridge at /pwa. The shell is unauthenticated (it carries no secret and no session data); every data endpoint stays token-gated. Off by default."
+        },
         "symposium.claude.executable": {
           "type": "string",
           "default": "claude",
@@ -920,9 +925,10 @@
   "scripts": {
     "test": "npm run compile:test && node --test out/test/*.test.js && npm run check:webview && npm run check:configscript && npm run check:size",
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
-    "compile": "npm run clean && tsc -p ./ && npm run build:webview && npm run bundle",
+    "compile": "npm run clean && tsc -p ./ && npm run build:webview && npm run build:pwa && npm run bundle",
     "compile:test": "npm run clean && tsc -p ./ && npm run build:webview",
     "build:webview": "esbuild src/ui/webview/index.ts --bundle --format=iife --target=es2020 --outfile=out/ui/webview.bundle.js && esbuild src/ui/webview/chat.css --bundle --outfile=out/ui/webview.css",
+    "build:pwa": "node scripts/build-pwa.mjs",
     "bundle": "node scripts/bundle.js",
     "bundle:dev": "node scripts/bundle.js --dev",
     "watch": "tsc -watch -p ./",

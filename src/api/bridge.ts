@@ -9,6 +9,18 @@ import { ResourceKind } from "../config/root";
 import { SymposiumApi, SendMode } from "./symposiumApi";
 import { isBridgeAuthorized } from "./bridgeAuth";
 import { BridgePolicy, resolveBridgePolicy, isCwdAllowed, isHostAllowed, isLmToolAllowed } from "./bridgePolicy";
+import { renderPwaHtml } from "../ui/pwaHtml";
+
+/** Static content types for the PWA shell assets. */
+const PWA_MIME: Record<string, string> = {
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".map": "application/json",
+    ".webmanifest": "application/manifest+json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+};
 
 /** VS Code commands the bridge is allowed to run (browser/navigation only). */
 const ALLOWED_COMMANDS = new Set<string>([
@@ -101,11 +113,21 @@ export class RemoteBridge {
         if (!isHostAllowed(req.headers.host, policy.allowedHosts)) {
             return json(res, 403, { error: "host not allowed" });
         }
+        const parts = url.pathname.split("/").filter(Boolean);
+        const method = req.method ?? "GET";
+
+        // PWA shell (GET /pwa, /pwa/*) is served UNAUTHENTICATED — it carries no
+        // secret and no session data; every data endpoint below stays gated.
+        // Opt-in via symposium.bridge.pwa so an operator chooses to serve it.
+        if (method === "GET" && parts[0] === "pwa") {
+            const cfg = vscode.workspace.getConfiguration("symposium.bridge");
+            if (!cfg.get<boolean>("pwa", false)) { return json(res, 404, { error: "not found" }); }
+            return this.serveStatic(parts.slice(1).join("/") || "index.html", res);
+        }
+
         if (!this.authorized(req, url, token)) {
             return json(res, 401, { error: "unauthorized" });
         }
-        const parts = url.pathname.split("/").filter(Boolean);
-        const method = req.method ?? "GET";
 
         try {
             // GET /health
@@ -263,6 +285,40 @@ export class RemoteBridge {
             this.log(`[bridge] request error: ${String(err)}`);
             return json(res, 500, { error: "internal error" });
         }
+    }
+
+    /**
+     * Serves the unauthenticated PWA shell from out/pwa. index.html is generated
+     * (renderPwaHtml, no embedded token); other assets are read from disk with a
+     * traversal guard. Unknown paths fall back to the app (SPA boot).
+     */
+    private serveStatic(rel: string, res: http.ServerResponse): void {
+        if (rel === "index.html" || rel === "") {
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+            res.end(renderPwaHtml());
+            return;
+        }
+        const roots = path.join(__dirname, "pwa");
+        const safe = path.normalize(rel).replace(/^(\.\.[/\\])+/, "");
+        const file = path.join(roots, safe);
+        if (file !== roots && !file.startsWith(roots + path.sep)) {
+            return json(res, 403, { error: "forbidden" });
+        }
+        let body: Buffer;
+        try {
+            body = fs.readFileSync(file);
+        } catch {
+            // SPA fallback: unknown path boots the app.
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+            res.end(renderPwaHtml());
+            return;
+        }
+        const headers: Record<string, string> = {
+            "Content-Type": PWA_MIME[path.extname(file)] ?? "application/octet-stream",
+        };
+        if (path.basename(file) === "sw.js") { headers["Service-Worker-Allowed"] = "/pwa/"; }
+        res.writeHead(200, headers);
+        res.end(body);
     }
 
     /** Opens an SSE stream that mirrors a session's chat to the remote viewer. */
