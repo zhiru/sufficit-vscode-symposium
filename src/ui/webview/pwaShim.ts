@@ -312,9 +312,10 @@ async function connect(): Promise<void> {
         // Validate the token before booting the UI so a bad token shows the login,
         // not a silently empty app. 401 inside apiGet also re-opens the login.
         let sessions: any[] = [];
-        try { sessions = await apiGet("/sessions"); } catch (err) {
+        try { sessions = await apiGet("/sessions/all"); } catch (err) {
             if (String(err).includes("unauthorized")) { return; }
-            sessions = [];
+            // Older bridge without /sessions/all → fall back to live-only.
+            try { sessions = await apiGet("/sessions"); } catch { sessions = []; }
         }
         deliver({ type: "sessions", items: sessions });
 
@@ -408,7 +409,8 @@ async function backendsToAgents(): Promise<any[]> {
 }
 
 async function refreshSessions(): Promise<void> {
-    try { deliver({ type: "sessions", items: await apiGet("/sessions") }); } catch { /* offline */ }
+    try { deliver({ type: "sessions", items: await apiGet("/sessions/all") }); }
+    catch { try { deliver({ type: "sessions", items: await apiGet("/sessions") }); } catch { /* offline */ } }
 }
 
 async function listBackends(replyType: string): Promise<void> {

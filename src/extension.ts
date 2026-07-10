@@ -81,7 +81,10 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     context.subscriptions.push(sessionsChanged);
     // Public API facade (in-process exports, config UI and remote bridge all
     // share this object so every surface stays in lock-step).
-    const api = createSymposiumApi({ live: runtime, adapters, onSessionsChanged: sessionsChanged.event });
+    // Holder for the full session-tree aggregator; set once surfaceDeps is built
+    // below, so the API/bridge can list stored+live sessions (not just live).
+    const sessionLister: { fn?: () => Promise<unknown[]> } = {};
+    const api = createSymposiumApi({ live: runtime, adapters, onSessionsChanged: sessionsChanged.event, sessionLister });
 
     // Subagent host: lets the native Sufficit AI backend delegate to other
     // agent-defs as real sessions (spawn_agent / agent_* tools). Late-bound so
@@ -190,6 +193,9 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     };
 
     const surfaceDeps = buildChatSurfaceDeps({ context, runtime, store, adapterByBackend, auth, deleting, rawSessions });
+    // Expose the full session tree (stored + live) to the API/bridge so a remote
+    // client sees every session, not just the live ones.
+    sessionLister.fn = surfaceDeps.listSessions;
     const chatView = new ChatViewProvider(surfaceDeps);
 
     const refreshAll = () => {

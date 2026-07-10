@@ -49,6 +49,8 @@ export interface SymposiumApi {
     sessions: {
         /** Live sessions (running or idle) currently managed by Symposium. */
         list(): ApiSessionInfo[];
+        /** The full session tree (stored + live), same as the sidebar shows. */
+        listAll(): Promise<unknown[]>;
         /** Live status for a session id. */
         status(id: string): "working" | "idle" | undefined;
         /**
@@ -127,6 +129,13 @@ export interface SymposiumApiDeps {
     adapters: AgentAdapter[];
     /** Fires whenever the live session set or status changes. */
     onSessionsChanged: vscode.Event<void>;
+    /**
+     * Mutable holder for the full session-tree aggregator (stored + live, the
+     * same list the sidebar shows). Injected after activation because the
+     * aggregator is built after the API. `listAll()` falls back to live-only
+     * when unset.
+     */
+    sessionLister?: { fn?: () => Promise<unknown[]> };
 }
 
 export const API_VERSION = "1.0.0";
@@ -164,6 +173,7 @@ export function createSymposiumApi(deps: SymposiumApiDeps): SymposiumApi {
 
         sessions: {
             list: () => deps.live.liveInfos(),
+            listAll: async () => (await deps.sessionLister?.fn?.()) ?? deps.live.liveInfos(),
             status: (id) => deps.live.statusFor(id),
             create: async (backend, options) => {
                 const adapter = adapterByBackend.get(backend);

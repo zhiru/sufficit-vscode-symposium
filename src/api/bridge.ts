@@ -164,7 +164,11 @@ export class RemoteBridge {
                 const tools = (vscode.lm?.tools ?? []).map((t) => ({ name: t.name, description: t.description, tags: t.tags }));
                 return json(res, 200, tools);
             }
-            // GET /sessions
+            // GET /sessions/all  — full tree (stored + live), like the sidebar
+            if (method === "GET" && parts[0] === "sessions" && parts[1] === "all" && parts.length === 2) {
+                return json(res, 200, await this.api.sessions.listAll());
+            }
+            // GET /sessions  — live sessions only
             if (method === "GET" && parts[0] === "sessions" && parts.length === 1) {
                 return json(res, 200, this.api.sessions.list());
             }
