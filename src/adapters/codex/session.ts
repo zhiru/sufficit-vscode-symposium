@@ -209,6 +209,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
     sessionId: string | undefined;
     private current: ReturnType<typeof spawn> | undefined;
     private disposed = false;
+    private cancelled = false;
     private reportedError = false;
     private warnedUnenforcedMode = false; // emitted the manager/user "not yet enforced" notice once
     private vscodeMcpServers: Record<string, { command: string; args: string[] }>;
@@ -226,6 +227,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
         // A mid-turn send must not leave two `codex exec` processes writing
         // the same rollout. Cancel the in-flight child before starting another.
         if (this.current) {
+            this.cancelled = true;
             this.current.kill("SIGINT");
             this.current = undefined;
         }
@@ -281,6 +283,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
             stdio: ["ignore", "pipe", "pipe"],
         });
         this.current = child;
+        this.cancelled = false;
         this.reportedError = false;
 
         const rl = readline.createInterface({ input: child.stdout! });
@@ -297,7 +300,10 @@ export class CodexSession extends EventEmitter implements AgentSession {
                 return;
             }
             this.current = undefined;
-            this.emit("event", { kind: "error", message: `codex spawn failed: ${error.message}` });
+            if (!this.cancelled) {
+                this.emit("event", { kind: "error", message: `codex spawn failed: ${error.message}` });
+            }
+            this.cancelled = false;
             this.emit("event", { kind: "turn-end" });
         });
         child.on("exit", (code) => {
@@ -308,10 +314,11 @@ export class CodexSession extends EventEmitter implements AgentSession {
             if (this.disposed) {
                 return;
             }
-            if (code !== 0 && code !== null && !this.reportedError) {
+            if (!this.cancelled && code !== 0 && code !== null && !this.reportedError) {
                 const detail = stderr.trim().split("\n").slice(-2).join(" ");
                 this.emit("event", { kind: "error", message: `codex exited with code ${code}: ${detail}` });
             }
+            this.cancelled = false;
             this.emit("event", { kind: "turn-end" });
         });
     }
@@ -373,6 +380,9 @@ export class CodexSession extends EventEmitter implements AgentSession {
                 this.emit("event", { kind: "turn-end" });
                 break;
             case "turn.failed": {
+                if (this.cancelled) {
+                    break;
+                }
                 this.reportedError = true;
                 const error = typeof event.error === "object" && event.error !== null ? event.error as Record<string, unknown> : {};
                 this.emit("event", { kind: "error", message: "message" in error && typeof error.message === "string" ? error.message : "codex turn failed" });
@@ -384,6 +394,9 @@ export class CodexSession extends EventEmitter implements AgentSession {
                 // "Reconnecting... N/5" are transient retry notices, not failures;
                 // the terminal error (or turn.failed) is surfaced separately.
                 if (/^Reconnecting\.\.\./.test(message)) {
+                    break;
+                }
+                if (this.cancelled) {
                     break;
                 }
                 this.reportedError = true;
@@ -411,6 +424,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
     }
 
     cancel(): void {
+        this.cancelled = true;
         this.current?.kill("SIGINT");
     }
 

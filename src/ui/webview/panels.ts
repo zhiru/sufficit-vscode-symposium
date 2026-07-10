@@ -50,8 +50,9 @@ export function renderTodos(todos) {
 export function renderPlan() {
     const todos = planBySession[wsKey] || [];
     planEl.textContent = "";
-    if (!todos.length) { planEl.classList.remove("has"); return; }
+    if (!todos.length) { planEl.classList.remove("has"); refreshPanels(); return; }
     planEl.classList.add("has");
+    if (!activePanel) { activePanel = "plan"; }
     const done = todos.filter((t) => t.status === "completed").length;
     // Header summary mirrors Copilot Chat: show the task in progress (or the
     // next pending one, or a generic label once everything is done).
@@ -91,6 +92,7 @@ export function renderPlan() {
     }
     card.appendChild(head); card.appendChild(actions); card.appendChild(list);
     planEl.appendChild(card);
+    refreshPanels();
 }
 
 // ---- Tasks panel (Sufficit-memory task list, local mirror) ----
@@ -311,15 +313,18 @@ export function renderChangedFiles() {
 }
 // ---- panel tabs: guardrails / tasks / edited-files collapse into an icon
 // strip above the composer; click an icon to open that panel (one at a time).
-let activePanel = null;   // "guardrails" | "tasks" | "changed" | "attached" | null
+let activePanel = null;   // "plan" | "guardrails" | "tasks" | "changed" | "attached" | null
 // Soft, theme-aware accent per tag type (VS Code chart colors) so each is
 // distinguishable at a glance; dimmed by the .ptab opacity so they stay gentle.
 export function panelDefs() {
+    const planTodos = planBySession[wsKey] || [];
+    const planDone = planTodos.filter((t) => t.status === "completed").length;
     const pending = lastTaskItems.filter((t) => !t.done).length;
     return [
         { key: "attached", icon: "file", el: attachedPanel, title: "Attached to context", count: chips.children.length, badge: String(chips.children.length), color: "var(--vscode-charts-orange, #d9a45b)" },
+        { key: "plan", icon: "list", el: planEl, title: "Tasks", count: planTodos.length, badge: planDone + "/" + planTodos.length, color: "var(--vscode-charts-blue, #4e9bd6)" },
         { key: "guardrails", icon: "shield", el: guardrailsEl, title: "Guardrails", count: lastGuardrailItems.length, badge: String(lastGuardrailItems.length), color: "var(--vscode-charts-purple, #b180d7)" },
-        { key: "tasks", icon: "list", el: tasksEl, title: "Tasks", count: lastTaskItems.length, badge: pending + "/" + lastTaskItems.length, color: "var(--vscode-charts-blue, #4e9bd6)" },
+        { key: "tasks", icon: "list", el: tasksEl, title: "Memory tasks", count: lastTaskItems.length, badge: pending + "/" + lastTaskItems.length, color: "var(--vscode-charts-cyan, #4ec9b0)" },
         { key: "changed", icon: "diff", el: changedFiles, title: "Edited files", count: changedItems.length, badge: String(changedItems.length), color: "var(--vscode-charts-green, #89c374)" },
     ];
 }

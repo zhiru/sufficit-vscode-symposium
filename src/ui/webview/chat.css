@@ -953,6 +953,7 @@
     /* Docked: the open panel sits flush on the composer — flat bottom corners,
        no gap — so the panel + textarea read as one attached unit. */
     #panelBody.has #attachedPanel,
+    #panelBody.has #plan .plcard,
     #panelBody.has #tasks .tkcard,
     #panelBody.has #guardrails .grcard {
         margin-bottom: 0;
@@ -960,7 +961,7 @@
         border-bottom-right-radius: 0;
         border-bottom: none;
     }
-    #panelBody.has #tasks, #panelBody.has #guardrails, #panelBody.has #changedFiles { margin-bottom: 0; }
+    #panelBody.has #plan, #panelBody.has #tasks, #panelBody.has #guardrails, #panelBody.has #changedFiles { margin-bottom: 0; }
     #composer.panelsAttached {
         margin-top: 0;
         border-top-left-radius: 0;
