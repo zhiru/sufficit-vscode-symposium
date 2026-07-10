@@ -1,8 +1,8 @@
 {
   "name": "sufficit-vscode-symposium",
-  "displayName": "Symposium",
+  "displayName": "Sufficit Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.710.2",
+  "version": "2026.710.3",
   "publisher": "sufficit",
   "license": "MIT",
   "repository": {
