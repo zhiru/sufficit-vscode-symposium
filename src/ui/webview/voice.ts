@@ -11,6 +11,8 @@ let recognition: any = null;
 let isRecording = false;
 let recordingDotsInterval: any = null;
 let recordingTextBase = '';
+let recordingInterimText = '';
+let recordingDotsText = '';
 
 // Audio feedback functions (mimicking VSCode chat sounds)
 function playStartSound() {
@@ -54,10 +56,27 @@ function updateRecordingDots() {
     
     recordingDotsInterval = setInterval(() => {
         index = (index + 1) % dots.length;
-        input.value = recordingTextBase + dots[index];
-        resizeInput();
-        setStatus();
+        recordingDotsText = dots[index];
+        renderRecordingDraft();
     }, 400);
+}
+
+function setInputValue(value: string) {
+    if (input.value === value) { return; }
+    input.value = value;
+    resizeInput();
+    setStatus();
+}
+
+function resetRecordingDraft(base = input.value) {
+    recordingTextBase = base;
+    recordingInterimText = '';
+    recordingDotsText = '';
+}
+
+function renderRecordingDraft() {
+    const draft = recordingTextBase + recordingInterimText + recordingDotsText;
+    setInputValue(draft);
 }
 
 // Voice preferences (default values, updated from host)
@@ -161,7 +180,7 @@ if (SpeechRecognition) {
         micBtn.classList.add('recording');
         setStatus('Listening...');
         if (prefs.soundFeedback) playStartSound();
-        recordingTextBase = input.value;
+        resetRecordingDraft();
         if (prefs.dotsAnimation) updateRecordingDots();
     };
 
@@ -173,6 +192,8 @@ if (SpeechRecognition) {
             clearInterval(recordingDotsInterval);
             recordingDotsInterval = null;
         }
+        recordingDotsText = '';
+        renderRecordingDraft();
     };
 
     recognition.onresult = (event: any) => {
@@ -190,17 +211,14 @@ if (SpeechRecognition) {
         if (finalTranscript) {
             // Update base text when we get final results
             recordingTextBase = recordingTextBase + finalTranscript;
-            const dots = ['', '.', '..', '...', '..', '.'];
-            const index = Math.floor(Date.now() / 400) % dots.length;
-            input.value = recordingTextBase + dots[index];
-            resizeInput();
+            recordingInterimText = '';
+            renderRecordingDraft();
             setStatus('Listening...');
         } else if (interimTranscript) {
-            // Show interim results with dots animation
-            const dots = ['', '.', '..', '...', '..', '.'];
-            const index = Math.floor(Date.now() / 400) % dots.length;
-            input.value = recordingTextBase + interimTranscript + dots[index];
-            resizeInput();
+            // Keep interim text in state so the dots timer does not erase it
+            // between recognition events.
+            recordingInterimText = interimTranscript;
+            renderRecordingDraft();
             setStatus('Listening...');
         }
     };
@@ -214,6 +232,8 @@ if (SpeechRecognition) {
             clearInterval(recordingDotsInterval);
             recordingDotsInterval = null;
         }
+        recordingDotsText = '';
+        renderRecordingDraft();
         if (prefs.soundFeedback) playStopSound();
         console.error('Speech recognition error:', event.error);
     };
@@ -231,7 +251,7 @@ function startHostCapture() {
     micBtn.classList.add('recording');
     setStatus('Listening...');
     if (prefs.soundFeedback) playStartSound();
-    recordingTextBase = input.value;
+    resetRecordingDraft();
     if (prefs.dotsAnimation) updateRecordingDots();
 }
 
@@ -242,7 +262,9 @@ function stopHostCapture() {
     hostRecording = false;
     micBtn.classList.remove('recording');
     if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
-    input.value = recordingTextBase;   // drop the dots animation text
+    recordingInterimText = '';
+    recordingDotsText = '';
+    setInputValue(recordingTextBase);   // drop the dots animation text
     setStatus('Transcribing...');
     vscode.postMessage({ type: 'voice-stop' });
 }
@@ -283,7 +305,7 @@ async function startLocalCapture() {
     micBtn.classList.add('recording');
     setStatus('Listening...');
     if (prefs.soundFeedback) playStartSound();
-    recordingTextBase = input.value;
+    resetRecordingDraft();
     if (prefs.dotsAnimation) updateRecordingDots();
 }
 
@@ -307,13 +329,16 @@ window.addEventListener('message', (e) => {
     if (e.data.type === 'stt-result') {
         const text = (e.data.text || '').trim();
         if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
-        input.value = (recordingTextBase ? recordingTextBase.replace(/[.\s]*$/, ' ') : '') + text;
-        resizeInput();
+        recordingInterimText = '';
+        recordingDotsText = '';
+        setInputValue((recordingTextBase ? recordingTextBase.replace(/[.\s]*$/, ' ') : '') + text);
         input.focus();
         setStatus('Ready');
     } else if (e.data.type === 'stt-error') {
         if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
-        if (recordingTextBase) { input.value = recordingTextBase; }
+        recordingInterimText = '';
+        recordingDotsText = '';
+        if (recordingTextBase) { setInputValue(recordingTextBase); }
         setStatus('Ready');
         showToast('Transcription failed: ' + (e.data.error || 'unknown error'));
     } else if (e.data.type === 'voice-recording') {
@@ -324,7 +349,9 @@ window.addEventListener('message', (e) => {
             isRecording = false;
             micBtn.classList.remove('recording');
             if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
-            input.value = recordingTextBase;
+            recordingInterimText = '';
+            recordingDotsText = '';
+            setInputValue(recordingTextBase);
             showToast('Native mic capture failed (' + (e.data.error || 'unknown') + ') — falling back to webview mic');
             void startLocalCapture();
         }
