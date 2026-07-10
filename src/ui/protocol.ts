@@ -119,6 +119,8 @@ export type WebviewToHost =
           /** Index to rewind to for an edit-and-resend. */
           editFrom?: number;
           id?: number;
+          /** Webview-local optimistic row id, confirmed when the host accepts the message. */
+          clientMessageId?: string;
           /** One-shot note on what error interrupted the previous turn (plain Retry only). */
           interruptedBy?: string;
       }

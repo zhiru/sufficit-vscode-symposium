@@ -32,54 +32,52 @@ export function resolvePendingRetry() {
 export function renderError(message, historical, retryable) {
     const stick = nearBottom();
     endToolGroup(); endStream();
+    removeDuplicateAssistantError(message);
     const el = document.createElement("div"); el.className = "msg plain error";
     const txt = document.createElement("div"); txt.textContent = "✖ " + message; el.appendChild(txt);
-    // Retry is just "edit & resend the last user message": it loads that
-    // message back into the composer (so you can change the model, text, or
-    // mode) and resending rewinds the history to that point.
     const lastUser = lastUserRow();
     if (lastUser && !historical) {
         const bar = document.createElement("div"); bar.className = "errActions";
-        const b = document.createElement("button"); b.className = "retryBtn";
-        // Trust the host's own classification (turnRunner.ts computes this from
-        // the actual HTTP status / network error, e.g. "fetch failed") when
-        // it's given; only guess from the message text for older error paths
-        // (CLI adapter spawn/exit failures) that don't set retryable at all.
-        const isTimeoutError = typeof retryable === "boolean" ? retryable
-            : (message.includes("no activity") || message.includes("stalled tool") || message.includes("dropped connection") || message.includes("Turn ended automatically") || message.includes("504") || message.includes("Gateway"));
-        b.appendChild(svgIcon("history"));
-        b.appendChild(document.createTextNode(isTimeoutError ? " Retry" : " Edit & retry"));
-        b.addEventListener("click", () => {
-            if (isTimeoutError) {
-                // Plain retry: resend the same text to the CURRENT session,
-                // no branching — restart-from-message always forks a new
-                // session, which is wrong for "the request just timed out".
-                // errorMessage is passed here (not captured host-side) because
-                // it must survive a reload between the error and this click —
-                // this closure's `message` does, an in-memory host field wouldn't.
-                vscode.postMessage({ type: "retry-last-message", index: lastUser.idx, errorMessage: message });
-                // Mirror composer.ts's send(): reflect the in-flight turn in
-                // the compose bar (stop icon, "thinking..." status), same as
-                // a normal send does. Without this the session list shows
-                // activity while the compose area still looks idle.
-                if (!busy) { setBusy(true); }
-                setStatus();
-                // One-shot: disable so it can't fire twice (e.g. a double
-                // click re-sending the same message). Stays disabled until a
-                // fresh error renders its own new button.
-                b.disabled = true;
-                b.textContent = "";
-                b.appendChild(svgIcon("history"));
-                b.appendChild(document.createTextNode(" Retrying…"));
-                pendingRetryBar = bar;
-            } else {
-                // Edit & retry: load into composer
-                beginEdit(lastUser.idx, lastUser.text);
-            }
+        const retry = document.createElement("button"); retry.className = "retryBtn errBtn";
+        retry.appendChild(svgIcon("history"));
+        retry.appendChild(document.createTextNode(" Retry"));
+        retry.addEventListener("click", () => {
+            // Plain retry: resend the same text to the CURRENT session, no branching.
+            vscode.postMessage({ type: "retry-last-message", index: lastUser.idx, errorMessage: message });
+            if (!busy) { setBusy(true); }
+            setStatus();
+            retry.disabled = true;
+            retry.textContent = "";
+            retry.appendChild(svgIcon("history"));
+            retry.appendChild(document.createTextNode(" Retrying…"));
+            pendingRetryBar = bar;
         });
-        bar.appendChild(b); el.appendChild(bar);
+
+        const edit = document.createElement("button"); edit.className = "retryBtn errBtn";
+        edit.appendChild(svgIcon("edit"));
+        edit.appendChild(document.createTextNode(" Edit"));
+        edit.addEventListener("click", () => beginEdit(lastUser.idx, lastUser.text));
+
+        bar.append(retry, edit); el.appendChild(bar);
     }
     log.appendChild(el); refreshEmpty(); autoScroll(stick);
+}
+
+function normalizeErrorText(text) {
+    return String(text || "").replace(/^\s*[✖×]\s*/, "").replace(/\s+/g, " ").trim();
+}
+
+function removeDuplicateAssistantError(message) {
+    const normalized = normalizeErrorText(message);
+    if (!normalized || conversationRows.length === 0) { return; }
+    const last = conversationRows[conversationRows.length - 1];
+    if (last?.role !== "assistant" || normalizeErrorText(last.text) !== normalized) { return; }
+    const rows = log.querySelectorAll("[data-msg-index]");
+    const row = rows[rows.length - 1];
+    if (row && row.getAttribute("data-role") === "assistant") {
+        row.remove();
+    }
+    conversationRows.pop();
 }
 export function append(cls, text) {
     const stick = nearBottom();
@@ -91,6 +89,22 @@ export function append(cls, text) {
     refreshEmpty();
     autoScroll(stick);
     return el;
+}
+
+export function optimisticUserMessage(clientMessageId, text) {
+    const el = message("user", text, Date.now());
+    el.classList.add("pendingConfirm");
+    el.dataset.clientMessageId = clientMessageId;
+    return el;
+}
+
+export function confirmOptimisticMessage(clientMessageId) {
+    if (!clientMessageId) { return false; }
+    const el = log.querySelector(`[data-client-message-id="${CSS.escape(clientMessageId)}"]`);
+    if (!el) { return false; }
+    el.classList.remove("pendingConfirm");
+    delete el.dataset.clientMessageId;
+    return true;
 }
 // Transient status notice (e.g. vision transcription annotation).
 // Rendered as a quiet system annotation, NOT model output — never persisted.

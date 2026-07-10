@@ -2,6 +2,7 @@ export type SendMode = "send" | "queue" | "steer";
 
 export interface PendingMessage {
     id?: number;
+    clientMessageId?: string;
     text: string;
     attachments: string[];
     model?: string;

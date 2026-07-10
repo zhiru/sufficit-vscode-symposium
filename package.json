@@ -5,9 +5,29 @@
   "version": "2026.710.3",
   "publisher": "sufficit",
   "license": "MIT",
+  "icon": "media/symposium-icon.png",
+  "homepage": "https://github.com/sufficit/sufficit-vscode-symposium#readme",
+  "bugs": {
+    "url": "https://github.com/sufficit/sufficit-vscode-symposium/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/sufficit/sufficit-vscode-symposium"
+  },
+  "keywords": [
+    "sufficit",
+    "symposium",
+    "ai",
+    "agents",
+    "chat",
+    "claude",
+    "codex",
+    "copilot",
+    "code-server"
+  ],
+  "galleryBanner": {
+    "color": "#1E1B4B",
+    "theme": "dark"
   },
   "engines": {
     "vscode": "^1.100.0"

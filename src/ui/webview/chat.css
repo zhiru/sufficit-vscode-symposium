@@ -48,6 +48,10 @@
         border-radius: 50%; animation: spin 0.75s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .msg.pendingConfirm {
+        opacity: 0.58;
+        filter: saturate(0.82);
+    }
     @keyframes ldFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes ldPulse { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
     #loadingState {
@@ -1129,7 +1133,7 @@
         border-radius: 0 4px 4px 0;
         color: var(--vscode-errorForeground);
     }
-    .errActions { margin-top: 6px; }
+    .errActions { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
     .retryBtn {
         display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
         font: inherit; font-size: 0.9em; padding: 3px 10px; border-radius: 5px;

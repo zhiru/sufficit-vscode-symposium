@@ -33,36 +33,15 @@ export function buildChatSurfaceDeps(args: SurfaceDepsArgs): ChatSurfaceDeps {
             // stays nested under its main conversation after it's stored to disk
             // (disk rows otherwise lose the in-memory parentId).
             for (const l of liveInfos) { if (l.parentId) { store.setParent(l.sessionId, l.parentId); } }
-            const reconciledLive = new Set<string>();
             const disk = store.decorate(await rawSessions(), true)
                 .map((s) => {
-                    let status = runtime.statusFor(s.sessionId);
-                    if (!status) {
-                        // Bridge only a BRAND-NEW controller (id not yet assigned,
-                        // keyed "new-N") to its freshly-written disk row by cwd.
-                        // Previously this also matched any controller-less disk
-                        // session to ANY live controller in the same cwd, so a real
-                        // working session lit up a sibling session as "working"
-                        // (phantom activity). A controller with a real id is already
-                        // shown on its own row via statusFor — no cwd guess needed.
-                        const byCwd = liveInfos.find((l) =>
-                            !reconciledLive.has(l.sessionId)
-                            && l.backend === s.backend
-                            && !!l.cwd
-                            && l.cwd === s.cwd
-                            && l.sessionId.startsWith("new-")
-                        );
-                        if (byCwd) {
-                            status = byCwd.status;
-                            reconciledLive.add(byCwd.sessionId);
-                        }
-                    }
+                    const status = runtime.statusFor(s.sessionId);
                     const adapter = adapterByBackend.get(s.backend);
                     return { ...s, backendName: adapter?.displayName ?? s.backend, status };
                 });
             const known = new Set(disk.map((s) => s.sessionId));
             const live = liveInfos
-                .filter((l) => !known.has(l.sessionId) && !reconciledLive.has(l.sessionId))
+                .filter((l) => !known.has(l.sessionId) && !l.sessionId.startsWith("new-"))
                 .map((l) => ({
                     ...l,
                     backendName: adapterByBackend.get(l.backend)?.displayName ?? l.backend,

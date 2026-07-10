@@ -1,93 +1,142 @@
-# Symposium
+<p align="center">
+  <img src="media/symposium-icon.png" width="96" height="96" alt="Sufficit Symposium icon">
+</p>
+
+# Sufficit Symposium
 
 > συμπόσιον — *symposion*: the banquet where many minds dialogue, conducted by a host.
 
-Symposium is a VS Code / code-server extension that hosts and conducts dialogue
-sessions with multiple AI agent CLIs side by side — **Claude Code**, **Codex CLI**
-and **GitHub Copilot CLI** — each session pinned to the exact backend and model
-you chose, independent of what any orchestrating LLM "decides".
+Sufficit Symposium is a VS Code and code-server extension for hosting dialogue
+sessions with multiple AI agents side by side. It runs **Sufficit AI**,
+**Claude Code**, **Codex CLI** and **GitHub Copilot CLI** through one visual
+surface, while keeping each session pinned to the backend and model selected by
+the user.
+
+[Marketplace](https://marketplace.visualstudio.com/items?itemName=sufficit.sufficit-vscode-symposium) |
+[Releases](https://github.com/sufficit/sufficit-vscode-symposium/releases) |
+[Issues](https://github.com/sufficit/sufficit-vscode-symposium/issues) |
+[Sufficit](https://www.sufficit.com.br) |
+[Sufficit AI](https://ai.sufficit.com.br) |
+[GitHub](https://github.com/sufficit)
+
+## What It Does
+
+- Hosts multiple agent backends from the same VS Code surface.
+- Keeps backend, model, permissions and session identity explicit per session.
+- Supports hand-off between agents without leaving the conversation screen.
+- Integrates Sufficit Identity, Sufficit AI, shared memory and vault-backed tools.
+- Works in desktop VS Code and browser-based code-server environments.
+- Adds a Source Control command to generate commit messages through Sufficit AI.
 
 ## Why
 
-VS Code's built-in chat delegation (`runSubagent`) lets the calling LLM override
-the target agent's pinned model via an optional `model` parameter — silently.
-Symposium inverts the control: the extension owns the processes, the sessions
-and the model selection. Agents converse; the host conducts.
+VS Code's built-in chat delegation can let a calling model influence the target
+agent. Symposium inverts that control: the extension owns the process lifecycle,
+session state and model selection. Agents converse, but the host conducts.
+
+## Supported Backends
+
+| Backend | Status | Notes |
+|---|---:|---|
+| Sufficit AI | Implemented | Native OpenAI-compatible backend with Sufficit Identity, memory, web and local tools. |
+| Claude Code | Implemented | JSONL streaming via `claude -p`, resume via `--resume`, model pinned per session. |
+| Codex CLI | Implemented | JSONL events via `codex exec --json`, resume via `codex exec resume`. |
+| GitHub Copilot CLI | Implemented | JSON output via `copilot -p --output-format json`; ACP is planned for persistent sessions. |
 
 ## Architecture
 
-```
-┌────────────────────────────────────────────────┐
-│ VS Code / code-server                          │
-│  ┌──────────────┐   ┌────────────────────────┐ │
-│  │ Sessions tree │   │ Chat panel (webview)   │ │
-│  └──────┬───────┘   └───────────┬────────────┘ │
-│         └──────────┬────────────┘              │
-│             AgentAdapter interface             │
-│      ┌─────────────┼──────────────┐            │
-│  ┌───┴───┐    ┌────┴────┐   ┌─────┴────┐       │
-│  │claude │    │ codex   │   │ copilot  │       │
-│  │stream-│    │exec     │   │ --acp    │       │
-│  │json   │    │--json   │   │ (planned)│       │
-│  └───┬───┘    └────┬────┘   └─────┬────┘       │
-└──────┼─────────────┼──────────────┼────────────┘
-       ▼             ▼              ▼
-   claude CLI    codex CLI     copilot CLI
+```text
++------------------------------------------------+
+| VS Code / code-server                          |
+|  +---------------+   +-----------------------+ |
+|  | Sessions pane |   | Chat panel (webview)  | |
+|  +-------+-------+   +-----------+-----------+ |
+|          +-----------+-----------+             |
+|              Adapter interface                 |
+|      +-------+-------+-------+-------+         |
+|      | Sufficit AI   | Claude | Codex | Copilot|
+|      +-------+-------+-------+-------+         |
++--------------+-------+-------+-------+---------+
+               |       |       |
+               v       v       v
+        Sufficit API  CLIs  local transcripts
 ```
 
-- **Claude Code** (implemented): bidirectional JSONL —
-  `claude -p --input-format stream-json --output-format stream-json`,
-  resume via `--resume <session-id>`, transcripts discovered in
-  `~/.claude/projects/`. Model pinned per session via `--model` and gateway
-  routing via `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` in
-  `symposium.claude.env`.
-- **Codex CLI** (implemented): `codex exec --json` JSONL events
-  (`thread.started`/`item.completed`/`turn.completed`), resume via
-  `codex exec resume <id>`, sessions discovered under `~/.codex/sessions`.
-- **Copilot CLI** (implemented): `copilot -p --output-format json` JSONL,
-  one process per turn, resume via `--resume <session-id>`. Native `--acp`
-  (Agent Client Protocol) is a future upgrade for persistent sessions.
+## Installation
 
-## Settings
+Install from the Visual Studio Marketplace:
 
-| Setting | Purpose |
-|---|---|
-| `symposium.claude.executable` | Path to the `claude` binary |
-| `symposium.claude.model` | Default model for new sessions |
-| `symposium.claude.permissionMode` | `default` / `acceptEdits` / `bypassPermissions` / `plan` |
-| `symposium.claude.env` | Extra env (e.g. `ANTHROPIC_BASE_URL` for a gateway) |
+```bash
+code --install-extension sufficit.sufficit-vscode-symposium
+```
 
-## Continue with another agent (hand-off)
-
-A live dialogue can be handed off to a different backend **without leaving the
-screen**: click the hand-off button (↹) in the chat header and pick another
-agent. Symposium starts a fresh session on the target backend in the same
-surface, seeds it with the prior conversation as context, and replays the
-visible exchange — so it reads as one continuous dialogue and the new agent
-continues "as if nothing happened".
-
-The original session is only *detached* (it keeps running in the background and
-can be reopened from the sessions list); the hand-off never stops it. Because
-each backend issues its own session ids and transcripts, continuity is carried
-as a seeded context prefix rather than a native cross-backend resume.
-
-## Install
-
-Grab the `.vsix` from the [latest release](https://github.com/sufficit/sufficit-vscode-symposium/releases/latest) and either:
+Or download the `.vsix` from the
+[latest release](https://github.com/sufficit/sufficit-vscode-symposium/releases/latest):
 
 ```bash
 code --install-extension sufficit-vscode-symposium-<version>.vsix
 ```
 
-or in VS Code: **Extensions → `···` → Install from VSIX...**
+For code-server, run the install command in the same environment where
+code-server is installed:
 
-The agent CLIs themselves are not bundled — install the ones you want to use
-(`claude`, `codex`, `copilot`) and make sure they are on your PATH.
+```bash
+code-server --install-extension sufficit.sufficit-vscode-symposium
+```
+
+The external CLIs are not bundled. Install the ones you want to use and make
+sure `claude`, `codex` or `copilot` are available on the PATH seen by VS Code or
+code-server.
+
+## Configuration
+
+Core settings are available under `Symposium` in VS Code settings.
+
+| Setting | Purpose |
+|---|---|
+| `symposium.openai.baseUrl` | OpenAI-compatible endpoint. Defaults to `https://ai.sufficit.com.br/openai/v1`. |
+| `symposium.identity.issuer` | Sufficit Identity issuer. Defaults to `https://identity.sufficit.com.br`. |
+| `symposium.hub.url` | Sufficit memory/vault hub URL. |
+| `symposium.claude.executable` | Path to the `claude` binary. |
+| `symposium.claude.model` | Default Claude model for new sessions. |
+| `symposium.claude.permissionMode` | Claude permission mode for new sessions. |
+| `symposium.codex.executable` | Path to the `codex` binary. |
+| `symposium.copilot.executable` | Path to the `copilot` binary. |
+
+## Hand-Off Between Agents
+
+A live dialogue can be handed off to a different backend without leaving the
+screen. Use the hand-off button in the chat header, pick another agent, and
+Symposium starts a fresh session with the prior conversation seeded as context.
+
+The original session is detached, not destroyed. It keeps its own backend
+session id and can be reopened from the sessions list.
+
+## Official Links
+
+| Resource | Link |
+|---|---|
+| Sufficit website | <https://www.sufficit.com.br> |
+| Sufficit AI | <https://ai.sufficit.com.br> |
+| Sufficit Identity | <https://identity.sufficit.com.br> |
+| GitHub organization | <https://github.com/sufficit> |
+| Extension repository | <https://github.com/sufficit/sufficit-vscode-symposium> |
+| VS Code Marketplace | <https://marketplace.visualstudio.com/items?itemName=sufficit.sufficit-vscode-symposium> |
 
 ## Development
 
 ```bash
 npm install
 npm run compile
-# F5 in VS Code launches the Extension Development Host
+npm run lint
 ```
+
+Use `F5` in VS Code to launch the Extension Development Host.
+
+To package locally:
+
+```bash
+npx @vscode/vsce package
+```
+
+Stable releases are published from version tags by the repository workflow.

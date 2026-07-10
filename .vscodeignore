@@ -11,6 +11,8 @@ ARCHITECTURE.md
 docs/**
 .vscode/**
 .github/**
+.vsce*.token
+*.token
 eslint.config.mjs
 .prettierrc.json
 .prettierignore

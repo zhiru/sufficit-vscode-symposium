@@ -9,6 +9,7 @@ import { scrollToBottom, autoScroll, nearBottom } from "./scroll";
 import { svgIcon } from "./icons";
 import { refreshPanels } from "./panels";
 import { resizeInput } from "./inputSizing";
+import { optimisticUserMessage } from "./messages";
 // Voice input (Web Speech + host/local capture) is extracted to ./voice; its
 // listeners run on import, so importing it here preserves registration order.
 import "./voice";
@@ -91,6 +92,7 @@ export function renderChips() {
     refreshPanels();
 }
 let editAnchor = null;
+let sendSeq = 0;
 export function markEditing() {
     log.querySelectorAll("[data-msg-index]").forEach((el) => {
         const i = Number(el.dataset.msgIndex || "-1");
@@ -132,6 +134,7 @@ export function send(modeOverride) {
         atts.unshift(activeFile + (activeFileRange ? " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")" : ""));
     }
     const editFrom = editAnchor;
+    const clientMessageId = editFrom == null ? "local-" + Date.now().toString(36) + "-" + (++sendSeq).toString(36) : undefined;
     const payload = {
         type: "send",
         text,
@@ -142,8 +145,10 @@ export function send(modeOverride) {
         mode: modeOverride || sendMode.value,
         autonomy: autonomyValue,
         editFrom: editFrom,
+        clientMessageId,
     };
     vscode.postMessage(payload);
+    if (clientMessageId) { optimisticUserMessage(clientMessageId, text); }
     if (editAnchor != null) { editAnchor = null; markEditing(); }
     if (!busy && editFrom == null) { setBusy(true); }
     setAttachments([]);

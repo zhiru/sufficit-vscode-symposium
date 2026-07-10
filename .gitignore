@@ -7,3 +7,4 @@ out/
 tmp_*.png
 .claude/
 .codex/
+**/*.token

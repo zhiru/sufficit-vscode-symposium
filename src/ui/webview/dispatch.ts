@@ -5,7 +5,7 @@ import { renderChips, setBrowserOpen } from "./composer";
 import { resizeInput } from "./inputSizing";
 import { applyMeta } from "./meta";
 import { applyEvent } from "./events";
-import { append, branchBanner, endStream, message, renderThinkBlock, resetLastMsg } from "./messages";
+import { append, branchBanner, confirmOptimisticMessage, endStream, message, renderThinkBlock, resetLastMsg } from "./messages";
 import { renderTool, resetToolRows } from "./tools";
 import { renderChangedFiles, renderGuardrails, renderQueued, renderTasks, renderPlan, resetWorkingState, refreshPanels, changedItems, setChangedItems } from "./panels";
 import { renderAccount, renderSessions } from "./sessions";
@@ -160,7 +160,9 @@ window.addEventListener("message", ({ data }) => {
                 branchBanner(data.branchLabel.title, data.branchLabel.detail);
             }
             for (const m of data.messages) {
-                if (m.role === "user") message("user", m.text, m.ts);
+                if (m.role === "user") {
+                    if (!confirmOptimisticMessage(m.clientMessageId)) { message("user", m.text, m.ts); }
+                }
                 else if (m.role === "thinking" && String(m.text || "").trim()) renderThinkBlock(m.text);
                 else if (m.role === "tool") renderTool(m.toolName || m.text, m.detail || "", { input: m.input, result: m.result, added: m.added, removed: m.removed, todos: m.todos, path: m.path, diff: m.diff });
                 else if (m.role === "error") append("error", "✖ " + m.text);

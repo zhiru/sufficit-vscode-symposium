@@ -350,7 +350,7 @@ export class ChatController {
             // would just duplicate it; the status-notice (with an anchor back
             // to that bubble) is the visible signal instead.
             if (!msg.interruptedBy) {
-                this.emit({ type: "user", text: msg.text, attachments: msg.attachments });
+                this.emit({ type: "user", text: msg.text, attachments: msg.attachments, clientMessageId: msg.clientMessageId });
             }
             this.session.send(outbound.text, images, outbound.preamble);
         } catch (error) {
@@ -371,6 +371,9 @@ export class ChatController {
         // Any backend activity proves the turn is alive — push the watchdog out.
         if (this.busy) { this.armWatchdog(); }
         this.emit({ type: "event", event });
+        if (event.kind === "session") {
+            this.onStatusChange?.();
+        }
         // Track edited files here (authoritative, survives view switches).
         if (event.kind === "tool-start" && event.path && (event.added != null || event.removed != null)) {
             this.changed.record(event.path, event.added, event.removed);
