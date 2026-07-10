@@ -88,7 +88,7 @@ export class RemoteBridge {
     }
 
     private authorized(req: http.IncomingMessage, url: URL, token: string): boolean {
-        return isBridgeAuthorized(req.headers.authorization, url, token);
+        return isBridgeAuthorized(req.headers.authorization, url, token, req.headers["x-symposium-token"]);
     }
 
     /** Reads the current server-side policy from settings (fresh each request). */

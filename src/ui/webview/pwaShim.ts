@@ -42,7 +42,11 @@ function token(): string {
 }
 
 function authHeaders(): Record<string, string> {
-    return { "Content-Type": "application/json", "Authorization": `Bearer ${token()}` };
+    // The bridge token goes in a dedicated header, not Authorization, so a
+    // fronting reverse proxy can use HTTP Basic Auth (Authorization: Basic) as a
+    // second gate without colliding. (SSE still uses ?token= — EventSource can't
+    // set headers.)
+    return { "Content-Type": "application/json", "X-Symposium-Token": token() };
 }
 
 async function apiPost(path: string, body?: any): Promise<Response> {

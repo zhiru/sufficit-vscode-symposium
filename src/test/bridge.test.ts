@@ -31,3 +31,15 @@ test("bridge authorization header works for every endpoint", () => {
         true,
     );
 });
+
+test("X-Symposium-Token header authorizes without colliding with Authorization", () => {
+    const token = "secret-token";
+    const url = new URL("http://localhost/sessions");
+
+    // Bridge token in the dedicated header, Authorization free for a Basic gate.
+    assert.equal(isBridgeAuthorized("Basic dXNlcjpwYXNz", url, token, token), true);
+    // Wrong custom token is rejected.
+    assert.equal(isBridgeAuthorized(undefined, url, token, "nope"), false);
+    // Array header (duplicated) does not match.
+    assert.equal(isBridgeAuthorized(undefined, url, token, [token] as unknown as string[]), false);
+});
