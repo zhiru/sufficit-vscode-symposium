@@ -86,12 +86,12 @@ export function syncSufficitMcpConfig(token: string | null | undefined, homeDir 
     return { configPath, enabled, changed: true };
 }
 
-export async function syncCodexSufficitMcp(forceRefresh = false): Promise<{
+export async function syncCodexSufficitMcp(forceRefresh = false, homeDir?: string): Promise<{
     configPath: string;
     enabled: boolean;
     changed: boolean;
 }> {
     const token = await resolveCodexSufficitToken(forceRefresh);
     applyCodexSufficitToken(token);
-    return syncSufficitMcpConfig(token);
+    return syncSufficitMcpConfig(token, homeDir);
 }

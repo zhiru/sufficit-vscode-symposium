@@ -66,7 +66,7 @@ export default tseslint.config(
             // Promise callbacks where a non-promise (or void) is returned.
             "@typescript-eslint/no-misused-promises": "error",
             // async functions that never await (usually a missing-await bug).
-            "@typescript-eslint/require-await": "warn",
+            "@typescript-eslint/require-await": "error",
             // Awaiting something that isn't thenable.
             "@typescript-eslint/await-thenable": "warn",
         },

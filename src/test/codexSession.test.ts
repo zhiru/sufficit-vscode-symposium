@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parseCodexModelCatalog } from "../adapters/codex/adapter";
+import { parseCodexModelCatalog } from "../adapters/codex/models";
 import { buildHttpMcpWrapperScript, codexWorkspaceArgs, mcpHttpWrapperPath } from "../adapters/codex/session";
 
 test("HTTP MCP wrapper reads URL and headers from mcp.json at runtime", () => {

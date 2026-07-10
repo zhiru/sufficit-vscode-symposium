@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -123,10 +122,10 @@ test("syncSufficitMcpConfig writes/upserts to ~/.codex/config.toml and reports c
 });
 
 test("setCodexSufficitTokenProvider and resolveCodexSufficitToken plumb token provider", async () => {
-    setCodexSufficitTokenProvider(async () => "provider-token");
+    setCodexSufficitTokenProvider(() => Promise.resolve("provider-token"));
     assert.equal(await resolveCodexSufficitToken(), "provider-token");
 
-    setCodexSufficitTokenProvider(async () => null);
+    setCodexSufficitTokenProvider(() => Promise.resolve(null));
     assert.equal(await resolveCodexSufficitToken(), null);
 
     setCodexSufficitTokenProvider(undefined);
@@ -134,7 +133,7 @@ test("setCodexSufficitTokenProvider and resolveCodexSufficitToken plumb token pr
 });
 
 test("resolveCodexSufficitToken swallows errors and returns null", async () => {
-    setCodexSufficitTokenProvider(async () => { throw new Error("boom"); });
+    setCodexSufficitTokenProvider(() => Promise.reject(new Error("boom")));
     assert.equal(await resolveCodexSufficitToken(), null);
     setCodexSufficitTokenProvider(undefined);
 });
@@ -157,11 +156,9 @@ test("applyCodexSufficitToken sets process.env and deletes when null", () => {
 test("syncCodexSufficitMcp resolves token, applies to env and writes config", async () => {
     const tmp = createTempDir();
     const homeDir = tmp;
-    const originalHomedir = os.homedir;
-    Object.defineProperty(os, "homedir", { value: () => homeDir, configurable: true });
 
-    setCodexSufficitTokenProvider(async () => "sync-token");
-    const result = await syncCodexSufficitMcp();
+    setCodexSufficitTokenProvider(() => Promise.resolve("sync-token"));
+    const result = await syncCodexSufficitMcp(false, homeDir);
     assert.equal(result.enabled, true);
     assert.ok(result.changed);
     assert.equal(process.env[SUFFICIT_MCP_TOKEN_ENV], "sync-token");
@@ -172,7 +169,6 @@ test("syncCodexSufficitMcp resolves token, applies to env and writes config", as
     assert.ok(hasSufficitMcpSection(content));
     assert.ok(content.includes("enabled = true"));
 
-    Object.defineProperty(os, "homedir", { value: originalHomedir, configurable: true });
     delete process.env[SUFFICIT_MCP_TOKEN_ENV];
     fs.rmSync(tmp, { recursive: true, force: true });
     setCodexSufficitTokenProvider(undefined);

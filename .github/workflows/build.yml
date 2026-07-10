@@ -31,7 +31,7 @@ jobs:
         run: npm run compile
 
       - name: Test
-        run: node --test out/test/*.test.js || echo "Tests skipped (bundled output)"
+        run: node --test out/test/*.test.js
 
       - name: Package VSIX
         run: npx --yes @vscode/vsce package
