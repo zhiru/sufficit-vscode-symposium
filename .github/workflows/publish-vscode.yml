@@ -1,0 +1,78 @@
+name: Publish VS Code Extension
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to the Visual Studio Marketplace"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$package_version" != "$tag_version" ]; then
+            echo "Tag v$tag_version does not match package.json version $package_version" >&2
+            exit 1
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Check webview bundle
+        run: npm run check:webview
+
+      - name: Package VSIX
+        run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository
+
+      - name: Validate VSCE_PAT
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "Repository secret VSCE_PAT is required to publish to the Visual Studio Marketplace." >&2
+            exit 1
+          fi
+
+      - name: Publish to Visual Studio Marketplace
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish --packagePath ./*.vsix --pat "$VSCE_PAT"
+
+      - name: Attach VSIX to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.vsix"
+          generate_release_notes: true
