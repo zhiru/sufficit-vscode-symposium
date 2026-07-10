@@ -45,11 +45,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Compile
-        run: npm run compile
+      - name: Compile tests
+        run: npm run compile:test
 
       - name: Test
         run: node --test out/test/*.test.js
+
+      - name: Compile
+        run: npm run compile
 
       - name: Check webview bundle
         run: npm run check:webview
