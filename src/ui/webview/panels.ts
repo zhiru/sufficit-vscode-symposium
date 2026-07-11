@@ -1,8 +1,7 @@
 // Plan/tasks/guardrails/queued/changed-files panels + working set.
 import { saved, saveState, vscode } from "./vscode";
 import { planEl, tasksEl, guardrailsEl, queuedEl, changedFiles, panelBody, panelTabs, attachedPanel, chips, composerEl } from "./dom";
-import { activeSessionId, setQueued } from "./state";
-import { setStatus } from "./status";
+import { activeSessionId } from "./state";
 import { svgIcon, fileIcon } from "./icons";
 import { relWhen } from "./format";
 import { nearBottom } from "./scroll";
@@ -207,78 +206,9 @@ export function renderTasks(items, project) {
     refreshPanels();
 }
 
-// ---- guardrails (agent-defined absolute rules, sent every message) ----
-let lastGuardrailItems = [];
-export function renderGuardrails(items) {
-    lastGuardrailItems = items || [];
-    guardrailsEl.textContent = "";
-    if (!lastGuardrailItems.length) { guardrailsEl.classList.remove("has"); refreshPanels(); return; }
-    const card = document.createElement("div"); card.className = "grcard";
-    const head = document.createElement("div"); head.className = "grhead";
-    head.appendChild(svgIcon("shield"));
-    const ttl = document.createElement("span"); ttl.className = "grtitle"; ttl.textContent = "Guardrails";
-    ttl.title = "Absolute rules the agent set for this session, sent on every message. The agent adds them; you can remove or clear them.";
-    const cnt = document.createElement("span"); cnt.className = "grcount"; cnt.textContent = String(lastGuardrailItems.length);
-    const clear = document.createElement("button"); clear.className = "grbtn"; clear.title = "Clear all guardrails";
-    clear.setAttribute("aria-label", "Clear all guardrails");
-    clear.appendChild(svgIcon("trash"));
-    clear.addEventListener("click", (e) => { e.stopPropagation(); if (lastGuardrailItems.length) { vscode.postMessage({ type: "clear-guardrails" }); } });
-    head.appendChild(ttl); head.appendChild(cnt); head.appendChild(clear);
-    card.appendChild(head);
-    const list = document.createElement("div"); list.className = "grlist";
-    for (const it of lastGuardrailItems) {
-        const row = document.createElement("div"); row.className = "gritem";
-        const txt = document.createElement("span"); txt.className = "grtext"; txt.textContent = it.text; txt.title = it.text;
-        const del = document.createElement("button"); del.className = "grdel"; del.title = "Remove"; del.textContent = "✕";
-        del.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type: "remove-guardrail", id: it.id }); });
-        row.appendChild(txt); row.appendChild(del);
-        list.appendChild(row);
-    }
-    card.appendChild(list);
-    guardrailsEl.appendChild(card);
-    guardrailsEl.classList.add("has");
-    refreshPanels();
-}
-
-// ---- queued messages (editable until dispatched) ----
-export function renderQueued(items) {
-    setQueued(items.length);   // keep status text in sync
-    queuedEl.textContent = "";
-    if (!items.length) { queuedEl.classList.remove("has"); setStatus(); return; }
-    queuedEl.classList.add("has");
-    const head = document.createElement("div"); head.className = "qhead"; head.textContent = "Queued";
-    queuedEl.appendChild(head);
-    for (const it of items) {
-        const row = document.createElement("div"); row.className = "qitem";
-        const main = document.createElement("div"); main.className = "qmain";
-        const txt = document.createElement("div"); txt.className = "qtext"; txt.textContent = it.text;
-        txt.title = "Click to edit"; txt.addEventListener("click", () => vscode.postMessage({ type: "queue-edit", id: it.id }));
-        main.appendChild(txt);
-        if (it.attachments && it.attachments.length) {
-            const atts = document.createElement("div"); atts.className = "qatts";
-            for (const p of it.attachments) {
-                const chip = document.createElement("span"); chip.className = "qatt"; chip.title = p;
-                const ic = svgIcon("file"); ic.classList.add("qattIcon"); chip.appendChild(ic);
-                chip.appendChild(document.createTextNode(String(p).split("/").pop() || p));
-                atts.appendChild(chip);
-            }
-            main.appendChild(atts);
-        }
-        const acts = document.createElement("span"); acts.className = "qacts";
-        const mkBtn = (icon, title, type) => {
-            const b = document.createElement("button"); b.className = "qbtn"; b.title = title;
-            b.appendChild(svgIcon(icon));
-            b.addEventListener("click", (e) => { e.stopPropagation(); vscode.postMessage({ type, id: it.id }); });
-            return b;
-        };
-        acts.appendChild(mkBtn("edit", "Edit", "queue-edit"));
-        acts.appendChild(mkBtn("up", "Send next", "queue-promote"));
-        acts.appendChild(mkBtn("x", "Remove", "queue-remove"));
-        row.appendChild(main); row.appendChild(acts);
-        queuedEl.appendChild(row);
-    }
-    setStatus();
-}
+// Guardrails + queued-messages panels moved to panelsExtras.ts (check:size).
+export { renderGuardrails, renderQueued } from "./panelsExtras";
+import { lastGuardrailItems } from "./panelsExtras";
 
 // ---- changed-files working set (above the composer) ----
 // The edited-files list is OWNED BY THE CONTROLLER (extension side) and

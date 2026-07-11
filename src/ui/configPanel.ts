@@ -1,59 +1,16 @@
 import * as vscode from "vscode";
-import { ensureScaffold, ResourceKind, rootDir, readToolCredential } from "../config/root";
-import { SymposiumApi } from "../api/symposiumApi";
-import { SufficitAuth } from "../auth/identity";
-import type { ChatViewProvider } from "./chatView";
+import { ensureScaffold, rootDir, readToolCredential } from "../config/root";
 import { renderConfigHtml } from "./configHtml";
 import { tr } from "./configI18n";
 import { listServers, ensureSufficitNativeServer } from "../config/servers";
 import { getSttState, downloadSttModel, deleteSttModel } from "../voice/sttService";
 import { handleCompressionMessage } from "./configCompressionHandler";
 import { handleBackendsMessage } from "./configBackendsHandler";
-import { handleMcpMessage, McpFormPayload } from "./configMcpHandler";
+import { handleMcpMessage } from "./configMcpHandler";
 import { handleResourcesMessage } from "./configResourcesHandler";
 import { handleVoiceMessage } from "./configVoiceHandler";
-
-export interface ConfigPanelDeps {
-    api: SymposiumApi;
-    auth?: SufficitAuth;
-    /** Lets config handlers reveal a session they created programmatically
-     *  (e.g. the automated Sufficit AI voice diagnostic). */
-    chatView?: ChatViewProvider;
-}
-
-/** Shape of the messages dispatched from the config webview to the host. */
-export interface ConfigMessage {
-    type: string;
-    path?: string;
-    kind?: ResourceKind;
-    name?: string;
-    backend?: string;
-    value?: string;
-    key?: string;
-    modelId?: string;
-    webSpeechSupported?: boolean;
-    payload?: McpFormPayload & { name?: string; server?: string; itemType?: string };
-}
-
-/**
- * Context surface handed to the extracted config*Handler modules. Each handler
- * is a free function over this interface (mirroring controllerMessageHandler),
- * so the case bodies move verbatim with only `this.X` → `ctx.X` rewrites.
- */
-export interface ConfigHandlerCtx {
-    api: SymposiumApi;
-    /** Sufficit identity: login state + access token for authed gateway calls. */
-    auth?: SufficitAuth;
-    /** Reveal a session created via api.sessions.create (see ConfigPanelDeps). */
-    chatView?: ChatViewProvider;
-    /** Extension context (reads backend config, e.g. the Sufficit base URL). */
-    context: vscode.ExtensionContext;
-    tr(key: string, vars?: Record<string, string | number>): string;
-    /** Re-push the full panel state to the webview. */
-    pushState(): Promise<void>;
-    post(message: object): void;
-    offerReload(message: string): Promise<void>;
-}
+import type { ConfigPanelDeps, ConfigMessage, ConfigHandlerCtx } from "./configTypes";
+export type { ConfigPanelDeps, ConfigMessage, ConfigHandlerCtx } from "./configTypes";
 
 /**
  * Dynamic configuration surface: a reusable webview panel that lists the local

@@ -10,6 +10,7 @@ import { activeEditorContext, isSimpleBrowserOpen } from "./chatSurfaceContext";
 import { symposiumLog } from "../extension";
 import type { WebviewToHost } from "./protocol";
 import { restartFromMessage, retryLastMessage, editResend } from "./surfaceBranching";
+import { handleControllerEvent } from "./surfaceDialoguesAttach";
 
 /**
  * Dialogue lifecycle for a chat surface: opening a dialogue (new / resumed /
@@ -322,78 +323,7 @@ export class SurfaceDialogues {
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
-        controller.attach((message) => {
-            // The controller emits the RAW edited-files set; the surface filters
-            // it against live git status (so staged files drop, unstaging them
-            // brings them back) before showing it.
-            const msg = message as Record<string, unknown> | null;
-            if (msg?.type === "changed-files" && "items" in msg && Array.isArray(msg.items)) {
-                void this.d.changedFiles.refresh(msg.items);
-                return;
-            }
-            // Capture a freshly-assigned session id so a brand-new dialogue
-            // also becomes the restorable "last active" one.
-            const ev = msg?.event as { kind?: string; sessionId?: string; toolName?: string; result?: string } | undefined;
-            if (ev?.kind === "session" && ev.sessionId) {
-                this.d.deps.lastActive.set({ backend, sessionId: ev.sessionId });
-            }
-            // Repaint the affected panel the moment a session-mutating tool finishes,
-            // so an agent-added guardrail / task shows immediately instead of only at
-            // turn-end. We parse the tool's own result to read the freshly-created
-            // record by its id (instant, deterministic — never waits for the hub's
-            // async search index), then let the search-based refresh reconcile.
-            if (ev?.kind === "tool-end" && typeof ev.toolName === "string") {
-                const n = ev.toolName;
-                // Tools return "" on success to save tokens; a JSON body signals a
-                // result we can mine for ids (add_task returns ids[]; add_guardrail
-                // returns "" on hub success or {id,_memory_source} on local fallback).
-                let parsed: { ids?: string[]; id?: string; _memory_source?: string } | null = null;
-                if (typeof ev.result === "string" && ev.result.trim().startsWith("{")) {
-                    try { parsed = JSON.parse(ev.result); } catch { parsed = null; }
-                }
-                if (n === "add_guardrail") {
-                    if (parsed?.id) {
-                        // Read-by-id: the guardrail shows immediately even before the
-                        // hub search index settles. Local fallback reads from disk.
-                        const src = parsed._memory_source === "local_fallback" ? "local" : "hub";
-                        void this.d.sync.bumpGuardrailById(String(parsed.id), src);
-                    }
-                    // Reconcile via search with backoff (covers clear_guardrails and
-                    // any high-latency hub).
-                    const repaint = () => void this.d.getController()?.reloadGuardrails().then(() => this.d.sync.refreshGuardrails());
-                    void repaint();
-                    for (const delay of [400, 1000, 2000]) { setTimeout(repaint, delay); }
-                } else if (n === "clear_guardrails") {
-                    const repaint = () => void this.d.getController()?.reloadGuardrails().then(() => this.d.sync.refreshGuardrails());
-                    void repaint();
-                    for (const delay of [400, 1000, 2000]) { setTimeout(repaint, delay); }
-                } else if (n === "add_task" || n === "TaskCreate") {
-                    const ids = Array.isArray(parsed?.ids) ? parsed.ids.filter((x): x is string => typeof x === "string") : [];
-                    if (ids.length) {
-                        void this.d.sync.bumpTasksByIds(ids);
-                    } else {
-                        void this.d.sync.refreshTasks();
-                    }
-                    setTimeout(() => void this.d.sync.refreshTasks(), 700);
-                } else if (n === "task_complete" || n === "TaskUpdate" || n === "memory_save") {
-                    void this.d.sync.refreshTasks(); setTimeout(() => void this.d.sync.refreshTasks(), 700);
-                }
-            }
-            // Refresh the Tasks panel when a turn ends: the agent may have saved
-            // task-checkpoints mid-turn (bound to this session), which the panel
-            // otherwise wouldn't pick up until reopen/manual refresh.
-            if (ev?.kind === "turn-end") {
-                void this.d.sync.refreshTasks();
-                // The agent may have added a guardrail mid-turn (add_guardrail tool):
-                // reload the controller's injection cache and repaint the panel.
-                void this.d.getController()?.reloadGuardrails().then(() => this.d.sync.refreshGuardrails());
-                // Re-mirror the working tree from git: a turn may have edited files
-                // via shell/sed (no tool event, no index change) that the live
-                // changed-files signal and the .git/index watcher both miss.
-                this.d.changedFiles.refreshNow();
-            }
-            this.d.post(message);
-        });
+        controller.attach((message) => handleControllerEvent(this.d, backend, message));
         if (!existing && info && !seededVisual) {
             void controller.loadHistory(info);
         }
