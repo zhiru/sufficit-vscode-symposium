@@ -226,7 +226,7 @@ window.addEventListener("message", ({ data }) => {
         }
         case "user": {
             endStream();
-            const el = message("user", data.text, Date.now());
+            const el = confirmOptimisticMessage(data.clientMessageId) || message("user", data.text, Date.now());
             armStickyUserMessage(el);
             if (data.attachments?.length) {
                 const list = document.createElement("div");

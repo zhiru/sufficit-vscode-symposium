@@ -64,6 +64,15 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
     private warnedUnenforcedMode = false; // emitted the manager/user "not yet enforced" notice once
     private cancelled = false;        // cancel() was called (steer) — suppress exit error
     private spawnedPermission = "";   // permission mode the live child was spawned with
+    // Tool calls seen this turn with no matching tool_result yet. A backgrounded
+    // Task/Agent call's own result can arrive well after the top-level "result"
+    // line (the CLI keeps streaming the delegated work's events down the same
+    // stdout in the meantime) — the turn isn't really over until this drains,
+    // even though the CLI already considers itself ready for the next prompt.
+    private pendingToolIds = new Set<string>();
+    // A "result" line's turn-end, held back while pendingToolIds is non-empty
+    // so busy/the working indicator doesn't drop while delegated work continues.
+    private deferredTurnEnd: { costUsd: unknown; durationMs: unknown } | undefined;
 
     constructor(
         private readonly config: ClaudeAdapterConfig,
@@ -172,6 +181,8 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
             this.config.log?.(`[claude] spawn error: ${error.message}`);
             this.emit("event", { kind: "error", message: `claude spawn failed (${executable}): ${error.message}` });
             this.turnActive = false;
+            this.pendingToolIds.clear();
+            this.deferredTurnEnd = undefined;
             this.emit("event", { kind: "turn-end" });
         });
         child.on("exit", (code) => {
@@ -189,6 +200,8 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                 this.turnActive = false;
                 this.emit("event", { kind: "turn-end" });
             }
+            this.pendingToolIds.clear();
+            this.deferredTurnEnd = undefined;
         });
         return child;
     }
@@ -238,6 +251,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                             // Already streamed via stream_event deltas — don't repeat.
                             if (!this.streamedText) { this.emit("event", { kind: "text", text: b.text }); }
                         } else if (b.type === "tool_use") {
+                            if (typeof b.id === "string") { this.pendingToolIds.add(b.id); }
                             const counts = diffCounts(String(b.name), b.input);
                             const filePath = toolFilePath(b.input);
                             // Snapshot the file BEFORE the CLI applies the edit, so the
@@ -266,6 +280,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                     if (typeof block === "object" && block !== null) {
                         const b = block as Record<string, unknown>;
                         if (b.type === "tool_result") {
+                            if (typeof b.tool_use_id === "string") { this.pendingToolIds.delete(b.tool_use_id); }
                             this.emit("event", {
                                 kind: "tool-end",
                                 toolName: typeof b.tool_use_id === "string" ? b.tool_use_id : "tool",
@@ -274,6 +289,14 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                             });
                         }
                     }
+                }
+                // A deferred turn-end (see "result" below) was waiting on exactly
+                // this drain — release it now that every tool call, including a
+                // backgrounded one, has a result.
+                if (this.deferredTurnEnd && this.pendingToolIds.size === 0) {
+                    this.turnActive = false;
+                    this.emit("event", { kind: "turn-end", ...this.deferredTurnEnd });
+                    this.deferredTurnEnd = undefined;
                 }
                 break;
             }
@@ -294,12 +317,21 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                         contextWindow: contextWindowFor(this.options.model || this.config.model),
                     });
                 }
-                this.turnActive = false;
-                this.emit("event", {
-                    kind: "turn-end",
-                    costUsd: event.total_cost_usd,
-                    durationMs: event.duration_ms,
-                });
+                if (this.pendingToolIds.size > 0) {
+                    // The CLI considers itself done (ready for the next prompt), but
+                    // a tool call it dispatched — a backgrounded Task/Agent delegation
+                    // — hasn't reported back yet, and will keep streaming its own
+                    // events down this same stdout while it runs. Keep the turn (and
+                    // the busy/working indicator) alive until that drains.
+                    this.deferredTurnEnd = { costUsd: event.total_cost_usd, durationMs: event.duration_ms };
+                } else {
+                    this.turnActive = false;
+                    this.emit("event", {
+                        kind: "turn-end",
+                        costUsd: event.total_cost_usd,
+                        durationMs: event.duration_ms,
+                    });
+                }
                 break;
             }
         }

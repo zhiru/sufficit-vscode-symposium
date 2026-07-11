@@ -99,12 +99,12 @@ export function optimisticUserMessage(clientMessageId, text) {
 }
 
 export function confirmOptimisticMessage(clientMessageId) {
-    if (!clientMessageId) { return false; }
+    if (!clientMessageId) { return null; }
     const el = log.querySelector(`[data-client-message-id="${CSS.escape(clientMessageId)}"]`);
-    if (!el) { return false; }
+    if (!el) { return null; }
     el.classList.remove("pendingConfirm");
     delete el.dataset.clientMessageId;
-    return true;
+    return el;
 }
 // Transient status notice (e.g. vision transcription annotation).
 // Rendered as a quiet system annotation, NOT model output — never persisted.
