@@ -1,9 +1,8 @@
 import { EventEmitter } from "events";
 import { randomUUID } from "crypto";
-import * as fs from "fs";
 import * as path from "path";
 import { AgentSession, SessionStartOptions } from "../types";
-import { contextWindowFor, mimeTypeFor } from "../parse";
+import { contextWindowFor } from "../parse";
 import { HubClient } from "../../sync/hubClient";
 import { ALL_AI_TOOL_NAMES, ShellExecutionMode } from "../aiTools";
 import * as ledger from "../../ledger";
@@ -15,26 +14,8 @@ import { discoverModels as discoverModelsFromCatalog } from "./discovery";
 import { Compactor } from "./compactor";
 import { TurnRunner } from "./turnRunner";
 import { RequestEstimate } from "./requestWindow";
-
-/** symposium.openai.timeGapNotice thresholds, in ms ("never" is absent = disabled). */
-const TIME_GAP_THRESHOLDS_MS: Record<string, number> = {
-    "5m": 5 * 60_000,
-    "30m": 30 * 60_000,
-    "2h": 2 * 60 * 60_000,
-    "12h": 12 * 60 * 60_000,
-};
-
-/** Compact human duration for the time-gap notice, e.g. "3h14m", "2d5h". */
-function formatGap(ms: number): string {
-    const totalMinutes = Math.floor(ms / 60_000);
-    if (totalMinutes < 60) { return `${Math.max(1, totalMinutes)}m`; }
-    const totalHours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    if (totalHours < 24) { return minutes ? `${totalHours}h${minutes}m` : `${totalHours}h`; }
-    const days = Math.floor(totalHours / 24);
-    const hours = totalHours % 24;
-    return hours ? `${days}d${hours}h` : `${days}d`;
-}
+import { buildTimeGapNotice } from "./timeGapNotice";
+import { buildImageParts } from "./imageParts";
 
 /**
  * A direct OpenAI-compatible chat session (no CLI): streams /chat/completions
@@ -328,24 +309,6 @@ export class OpenAISession extends EventEmitter implements AgentSession {
         ledger.appendMessage(this.sessionId, { role, content, turn: this.turnNo, ...extra });
     }
 
-    /**
-     * Builds a compact developer note when the real-world gap since the
-     * ledger's last entry meets the configured threshold — so the model
-     * knows it may be resuming a stale conversation (a different day/session)
-     * instead of silently assuming continuity. undefined = no note needed.
-     */
-    private timeGapNotice(): string | undefined {
-        const setting = this.cfg.timeGapNotice ?? "5m";
-        const thresholdMs = TIME_GAP_THRESHOLDS_MS[setting];
-        if (!thresholdMs) { return undefined; }   // "never" or unrecognized
-        const lastAt = ledger.lastMessageAtMs(this.sessionId);
-        if (lastAt == null) { return undefined; } // no prior entry (first message)
-        const gapMs = Date.now() - lastAt;
-        if (gapMs < thresholdMs) { return undefined; }
-        return `[Time gap: ~${formatGap(gapMs)} since your last message in this conversation — ` +
-            "you may be resuming this on a different day/session; don't assume very recent context is still fresh.]";
-    }
-
     send(text: string, images?: string[], preamble?: string[]): void {
         // Intercept /compact: a local command (summarize the conversation to shrink
         // the model context), NOT a user turn to ship to the gateway.
@@ -367,7 +330,7 @@ export class OpenAISession extends EventEmitter implements AgentSession {
             this.messages.push({ role: "assistant", content: "(previous turn interrupted)" });
             ledger.appendMessage(this.sessionId, { role: "assistant", content: "(previous turn interrupted)", turn: this.turnNo });
         }
-        const gapNote = this.timeGapNotice();
+        const gapNote = buildTimeGapNotice(this.cfg, this.sessionId);
         const fullPreamble = gapNote ? [gapNote, ...(preamble ?? [])] : (preamble ?? []);
         for (const p of fullPreamble) {
             if (p && p.trim()) {
@@ -375,31 +338,16 @@ export class OpenAISession extends EventEmitter implements AgentSession {
                 ledger.appendMessage(this.sessionId, { role, content: p, turn: this.turnNo + 1 });
             }
         }
-        // Vision: inline attached images as image_url content parts so a
-        // vision-capable model sees them directly (instead of getting a file
-        // path it would read as binary). Unreadable files are skipped.
-        const imageParts: ContentPart[] = [];
-        for (const p of images ?? []) {
-            try {
-                const mime = mimeTypeFor(p) || "image/png";
-                const b64 = fs.readFileSync(p).toString("base64");
-                imageParts.push({ type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } });
-            } catch { /* skip files we can't read */ }
-        }
+        const imageParts = buildImageParts(images);
         const userContent: string | ContentPart[] = imageParts.length
             ? [{ type: "text", text }, ...imageParts]
             : text;
         this.messages.push({ role: "user", content: userContent });
-        // Refresh the continuous-follow-up north star. A substantive user turn is
-        // a NEW task → adopt it as the objective and reset the progress digest. A
-        // short continuation ("continue", "ok", "segue") keeps the prior objective
-        // and its progress so the anchor stays meaningful across nudges.
         const taskText = text.trim();
         if (taskText.length >= 8 && !/^(continue|continuar|segue|prossiga|go on|keep going|ok|sim|yes|y)\b/i.test(taskText)) {
             this.objective = taskText.slice(0, 600);
             this.progress = [];
         }
-        // Ledger/persistence stays text-based (no base64 bloat in the recall log).
         ledger.appendMessage(this.sessionId, {
             role: "user",
             content: imageParts.length ? `${text}\n[${imageParts.length} image(s) attached]` : text,

@@ -123,7 +123,7 @@ Each step: keep `npm run compile` + `npm run lint` + `node --test` +
 
 ## Status (updated same day)
 
-10 → 3 violations. Completed splits were verified with tsc + eslint + full
+10 → 2 violations. Completed splits were verified with tsc + eslint + full
 `node --test` (127/127). Full `npm test` still exits non-zero until the
 remaining `check:size` violations are cleared.
 
@@ -141,8 +141,10 @@ remaining `check:size` violations are cleared.
   re-export surface for existing imports.
 - **DONE** `claude/adapter.ts` (452→332): read-only transcript follow/tail
   logic moved to `claudeFollow.ts`; adapter keeps capability/session methods.
+- **DONE** `openai/session.ts` (451→398): time-gap notice and image attachment
+  content-part building moved to small helpers.
 - **TODO** `voice.ts` (592, grew further — live WIP by the user during this
-  same session, holding off to avoid collision), `turnRunner.ts` (481),
-  `openai/session.ts` (451). These touch live per-backend send/receive paths;
-  typecheck + unit tests don't exercise a real backend stream, so each needs a
-  manual smoke pass per backend after splitting, not just green CI.
+  same session, holding off to avoid collision), `turnRunner.ts` (481). These
+  touch live per-backend send/receive paths; typecheck + unit tests don't
+  exercise a real backend stream, so each needs a manual smoke pass per backend
+  after splitting, not just green CI.
