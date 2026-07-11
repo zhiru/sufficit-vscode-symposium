@@ -121,6 +121,22 @@ npm run check:size
 Each step: keep `npm run compile` + `npm run lint` + `node --test` +
 `npm run check:size` green before moving to the next file.
 
-## Status
+## Status (updated same day)
 
-All items **TODO** — plan only, no code changes yet.
+10 → 5 violations, each verified with tsc + eslint + full `node --test` (127/127):
+
+- **DONE** `codex/session.ts` (438→246): MCP helpers moved to `codexMcpConfig.ts`.
+- **DONE** `configPanel.ts` (409→365), `webview/panels.ts` (414→~340),
+  `surfaceDialogues.ts` (412→341): P1 trims, all re-exported so no consumer
+  import changed.
+- **DONE** `chatController.ts` (464→389): the "extract seedRenderLog" premise
+  above was wrong — `seedRenderLog()` was already a 3-line delegate from an
+  earlier pass. The real bulk was `dispatch()`'s inline pre-turn setup and
+  outbound-prompt composition; split into `controllerDispatchPrep.ts` +
+  `controllerDispatchPrompt.ts`.
+- **TODO** `voice.ts` (592, grew further — live WIP by the user during this
+  same session, holding off to avoid collision), `turnRunner.ts` (481),
+  `messages.ts` (460), `claude/adapter.ts` (452), `openai/session.ts` (451).
+  These touch live per-backend send/receive paths; typecheck + unit tests
+  don't exercise a real backend stream, so each needs a manual smoke pass
+  per backend after splitting, not just green CI.
