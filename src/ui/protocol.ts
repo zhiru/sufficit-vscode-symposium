@@ -67,7 +67,7 @@ export type WebviewToHost =
     | { type: "open-session"; sessionId: string; backend: string }
     | { type: "paste-image"; mime: string; data: string }
     | { type: "stt-transcribe"; data: string; mime: string }
-    | { type: "voice-start" }
+    | { type: "voice-start"; vad?: boolean }
     | { type: "voice-stop" }
     | { type: "voice-cancel" }
     | { type: "drop-file"; name?: string; mime?: string; data?: string }

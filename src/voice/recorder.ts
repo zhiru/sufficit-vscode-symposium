@@ -46,16 +46,35 @@ async function inputArgs(bin: string): Promise<string[]> {
 
 export function isCapturing(): boolean { return !!proc; }
 
-/** Starts recording. Rejects fast when ffmpeg dies immediately (no device/permission). */
-export async function startCapture(ffmpegPath: string): Promise<void> {
+/**
+ * Starts recording. Rejects fast when ffmpeg dies immediately (no device/permission).
+ *
+ * `onSilence`, when given, adds ffmpeg's own `silencedetect` filter (a
+ * passthrough analysis filter — it doesn't touch the recorded audio) and
+ * calls back on every sustained pause, parsed straight out of the SAME
+ * process's stderr. Deliberately NOT a second ffmpeg process reading the mic
+ * concurrently: the webview's getUserMedia-based VAD (src/ui/webview/voice.ts)
+ * is unreliable in VS Code desktop for the exact same permission reason host
+ * capture exists at all, so silence detection needs to ride along on the one
+ * mic access that's actually known to work here.
+ */
+export async function startCapture(ffmpegPath: string, onSilence?: () => void): Promise<void> {
     if (proc) { throw new Error("already recording"); }
     const bin = ff(ffmpegPath);
     const args = await inputArgs(bin);
+    const filterArgs = onSilence ? ["-af", "silencedetect=noise=-30dB:d=0.9"] : [];
     outPath = path.join(os.tmpdir(), `symposium-rec-${Date.now()}.wav`);
-    const p = spawn(bin, ["-hide_banner", "-y", ...args, "-ac", "1", "-ar", "16000", outPath], { stdio: ["pipe", "ignore", "pipe"] });
+    const p = spawn(bin, ["-hide_banner", "-y", ...args, ...filterArgs, "-ac", "1", "-ar", "16000", outPath], { stdio: ["pipe", "ignore", "pipe"] });
     proc = p;
     let err = "";
-    p.stderr.on("data", (d) => { err += d.toString(); });
+    p.stderr.on("data", (d) => {
+        const chunk = d.toString();
+        err += chunk;
+        // ffmpeg logs "silence_start: <t>" once ~0.9s of continuous silence is
+        // confirmed (the `d` param above) — exactly the "pause, cut the
+        // segment" signal the caller wants, no separate timer needed here.
+        if (onSilence && chunk.includes("silence_start")) { onSilence(); }
+    });
     await new Promise<void>((resolve, reject) => {
         const ok = setTimeout(resolve, 700);   // still alive after 700ms → capturing
         p.on("error", (e) => { clearTimeout(ok); if (proc === p) { proc = null; } reject(e); });

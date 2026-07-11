@@ -299,7 +299,12 @@ let hostRecording = false;
 // still resets the draft base to the current (already-merged) input text.
 function startHostCapture(isContinuation = false) {
     const prefs = getVoicePreferences();
-    vscode.postMessage({ type: 'voice-start' });
+    // Silence detection for THIS capture rides on the host's own ffmpeg
+    // process (recorder.ts's silencedetect filter) — the webview's
+    // getUserMedia-based startVadMonitor() is unreliable here for the same
+    // reason host capture exists in the first place, see dictationActive
+    // wiring in the click handler below.
+    vscode.postMessage({ type: 'voice-start', vad: dictationActive });
     hostRecording = true;
     isRecording = true;
     activeVoicePath = 'host';
@@ -490,6 +495,11 @@ window.addEventListener('message', (e) => {
             showToast('Native mic capture failed (' + (e.data.error || 'unknown') + ') — falling back to webview mic', 'error');
             void startLocalCapture();
         }
+    } else if (e.data.type === 'voice-silence') {
+        // Host-side pause signal for the ffmpeg capture path (recorder.ts's
+        // silencedetect filter) — same segment-boundary handling as the
+        // webview-VAD path (startVadMonitor), just a different source.
+        onSilenceDetected();
     }
 });
 
@@ -531,13 +541,12 @@ if (micBtn) {
             stopVoiceRecording();
         } else if (prefs.hostCapture) {
             // "Continuous" arms silence auto-segmentation: keep dictating
-            // across pauses instead of stopping after one segment. VAD needs
-            // its own getUserMedia stream to monitor level, independent of
-            // ffmpeg/MediaRecorder actually recording the audio.
+            // across pauses instead of stopping after one segment. Detection
+            // itself rides on the host's ffmpeg process (recorder.ts), NOT
+            // startVadMonitor()'s getUserMedia — see startHostCapture.
             dictationActive = prefs.continuous;
             dictationUseHost = true;
             startHostCapture();
-            if (dictationActive) { void startVadMonitor(); }
         } else {
             dictationActive = prefs.continuous;
             dictationUseHost = false;

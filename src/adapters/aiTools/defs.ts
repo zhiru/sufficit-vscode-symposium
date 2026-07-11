@@ -150,7 +150,7 @@ const HUB_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "task_complete",
-            description: "Mark a session task as completed, by its exact id — NEVER by title or a text description. REQUIRED: id (a UUID; copy it verbatim from the '→ CURRENT (id=...)' line in your task reminder, or from list_tasks — do not guess or omit it). Optional: summary, a short note on what you did, saved with the completion. WORKFLOW: (1) Agent-created tasks (default): call IMMEDIATELY after finishing - don't wait. (2) User-requested tasks: present justification why task is complete and WAIT for user confirmation before calling this. The task drops from pending Tasks panel. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
+            description: "Mark a session task as completed, by its exact id — NEVER by title or a text description. REQUIRED: id (a UUID; copy it verbatim from the '→ CURRENT (id=...)' line in your task reminder, or from list_tasks — do not guess or omit it). Optional: summary, a short note on what you did, saved with the completion. WORKFLOW: (1) Agent-created tasks (default): call IMMEDIATELY after finishing - don't wait. (2) User-requested tasks: present justification why task is complete and WAIT for user confirmation before calling this. The task drops from pending Tasks panel. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next. Tasks created together in ONE add_task call are a numbered plan, done in order: completing a later one auto-completes the earlier ones in that same call too (a safety net, response includes `cascaded`) — but still call this on each step as you actually finish it; don't rely on the cascade as a shortcut to skip the intermediate calls.",
             parameters: {
                 type: "object",
                 properties: {
@@ -165,7 +165,7 @@ const HUB_TOOLS: OpenAITool[] = [
         type: "function",
         function: {
             name: "TaskUpdate",
-            description: "Mark a session task as completed, by its exact id — NEVER by title or a text description. Alias for task_complete, compatible with Claude Code naming. REQUIRED: id (a UUID; copy it verbatim from the '→ CURRENT (id=...)' line in your task reminder, or from list_tasks — do not guess or omit it), done=true. Optional: summary, a short note on what you did. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next.",
+            description: "Mark a session task as completed, by its exact id — NEVER by title or a text description. Alias for task_complete, compatible with Claude Code naming. REQUIRED: id (a UUID; copy it verbatim from the '→ CURRENT (id=...)' line in your task reminder, or from list_tasks — do not guess or omit it), done=true. Optional: summary, a short note on what you did. Returns the new current task + remaining pending ones so you never need a separate list_tasks call to know what's next. Tasks created together in ONE add_task/TaskCreate call are a numbered plan, done in order: completing a later one auto-completes the earlier ones in that same call too (a safety net, response includes `cascaded`) — but still call this on each step as you actually finish it; don't rely on the cascade as a shortcut to skip the intermediate calls.",
             parameters: {
                 type: "object",
                 properties: {

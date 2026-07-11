@@ -124,7 +124,10 @@ export function planTrackingPreamble(mode: TrackingMode): string {
         return head + " " +
             "Call add_task with every step to register the plan in the Tasks panel, " +
             "use list_tasks to see your PENDING tasks for this session (pass all=true to include completed ones), " +
-            "and call task_complete(id) the moment you finish what a task described, so it leaves the pending list.";
+            "and call task_complete(id) the moment you finish what a task described, so it leaves the pending list. " +
+            "task_complete(id) is the ONLY thing that marks a task done in the Tasks panel — a memory_save checkpoint documenting " +
+            "what you did is NOT a substitute and does not close the task; if you have both a memory tool and task tools, call BOTH " +
+            "(checkpoint the context, AND task_complete the specific id) rather than treating the checkpoint as covering it.";
     }
     if (mode === "native") {
         return head + " " +

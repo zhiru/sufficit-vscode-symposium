@@ -1,4 +1,4 @@
-import { fetchSessionTasks, markTaskDone, rememberTaskCreated, rememberTaskDone } from "../../sync/tasks";
+import { fetchSessionTasks, markTaskDone, rememberTaskCreated, rememberTaskDone, rememberTaskBatch, priorInBatch } from "../../sync/tasks";
 import { saveGuardrail, clearSessionGuardrails } from "../../sync/guardrails";
 import { ToolContext } from "./types";
 import { LocalMemory } from "./localMemory";
@@ -164,6 +164,10 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                         rememberTaskCreated(ctx.sessionId, id, title);
                     }
                 }
+                // The array is documented as "in order" — one add_task call is a
+                // numbered plan, so task_complete cascades earlier ids in THIS
+                // batch when a later one finishes (see priorInBatch).
+                rememberTaskBatch(ctx.sessionId, ids);
                 const reminder = userRequested
                     ? "USER-REQUESTED TASKS: When you finish, present justification and WAIT for user confirmation before calling task_complete."
                     : "AGENT TASKS: Call task_complete(id) immediately after finishing each task - don't wait.";
@@ -213,18 +217,50 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 const ok = await markTaskDone(hub, id, completionSummary);
                 if (!ok) { return JSON.stringify({ error: "save failed — check hub configuration" }); }
                 if (ctx.sessionId) { rememberTaskDone(ctx.sessionId, id); }
+                // Cascade: this id's add_task batch is a numbered plan ("in order"),
+                // so finishing a later step implies the earlier ones in that SAME
+                // batch are done too — covers the common slip where the agent
+                // narrates through several steps and only calls task_complete on
+                // the last one. markTaskDone is idempotent, safe to re-call on ones
+                // already done.
+                const cascaded: string[] = [];
+                const priorIds = ctx.sessionId ? priorInBatch(ctx.sessionId, id) : [];
+                if (priorIds.length) {
+                    // Never auto-complete a user-requested task without the user's
+                    // own confirmation — the cascade only covers agent-created ones.
+                    const priorObs = await hub.getByIds(priorIds).catch(() => []);
+                    const userRequestedIds = new Set(
+                        (priorObs as Array<{ id: unknown; tags?: string | string[] }>)
+                            .filter((o) => (Array.isArray(o.tags) ? o.tags : String(o.tags ?? "").split(",")).map((t) => String(t).trim()).includes("creator:user"))
+                            .map((o) => String(o.id)),
+                    );
+                    for (const priorId of priorIds) {
+                        if (userRequestedIds.has(priorId)) { continue; }
+                        if (await markTaskDone(hub, priorId, completionSummary)) {
+                            rememberTaskDone(ctx.sessionId as string, priorId);
+                            cascaded.push(priorId);
+                        }
+                    }
+                }
                 // Return the remaining pending tasks (current + up-next) as the
                 // success response instead of a silent "" — the agent gets its
                 // next step handed back immediately, with no separate list_tasks
                 // round-trip, so it can't lose track of the plan mid-execution.
                 if (!ctx.sessionId) { return JSON.stringify({ ok: true }); }
                 const remaining = (await fetchSessionTasks(hub, ctx.sessionId)).filter((t) => !t.done && t.id !== id);
-                if (!remaining.length) { return JSON.stringify({ ok: true, pending: [], message: "all tasks complete", allTasksComplete: true }); }
+                const cascadeNote = cascaded.length
+                    ? `Also auto-completed ${cascaded.length} earlier step(s) from the same numbered plan (they precede this one in the same add_task call).`
+                    : undefined;
+                if (!remaining.length) {
+                    return JSON.stringify({ ok: true, pending: [], message: "all tasks complete", allTasksComplete: true, cascaded, note: cascadeNote });
+                }
                 const [current, ...rest] = remaining;
                 return JSON.stringify({
                     ok: true,
                     current: { id: current.id, title: current.title },
                     pending: rest.map((t) => ({ id: t.id, title: t.title })),
+                    cascaded,
+                    note: cascadeNote,
                 });
             }
             case "add_guardrail": {

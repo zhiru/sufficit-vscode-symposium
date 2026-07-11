@@ -55,6 +55,37 @@ export function rememberTaskDone(sessionId: string, id: string): void {
     if (entry) { entry.done = true; }
 }
 
+/**
+ * Sequential-batch tracking for task_complete's cascade: one add_task call
+ * with N titles is documented as "in order" (a numbered plan, meant to be
+ * done in sequence) — so completing task K implies 1..K-1 in that SAME batch
+ * are also done, even if the agent forgot to call task_complete on them
+ * individually. A LATER, separate add_task call is its own batch (not
+ * assumed to continue the same sequence) — only ids created in one call
+ * cascade together.
+ */
+const batchesBySession = new Map<string, string[][]>();
+
+/** Records one add_task call's ids, in the order given, as a cascade batch. */
+export function rememberTaskBatch(sessionId: string, ids: string[]): void {
+    if (ids.length < 2) { return; }   // nothing to cascade for a single-task batch
+    const list = batchesBySession.get(sessionId) ?? [];
+    list.push([...ids]);
+    batchesBySession.set(sessionId, list);
+}
+
+/** Ids that precede `id` in its batch (if any), earliest first. */
+export function priorInBatch(sessionId: string, id: string): string[] {
+    const batches = batchesBySession.get(sessionId);
+    if (!batches) { return []; }
+    for (const batch of batches) {
+        const idx = batch.indexOf(id);
+        if (idx > 0) { return batch.slice(0, idx); }
+        if (idx === 0) { return []; }
+    }
+    return [];
+}
+
 /** Recently-created, still-pending tasks within the grace window (prunes stale entries as a side effect). */
 function recentPending(sessionId: string): RecentTask[] {
     const list = recentBySession.get(sessionId);

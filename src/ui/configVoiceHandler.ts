@@ -86,4 +86,7 @@ const SUFFICIT_VOICE_BENCHMARK_PROMPT =
     "(normalmente ~/.config/Code/User/settings.json no Linux) definindo symposium.voice.engine para o engine escolhido " +
     "e o campo de modelo correspondente (symposium.voice.whisper.model / symposium.voice.fasterWhisper.model / symposium.voice.vosk.model). " +
     "Preserve todo o resto do arquivo — leia antes de escrever, edite só essas chaves.\n" +
-    "7. Termine com um resumo claro em português: tabela com engine, tempo médio, tamanho do modelo, resultado (ok/errado) e a decisão final com o motivo.";
+    "7. Termine com um resumo claro em português: tabela com engine, tempo médio, tamanho do modelo, resultado (ok/errado) e a decisão final com o motivo.\n\n" +
+    "Rastreamento: use add_task para registrar os 7 passos acima como tarefas (no Tasks panel), e chame task_complete(id) em cada uma " +
+    "IMEDIATAMENTE ao terminá-la — não deixe pra marcar só a última no final. Um memory_save de checkpoint documentando o progresso é " +
+    "ÚTIL mas NÃO substitui o task_complete: são coisas diferentes, faça as duas (checkpoint pra contexto, task_complete pra fechar a tarefa).";
