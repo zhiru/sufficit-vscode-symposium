@@ -11,6 +11,8 @@ import { svgIcon, fileIcon } from "./icons";
 import { middleEllipsisPath, allDigits } from "./format";
 import { beginEdit, lastUserRow } from "./composer";
 import { renderTodos, todoMark } from "./panels";
+import { configureThinkingRenderer, endThinkingStream } from "./thinking";
+export { renderThinkBlock, streamThinkingDelta } from "./thinking";
 
 // Tracks the Retry bar for the most recent retry click, so it can be
 // removed once that retry resolves (success or a fresh error) — see
@@ -201,6 +203,7 @@ export function branchBanner(title, detail) {
 // block instead of a loose list of rows.
 let curToolGroup = null;
 export function endToolGroup() { curToolGroup = null; }
+configureThinkingRenderer({ closeToolGroup: endToolGroup });
 export function toolGroupBody() {
     if (curToolGroup) { return curToolGroup._body; }
     const stick = nearBottom();
@@ -365,95 +368,5 @@ export function endStream() {
     streamMsg = null; streamBody = null; streamText = "";
     endThinkingStream();
 }
-
-// Streaming thinking blocks (extended reasoning).
-// Gerencia o estado de streaming de thinking blocks, incluindo:
-// - renderThinkBlock(): cria um novo thinking block element
-// - streamThinkingDelta(): anexa conteúdo ao thinking block atual
-// - endThinkingStream(): finaliza e limpa o estado do thinking block
-let streamThink = null, streamThinkBody = null, streamThinkLen = null, streamThinkText = "", streamThinkDet = null;
-const THINK_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5A5.5 5.5 0 1 0 13.5 7c0-.67-.12-1.32-.35-1.92A2 2 0 0 1 11 6.5a2 2 0 0 1-2-2c0-.31.07-.6.19-.86A5.5 5.5 0 0 0 8 1.5ZM1 7a7 7 0 1 1 7.96 6.94 1.5 1.5 0 1 1-1.33-2.67A7 7 0 0 1 1 7Z"/></svg>';
-/**
- * Renderiza um novo thinking block element e o anexa ao chat log.
- * Cria uma estrutura de details/summary com icone, label, contador de caracteres
- * e corpo do thinking content.
- * 
- * @param text - O conteúdo inicial do thinking block
- * @returns Objeto contendo referências aos elementos DOM criados (wrap, body, len)
- */
-export function renderThinkBlock(text) {
-    if (!String(text || "").trim()) { return null; }
-    const stick = nearBottom();
-    // A new thinking block marks a genuinely new step: close any open tool
-    // group so the NEXT burst of tool calls starts a fresh group appended
-    // after this point, instead of silently re-attaching to a group that was
-    // already rendered earlier — which made later tool calls appear ABOVE
-    // thinking blocks that actually happened before them.
-    endToolGroup();
-    const wrap = document.createElement("div"); wrap.className = "msg thinkWrap";
-    const det = document.createElement("details"); det.className = "thinkBlock";
-    det.open = true; // expanded while actively thinking; auto-collapses shortly after it ends
-    const sum = document.createElement("summary"); sum.className = "thinkSum";
-    const ic = document.createElement("span"); ic.innerHTML = THINK_ICON;
-    const lbl = document.createElement("span"); lbl.textContent = "Pensando…";
-    const chev = document.createElement("span"); chev.className = "thinkChev"; chev.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6 3l5 5-5 5"/></svg>';
-    const len = document.createElement("span"); len.className = "thinkLen"; len.textContent = text.length + " chars";
-    sum.append(ic, lbl, chev, len);
-    const body = document.createElement("div"); body.className = "thinkBody"; body.textContent = text;
-    det.append(sum, body); wrap.append(det);
-    log.appendChild(wrap); refreshEmpty(); autoScroll(stick);
-    return { wrap, body, len, det };
-}
-/**
- * Stream thinking block deltas - appends text to the current thinking block.
- * Handles multiple thinking blocks by detecting when consecutive thinking events
- * arrive, which indicates a new thinking block should be created.
- * 
- * @param text - The thinking content delta to append
- */
-export function streamThinkingDelta(text) {
-    const stick = nearBottom();
-    
-    // Se estamos continuando um thinking block existente e recebemos texto vazio,
-    // isso pode indicar o início de um novo thinking block separado
-    if (streamThink && text.trim() === "" && streamThinkText.length > 0) {
-        // Finaliza o thinking block atual (agenda o auto-collapse) para permitir criar um novo
-        endThinkingStream();
-    }
-
-    // Não cria thinking blocks vazios - aguarda conteúdo real
-    if (!streamThink) {
-        // Só cria o thinking block se tiver conteúdo não-vazio
-        if (text.trim() === "") {
-            return; // Skip creating empty thinking blocks
-        }
-        const rendered = renderThinkBlock(text);
-        if (!rendered) { return; }
-        const { wrap, body, len, det } = rendered;
-        streamThink = wrap; streamThinkBody = body; streamThinkLen = len; streamThinkDet = det; streamThinkText = "";
-    }
-    streamThinkText += text;
-    streamThinkBody.textContent = streamThinkText;
-    streamThinkLen.textContent = streamThinkText.length + " chars";
-    autoScroll(stick);
-}
-/**
- * Finaliza o stream de thinking atual e limpa o estado de thinking block.
- * Chamado quando o thinking block é encerrado ou quando um novo thinking block deve começar.
- */
-export function endThinkingStream() {
-    // Auto-collapse the block that just finished, 3s after it ends — open
-    // while actively thinking gives visibility into the model's reasoning;
-    // collapsing shortly after keeps the transcript scannable once it's done.
-    if (streamThinkDet) {
-        const det = streamThinkDet;
-        setTimeout(() => { det.open = false; }, 3000);
-    }
-    streamThink = null; streamThinkBody = null; streamThinkLen = null; streamThinkText = ""; streamThinkDet = null;
-}
-
-
-
-
 
 export function resetLastMsg() { lastMsgBackend = ""; lastMsgModel = ""; }
