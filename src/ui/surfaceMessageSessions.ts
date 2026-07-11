@@ -34,12 +34,35 @@ export async function handleSessionMessage(message: WebviewToHost, d: SurfaceMes
             if (!command) {
                 return true;
             }
-            // Archive / unarchive / delete cascade across the whole
-            // conversation lineage — a conversation (sessions sharing a
-            // lineageId) is atomic, so the action hits all of its sessions.
+            // Archive / unarchive / delete cascade DOWN the subagent tree
+            // (parentId) — a session's own action must never reach back up to
+            // its parent or sideways to siblings, only itself + whatever it
+            // spawned. A ROOT session (no parentId) additionally drags its
+            // lineage-mates (edit/resend branches of the SAME conversation,
+            // SessionInfo.lineageId — a different relationship: same logical
+            // thread under another id, not a parent/child tree) since those
+            // really are the one conversation, just not descendants.
             if (message.action === "archive" || message.action === "unarchive" || message.action === "delete") {
-                const lineageKey = info.lineageId || info.sessionId;
-                const targets = sessions.filter((s) => (s.lineageId || s.sessionId) === lineageKey);
+                const byParent = new Map<string, typeof sessions>();
+                for (const s of sessions) {
+                    if (!s.parentId) { continue; }
+                    const siblings = byParent.get(s.parentId);
+                    if (siblings) { siblings.push(s); } else { byParent.set(s.parentId, [s]); }
+                }
+                const descendants: typeof sessions = [];
+                const walk = (id: string) => {
+                    for (const child of byParent.get(id) ?? []) { descendants.push(child); walk(child.sessionId); }
+                };
+                walk(info.sessionId);
+                let targets: typeof sessions;
+                if (!info.parentId) {
+                    const lineageKey = info.lineageId || info.sessionId;
+                    const lineageMates = sessions.filter((s) => !s.parentId && (s.lineageId || s.sessionId) === lineageKey);
+                    const byId = new Map([...lineageMates, info, ...descendants].map((s) => [s.sessionId, s]));
+                    targets = [...byId.values()];
+                } else {
+                    targets = [info, ...descendants];
+                }
                 if (message.action === "delete" && targets.length > 1) {
                     const confirm = await vscode.window.showWarningMessage(
                         `Permanently delete this conversation and all ${targets.length} of its sessions? Every transcript is scrubbed from disk and it cannot be undone.`,

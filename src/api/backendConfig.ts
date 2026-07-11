@@ -105,8 +105,18 @@ function applyPatch(entry: AdapterEntry, patch: AdapterPatch): void {
     if (patch.api === "chat" || patch.api === "responses") { entry.api = patch.api; }
 }
 
-/** Probes one backend and reads its editable config from settings. */
-async function probeBackend(a: AgentAdapter): Promise<BackendStatus> {
+/**
+ * Probes one backend and reads its editable config from settings.
+ *
+ * `refresh`: also force a live model-list refresh before reading `models()`.
+ * Only OpenAI/Sufficit-AI's `available()` happens to double as a discovery
+ * trigger internally — Codex/Claude/Copilot's `available()` is purely a CLI
+ * version check, so without this their "Test" button showed a green "OK"
+ * right next to an unchanged, possibly stale, model list. `list()` (called on
+ * every panel render/poll) intentionally stays cache-only — this is reserved
+ * for the explicit, user-initiated `test()` action.
+ */
+async function probeBackend(a: AgentAdapter, refresh = false): Promise<BackendStatus> {
     const cfg = vscode.workspace.getConfiguration(`symposium.${a.backend}`);
     let available = false;
     let detail = "";
@@ -116,6 +126,9 @@ async function probeBackend(a: AgentAdapter): Promise<BackendStatus> {
         detail = probe.ok ? (probe.version ?? "") : (probe.error ?? "unavailable");
     } catch (err) {
         detail = String(err);
+    }
+    if (refresh && available) {
+        await a.refreshModels?.(true).catch(() => undefined);
     }
     const custom = !BUILTIN_BACKENDS.has(a.backend);
     return {
@@ -147,7 +160,7 @@ export function createBackendsApi(adapters: AgentAdapter[]): BackendsApi {
         list: () => Promise.all(adapters.map((a) => probeBackend(a))),
         test: async (backend) => {
             const a = adapterByBackend.get(backend);
-            return a ? probeBackend(a) : undefined;
+            return a ? probeBackend(a, true) : undefined;
         },
         setModel: async (backend, model) => {
             if (!adapterByBackend.has(backend)) {
