@@ -1,10 +1,9 @@
 import * as vscode from "vscode";
 import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOptions, TodoItem } from "../adapters/types";
 import { parseTodoFence, todosSummary } from "../adapters/todos";
-import { buildOutboundPrompt, type TrackingMode } from "./outboundPrompt";
-import { probeRtk, rtkCached } from "../adapters/rtk";
+import { type TrackingMode } from "./outboundPrompt";
+import { probeRtk } from "../adapters/rtk";
 import { HubClient } from "../sync/hubClient";
-import { fetchLatestCheckpoint } from "../sync/tasks";
 import { WebviewToHost } from "./protocol";
 import { RenderStream } from "./renderStream";
 import { transcriptText, transcriptMessages, transcriptMessagesUpTo } from "./controllerTranscript";
@@ -14,6 +13,9 @@ import { handleControllerMessage } from "./controllerMessageHandler";
 import { HubState, HubStateContext, reloadGuardrails as reloadHubGuardrails, reloadTasks as reloadHubTasks, pendingTasksSummary as hubPendingTasksSummary } from "./controllerHubState";
 import { WatchdogContext, armWatchdog as armWatchdogFn, clearWatchdog as clearWatchdogFn } from "./controllerWatchdog";
 import { persistEmit as persistEmitFn, seedRenderLog as seedRenderLogFn } from "./controllerPersist";
+import { OutboundPromptState } from "./outboundPrompt";
+import { buildDispatchOutbound } from "./controllerDispatchPrompt";
+import { prepareDispatch } from "./controllerDispatchPrep";
 
 /** Owns one live dialogue process; view switches only detach/replay the stream. */
 export class ChatController {
@@ -26,15 +28,13 @@ export class ChatController {
     // Retry or explicitly promote/steer the queued item instead.
     private turnHadError = false;
     private firstTitle = "";
-    private outboundPolicyInjected = false;
-    private todoInjected = false;
-    private autonomyInjected = false;
-    private seedInjected = false;
-    private rtkInjected = false;
-    private sessionIdInjected = false;
-    private bootstrapInjected = false;
-    private checkpointInjected = false;
-    private trackingInjected = false;
+    // One-shot outbound-prompt injection flags (policy/todo/seed/rtk/...),
+    // read + written by buildDispatchOutbound() each dispatch() call.
+    private readonly promptState: OutboundPromptState = {
+        policyInjected: false, todoInjected: false, seedInjected: false, autonomyInjected: false,
+        rtkInjected: false, sessionIdInjected: false, bootstrapInjected: false, checkpointInjected: false,
+        trackingInjected: false,
+    };
     // Latest native/fence TodoWrite state (Claude/Codex/Copilot/OpenAI-fence).
     // Unlike Hub tasks, this has no server-side reminder of its own — feeds
     // pendingTasksSummary() below so the agent is re-told its current step on
@@ -256,112 +256,38 @@ export class ChatController {
         this.turnHadError = false;
         this.onStatusChange?.();
         try {
-            // Guardrails: refresh on EVERY dispatch (like tasks) so a guardrail
-            // added mid-conversation (agent or UI) reaches the next outbound and a
-            // transiently-empty first read doesn't cache empty forever. Injected on
-            // every message below.
-            if (this.adapter.roleAware?.() === true && this.sessionId && this.hub.configured()) {
-                await this.reloadGuardrails();
-            }
-            // Tasks: refresh on EVERY dispatch to catch newly created tasks.
-            if (this.sessionId && this.hub.configured()) {
-                await this.reloadTasks();
-            }
-            // Resume hook (deterministic, no LLM): on a CONTINUITY message (idle or
-            // queued, NOT steered), prepend this session's latest checkpoint so it
-            // resumes from its own anchor. De-duped by id.
-            if (msg.mode !== "steer" && this.adapter.roleAware?.() === true && this.sessionId && this.hub.configured()) {
-                try {
-                    const cp = await fetchLatestCheckpoint(this.hub, this.sessionId);
-                    if (cp && cp.id !== this.injectedCheckpointId) {
-                        msg.resumeCheckpoint = `[Resume — latest checkpoint for this session]\n${cp.title}\n${cp.summary}`;
-                        this.injectedCheckpointId = cp.id;
-                    }
-                } catch { /* best-effort; resume still proceeds without it */ }
-            }
-            // Apply per-message model/reasoning to the live options before (re)starting.
-            // Stateless backends (OpenAI HTTP) read options.model per request, so the
-            // user can switch model between messages; a running CLI keeps its spawn-time model.
-            if (msg.model && msg.model !== "default" && msg.model !== "auto") {
-                this.options.model = msg.model;
-            }
-            if (msg.reasoning && msg.reasoning !== "default") {
-                this.options.reasoning = msg.reasoning;
-            }
-            if (msg.permission) {
-                this.options.permission = msg.permission;
-            }
-            if (msg.execDisplay) {
-                this.options.execDisplay = msg.execDisplay;
-            }
-            // Presence drives unbounded tool loops for API backends (autonomous mode).
-            this.options.autonomy = msg.autonomy;
+            await prepareDispatch(
+                {
+                    adapter: this.adapter,
+                    sessionId: this.sessionId,
+                    hub: this.hub,
+                    options: this.options,
+                    reloadGuardrails: () => this.reloadGuardrails(),
+                    reloadTasks: () => this.reloadTasks(),
+                    getInjectedCheckpointId: () => this.injectedCheckpointId,
+                    setInjectedCheckpointId: (id) => { this.injectedCheckpointId = id; },
+                },
+                msg,
+            );
             if (!this.session) {
                 this.session = this.adapter.start(this.options);
                 this.session.on("event", (event: AgentEvent) => this.onEvent(event));
             }
-            // Images are inlined as vision blocks when the backend supports it.
-            const isImage = (p: string) => /\.(png|jpe?g|gif|webp)$/i.test(p);
-            const canVision = this.adapter.supportsImages?.() === true;
-            const images = canVision ? msg.attachments.filter(isImage) : [];
-            const fileAtts = canVision ? msg.attachments.filter((p) => !isImage(p)) : msg.attachments;
-            // Role-aware backends (HTTP API) carry one-shot app instructions as
-            // `developer` messages; CLIs get them prepended to the user text.
-            const roleAware = this.adapter.roleAware?.() === true;
-            // Plan/tracking discipline is injected on EVERY backend so the agent
-            // always plans up front and keeps the next step visible. The mode
-            // matches the backend's tracking capability: native todo tool (CLIs),
-            // Symposium session task tools (OpenAI w/ Hub), or a ```todo fence.
-            const hasHubTaskTools = ((this.aiToolsInfo()?.available) ?? []).includes("add_task");
-            const trackingMode: TrackingMode =
-                this.adapter.hasNativeTodo?.() === true ? "native"
-                : hasHubTaskTools ? "hub-tools"
-                : "fence";
+            const { text: outboundText, preamble: outboundPreamble, trackingMode, images } = buildDispatchOutbound(
+                {
+                    adapter: this.adapter,
+                    sessionId: this.sessionId,
+                    options: this.options,
+                    hubState: this.hubState,
+                    aiToolsInfo: () => this.aiToolsInfo(),
+                    pendingTasksSummary: () => this.pendingTasksSummary(),
+                    promptState: this.promptState,
+                },
+                msg,
+            );
             // onEvent() (a separate, later-firing method) needs this to gate the
             // fence-parsing fallback — see its use below.
             this.trackingMode = trackingMode;
-            const outbound = buildOutboundPrompt({
-                text: msg.text,
-                fileAttachments: fileAtts,
-                policyInjected: this.outboundPolicyInjected,
-                todoInjected: this.todoInjected,
-                seedInjected: this.seedInjected,
-                autonomyInjected: this.autonomyInjected,
-                rtkInjected: this.rtkInjected,
-                sessionIdInjected: this.sessionIdInjected,
-                bootstrapInjected: this.bootstrapInjected,
-                checkpointInjected: this.checkpointInjected,
-                trackingInjected: this.trackingInjected,
-                sessionId: this.sessionId,
-                rtk: rtkCached(),
-                // Checkpoint (context-window) discipline only where it's needed:
-                // a context-windowing backend (roleAware/native) that has the
-                // Sufficit memory tool. Tracking discipline is separate (below).
-                checkpoints: roleAware && ((this.aiToolsInfo()?.available) ?? []).includes("memory_save"),
-                trackingMode,
-                // Fence mode only: a hub-tools session (OpenAI w/ Hub) must not
-                // ALSO get the raw ```todo fence instruction — it already got
-                // planTrackingPreamble("hub-tools") above, and getting both would
-                // tell the model to track the same plan two different ways.
-                todoInjection: trackingMode === "fence" ? this.adapter.todoInjection?.() : undefined,
-                seedHistory: this.options.seedHistory,
-                bootstrap: this.options.bootstrap,
-                resumeCheckpoint: msg.resumeCheckpoint,
-                interruptedBy: msg.interruptedBy,
-                guardrails: this.hubState.guardrails,
-                pendingTasksSummary: this.pendingTasksSummary(),
-                autonomy: msg.autonomy,
-                asRoles: roleAware,
-            });
-            this.outboundPolicyInjected = outbound.state.policyInjected;
-            this.todoInjected = outbound.state.todoInjected;
-            this.seedInjected = outbound.state.seedInjected;
-            this.bootstrapInjected = !!outbound.state.bootstrapInjected;
-            this.checkpointInjected = !!outbound.state.checkpointInjected;
-            this.trackingInjected = !!outbound.state.trackingInjected;
-            this.autonomyInjected = outbound.state.autonomyInjected;
-            this.rtkInjected = !!outbound.state.rtkInjected;
-            this.sessionIdInjected = !!outbound.state.sessionIdInjected;
             if (!this.firstTitle && msg.text.trim()) { this.firstTitle = msg.text.trim().slice(0, 60); }
             this.armWatchdog();
             // A plain-retry resend (msg.interruptedBy set) re-sends the SAME
@@ -371,7 +297,7 @@ export class ChatController {
             if (!msg.interruptedBy) {
                 this.emit({ type: "user", text: msg.text, attachments: msg.attachments, clientMessageId: msg.clientMessageId });
             }
-            this.session.send(outbound.text, images, outbound.preamble);
+            this.session.send(outboundText, images, outboundPreamble);
         } catch (error) {
             // Any failure before turn-end (adapter start, prompt build, transcript
             // persistence, process spawn setup) must never leave the controller
