@@ -46,9 +46,26 @@ export const configViewsVoice = `
             '</div>'
         );
 
+        // Automated counterpart: instead of a checklist, hands the whole
+        // "install everything, benchmark, decide" problem to a real Sufficit
+        // AI agent session — only offered when signed in and that backend is
+        // usable, since it needs both to actually run a turn.
+        const profile = state && state.profile;
+        const backends = (state && state.backends) || [];
+        const sufficitReady = !!(profile && (profile.name || profile.email)) &&
+            backends.some(b => b.backend === "openai" && b.available);
+        const sufficitBody = sufficitReady
+            ? '<div class="desc" style="margin-bottom:8px">' + esc(t("config.voice.sufficitDiagnose.hint")) + '</div>' +
+              '<div class="pref-block">' +
+                  '<button class="primary" id="stt-sufficit-diagnose">' + esc(t("config.voice.sufficitDiagnose.btn")) + '</button>' +
+                  '<div id="stt-sufficit-diag-result"></div>' +
+              '</div>'
+            : '<div class="desc">' + esc(t("config.voice.sufficitDiagnose.needsLogin")) + '</div>';
+        const sufficitSection = section(t("config.voice.sufficitDiagnose.section"), sufficitBody);
+
         // Engine + global capture settings.
         const engineOpts = (stt.engines || []).map(e => ({ v: e.id, l: e.label }));
-        let html = diagSection +
+        let html = '<div class="diag-columns">' + diagSection + sufficitSection + '</div>' +
             section("Engine",
                 item("Speech-to-text engine", "Web Speech works only in the browser (code-server). Local engines work in VS Code desktop too.",
                     sel("symposium.voice.engine", s.engine, engineOpts)) +

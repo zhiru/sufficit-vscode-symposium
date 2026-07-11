@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ensureScaffold, ResourceKind, rootDir, readToolCredential } from "../config/root";
 import { SymposiumApi } from "../api/symposiumApi";
 import { SufficitAuth } from "../auth/identity";
+import type { ChatViewProvider } from "./chatView";
 import { renderConfigHtml } from "./configHtml";
 import { tr } from "./configI18n";
 import { listServers, ensureSufficitNativeServer } from "../config/servers";
@@ -15,6 +16,9 @@ import { handleVoiceMessage } from "./configVoiceHandler";
 export interface ConfigPanelDeps {
     api: SymposiumApi;
     auth?: SufficitAuth;
+    /** Lets config handlers reveal a session they created programmatically
+     *  (e.g. the automated Sufficit AI voice diagnostic). */
+    chatView?: ChatViewProvider;
 }
 
 /** Shape of the messages dispatched from the config webview to the host. */
@@ -40,6 +44,8 @@ export interface ConfigHandlerCtx {
     api: SymposiumApi;
     /** Sufficit identity: login state + access token for authed gateway calls. */
     auth?: SufficitAuth;
+    /** Reveal a session created via api.sessions.create (see ConfigPanelDeps). */
+    chatView?: ChatViewProvider;
     /** Extension context (reads backend config, e.g. the Sufficit base URL). */
     context: vscode.ExtensionContext;
     tr(key: string, vars?: Record<string, string | number>): string;
@@ -118,6 +124,7 @@ export class ConfigPanel {
         const ctx: ConfigHandlerCtx = {
             api,
             auth: this.deps.auth,
+            chatView: this.deps.chatView,
             context: this.context,
             tr: (k, v) => this.tr(k, v),
             pushState: () => this.pushState(),

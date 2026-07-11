@@ -59,6 +59,17 @@ export const configScriptStt = `
             }
             return true;
         }
+        if (d.type === "stt-sufficit-diagnose-result") {
+            const out = document.getElementById("stt-sufficit-diag-result");
+            const btn = document.getElementById("stt-sufficit-diagnose");
+            if (btn) { btn.disabled = false; }
+            if (out) {
+                out.innerHTML = d.ok
+                    ? '<div class="desc" style="color:var(--sym-ok)">' + esc(t("config.voice.sufficitDiagnose.started")) + '</div>'
+                    : '<div class="desc" style="color:var(--sym-bad)">' + esc(t("config.voice.sufficitDiagnose.failed")) + '</div>';
+            }
+            return true;
+        }
         return false;
     }
 `;

@@ -41,6 +41,14 @@ export const configStylesViews = /* css */ `
 
     /* ---- Sections + preference rows ----------------------------------------- */
     .section { margin-bottom: 26px; }
+    /* Two side-by-side sections (e.g. manual vs. automated STT diagnostic).
+       Each still fills the section-title/border look; only the outer
+       margin-bottom moves here so they don't stack their own gaps. */
+    .diag-columns {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-bottom: 26px;
+    }
+    .diag-columns .section { margin-bottom: 0; }
+    @media (max-width: 720px) { .diag-columns { grid-template-columns: 1fr; } }
     .section-title {
         font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em;
         color: var(--sym-accent-2); opacity: .9;

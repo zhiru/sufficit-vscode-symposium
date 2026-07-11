@@ -170,6 +170,15 @@ export function renderConfigScript(dict: Record<string, string>): string {
                     });
                 };
             }
+            const sufficitDiagnoseBtn = document.getElementById("stt-sufficit-diagnose");
+            if (sufficitDiagnoseBtn) {
+                sufficitDiagnoseBtn.onclick = () => {
+                    const out = document.getElementById("stt-sufficit-diag-result");
+                    if (out) { out.innerHTML = '<div class="desc">' + esc(t("config.voice.sufficitDiagnose.starting")) + '</div>'; }
+                    sufficitDiagnoseBtn.disabled = true;
+                    vscode.postMessage({ type: "stt-sufficit-diagnose" });
+                };
+            }
             return;
         }
         if (active === "vscode") {

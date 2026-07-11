@@ -56,7 +56,7 @@ export function registerMiscCommands(ctx: CommandContext): void {
 
         // Dynamic configuration surface: agents/skills/tools/backends/sync.
         vscode.commands.registerCommand("symposium.openConfig", () =>
-            ConfigPanel.show(context, { api, auth })),
+            ConfigPanel.show(context, { api, auth, chatView })),
 
         // Sufficit Identity login / logout via the native auth provider (also
         // shows in the VS Code Accounts menu).
@@ -82,7 +82,7 @@ export function registerMiscCommands(ctx: CommandContext): void {
                 created > 0
                     ? `Symposium: created ${created} example(s) in ~/.symposium/repo.`
                     : "Symposium: examples already existed (nothing created).");
-            ConfigPanel.show(context, { api, auth });
+            ConfigPanel.show(context, { api, auth, chatView });
         }),
 
         // Restart the bridge to apply changed bridge settings.
