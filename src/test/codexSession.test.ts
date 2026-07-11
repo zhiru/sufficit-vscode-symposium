@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseCodexModelCatalog } from "../adapters/codex/models";
-import { buildHttpMcpWrapperScript, codexWorkspaceArgs, mcpHttpWrapperPath } from "../adapters/codex/session";
+import { buildHttpMcpWrapperScript, codexWorkspaceArgs, mcpHttpWrapperPath } from "../adapters/codex/codexMcpConfig";
 
 test("HTTP MCP wrapper reads URL and headers from mcp.json at runtime", () => {
     const script = buildHttpMcpWrapperScript("/tmp/mcp.json", "sufficit'quoted");

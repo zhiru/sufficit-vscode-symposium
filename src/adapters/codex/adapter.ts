@@ -16,7 +16,8 @@ import {
     SlashCommand,
 } from "../types";
 import { getCached, setCached, ModelCacheEntry } from "../modelCache";
-import { CodexAdapterConfig, CodexSession } from "./session";
+import { CodexSession } from "./session";
+import { CodexAdapterConfig } from "./codexMcpConfig";
 import { looksInjected, readCodexMeta } from "./transcript";
 import { parseCodexModelCatalog } from "./models";
 
