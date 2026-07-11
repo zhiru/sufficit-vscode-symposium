@@ -19,7 +19,8 @@ import {
 import { getCached, setCached, ModelCacheEntry } from "../modelCache";
 import { ClaudeAdapterConfig, ClaudeSession } from "./session";
 import { claudeOAuthToken } from "./credentials";
-import { parseTranscriptLine, rawLineType, readSessionMeta } from "./transcript";
+import { parseTranscriptLine, readSessionMeta } from "./transcript";
+import { followClaudeSession } from "./claudeFollow";
 
 export class ClaudeAdapter implements AgentAdapter {
     readonly backend = "claude" as const;
@@ -299,132 +300,12 @@ export class ClaudeAdapter implements AgentAdapter {
      * sessions, since two writers on one session id diverge.
      */
     follow(info: SessionInfo, onMessage: (message: HistoryMessage) => void): FollowHandle {
-        let file = info.transcriptPath;
-        let offset = 0;
-        let carry = "";
-        let closed = false;
-        let reading = false;
-        let watcher: fs.FSWatcher | undefined;
-
-        // Inferred turn state for a session running in another process: there is
-        // no local AgentSession to ask `isBusy`, so we read it off the JSONL we
-        // already tail. Claude Code writes a `type:"result"` line at the end of
-        // every turn (the same signal ClaudeSession clears `turnActive` on), so:
-        //   user/assistant line → working;  result line → idle.
-        // A debounced fallback forces idle if `result` never arrives (crash/kill).
-        const IDLE_FALLBACK_MS = 9000;
-        let statusCb: ((status: "working" | "idle") => void) | undefined;
-        let lastStatus: "working" | "idle" | undefined;
-        let idleTimer: ReturnType<typeof setTimeout> | undefined;
-        const emitStatus = (s: "working" | "idle") => {
-            if (s === lastStatus) { return; }     // only on transition
-            lastStatus = s;
-            statusCb?.(s);
-        };
-        const clearIdleTimer = () => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = undefined; } };
-        const setStatus = (s: "working" | "idle") => {
-            if (s === "working") {
-                emitStatus("working");
-                clearIdleTimer();
-                idleTimer = setTimeout(() => emitStatus("idle"), IDLE_FALLBACK_MS);
-            } else {
-                clearIdleTimer();
-                emitStatus("idle");
-            }
-        };
-        const inferInitialStatus = async (): Promise<"working" | "idle" | undefined> => {
-            if (!file) { return undefined; }
-            const stat = await fs.promises.stat(file);
-            const start = Math.max(0, stat.size - 65536);
-            const tail = await fs.promises.readFile(file, "utf8").then((s) => s.slice(start));
-            for (const line of tail.split("\n").reverse()) {
-                const t = rawLineType(line);
-                if (t === "result") { return "idle"; }
-                if (t === "user" || t === "assistant") { return "working"; }
-            }
-            return undefined;
-        };
-
-        const drain = async () => {
-            if (closed || reading || !file) {
-                return;
-            }
-            reading = true;
-            try {
-                const stat = await fs.promises.stat(file);
-                if (stat.size < offset) {
-                    // File was truncated/rotated; restart from the top.
-                    offset = 0;
-                    carry = "";
-                }
-                if (stat.size > offset) {
-                    const stream = fs.createReadStream(file, { start: offset, encoding: "utf8" });
-                    for await (const chunk of stream) {
-                        carry += chunk;
-                        const lines = carry.split("\n");
-                        carry = lines.pop() ?? "";
-                        for (const line of lines) {
-                            const t = rawLineType(line);
-                            if (t === "result") { setStatus("idle"); }
-                            else if (t === "user" || t === "assistant") { setStatus("working"); }
-                            for (const message of parseTranscriptLine(line)) {
-                                onMessage(message);
-                            }
-                        }
-                    }
-                    offset = stat.size;
-                }
-            } catch {
-                // transient read errors are ignored; the next event retries
-            } finally {
-                reading = false;
-            }
-        };
-
-        let stopTimer: (() => void) | undefined;
-
-        const begin = async () => {
-            if (!file) {
-                file = await this.findTranscript(info.sessionId);
-            }
-            if (!file || closed) {
-                return;
-            }
-            try {
-                offset = (await fs.promises.stat(file)).size;
-                const initial = await inferInitialStatus();
-                if (initial) { setStatus(initial); }
-            } catch {
-                offset = 0;
-            }
-            if (closed) {
-                return;
-            }
-            try {
-                watcher = fs.watch(file, () => void drain());
-            } catch {
-                // fall back to polling if the platform can't watch the file
-            }
-            const timer = setInterval(() => void drain(), 1500);
-            stopTimer = () => clearInterval(timer);
-            this._followStops.get(info.sessionId)?.();
-            this._followStops.set(info.sessionId, stopTimer);
-        };
-
-        void begin();
-
-        return {
-            onStatus: (cb) => { statusCb = cb; if (lastStatus) { cb(lastStatus); } },
-            dispose: () => {
-                closed = true;
-                clearIdleTimer();
-                watcher?.close();
-                stopTimer?.();
-                if (this._followStops.get(info.sessionId) === stopTimer) {
-                    this._followStops.delete(info.sessionId);
-                }
-            },
-        };
+        return followClaudeSession(
+            info,
+            onMessage,
+            (sessionId) => this.findTranscript(sessionId),
+            this._followStops,
+        );
     }
 
     private readonly _followStops = new Map<string, () => void>();
