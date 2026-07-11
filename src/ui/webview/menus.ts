@@ -105,12 +105,14 @@ export function openChoiceMenu(anchorEl, options, current, onPick, opts) {
 
 // Transient toast (bottom-center, auto-dismiss). Reused for copy feedback.
 const TOAST_CHECK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.5 3.5 6 11 2.5 7.5l1-1L6 9l6.5-6.5 1 1Z"/></svg>';
+const TOAST_ERROR = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm.75 3v5h-1.5V4h1.5Zm0 6.5v1.5h-1.5v-1.5h1.5Z"/></svg>';
 let toastTimer = null;
-export function showToast(message) {
+export function showToast(message, kind = "info") {
     const el = document.getElementById("toast");
     if (!el) { return; }
-    el.innerHTML = TOAST_CHECK + "<span></span>";
+    el.innerHTML = (kind === "error" ? TOAST_ERROR : TOAST_CHECK) + "<span></span>";
     el.querySelector("span").textContent = message;
+    el.classList.toggle("error", kind === "error");
     el.classList.add("show");
     if (toastTimer) { clearTimeout(toastTimer); }
     toastTimer = setTimeout(() => el.classList.remove("show"), 2200);

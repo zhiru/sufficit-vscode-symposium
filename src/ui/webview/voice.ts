@@ -13,6 +13,37 @@ let recordingDotsInterval: any = null;
 let recordingTextBase = '';
 let recordingInterimText = '';
 let recordingDotsText = '';
+// Web Speech's constructor exists in Electron's bundled Chromium, but the
+// actual recognition service often silently never starts there (no
+// onstart/onerror at all — just nothing). Without this, clicking mic in that
+// state looks like a dead button. Cleared in onstart/onerror/onend.
+let webSpeechStartWatchdog: any = null;
+// Which capture path is live right now, so stopVoiceRecording() (used by both
+// the mic button and composer.ts's send-while-recording guard) knows which
+// underlying stop function to call without re-deriving it from stale flags
+// (e.g. `mediaRecorder` stays a truthy stopped instance long after a local
+// recording ends, so it can't be used as an "is this the active path" check).
+let activeVoicePath: 'webspeech' | 'host' | 'local' | null = null;
+
+// --- Silence auto-segmentation (VAD) for the local/whisper paths ---
+//
+// whisper.cpp/faster-whisper only transcribe on stop (no incremental partial
+// results like Web Speech), so without this the composer stays empty until
+// the user manually clicks the mic again. Instead, when the "Continuous"
+// preference is on, dictation auto-segments on a pause: stop the current
+// segment (transcribes it, appends to the composer), then immediately start
+// the next one, so text keeps appearing while the mic stays "recording" the
+// whole time from the user's perspective.
+let dictationActive = false;      // armed for the whole dictation, not just one segment
+let dictationUseHost = false;     // which path to restart between segments
+let vadStream: any = null;        // getUserMedia stream used ONLY to monitor level, not to record
+let vadAudioCtx: any = null;
+let vadAnalyser: any = null;
+let vadRafId: any = null;
+let vadSilenceStartedAt = 0;      // ms timestamp level first dropped below threshold; 0 = currently not silent
+let vadHadSpeech = false;         // seen level above threshold since this segment started
+const VAD_SILENCE_RMS = 0.02;     // 0..1 time-domain RMS threshold — tuned for typical mic gain, not a hard science
+const VAD_SILENCE_MS = 900;       // sustained silence this long ends the segment
 
 // Audio feedback functions (mimicking VSCode chat sounds)
 function playStartSound() {
@@ -150,10 +181,21 @@ let mediaStream: any = null;
 let audioChunks: Blob[] = [];
 
 // Whether the mic button should be visible at all, given current prefs.
+// The SpeechRecognition constructor exists in Electron's bundled Chromium,
+// but the recognition service never actually starts in VS Code desktop
+// (confirmed: neither onstart nor onerror ever fires — see the watchdog in
+// the click handler below). `hostCapture` is the webview's own "are we on
+// desktop, not a real browser" signal (mirrors isWebUi in the host-side
+// diagnostic, src/voice/sttDiagnostic.ts) — reused here so the mic button's
+// visibility and the diagnostic's "ready" verdict never drift apart again.
+function webSpeechWorksHere(prefs: ReturnType<typeof getVoicePreferences>): boolean {
+    return webSpeechSupported && !prefs.hostCapture;
+}
+
 function updateMicVisibility() {
     if (!micBtn) { return; }
     const prefs = getVoicePreferences();
-    const canWebSpeech = webSpeechSupported && (prefs.engine === 'webspeech' || (prefs.engine === 'auto' && !prefs.localStt));
+    const canWebSpeech = webSpeechWorksHere(prefs) && (prefs.engine === 'webspeech' || (prefs.engine === 'auto' && !prefs.localStt));
     const canLocal = prefs.localStt && prefs.engine !== 'webspeech';
     micBtn.style.display = (canWebSpeech || canLocal) ? 'inline-flex' : 'none';
 }
@@ -166,7 +208,7 @@ function updateMicVisibility() {
 function chooseVoicePath(): 'webspeech' | 'local' | 'none' {
     const prefs = getVoicePreferences();
     if (prefs.localStt && prefs.engine !== 'webspeech') { return 'local'; }
-    if (webSpeechSupported && (prefs.engine === 'webspeech' || prefs.engine === 'auto')) { return 'webspeech'; }
+    if (webSpeechWorksHere(prefs) && (prefs.engine === 'webspeech' || prefs.engine === 'auto')) { return 'webspeech'; }
     return 'none';
 }
 
@@ -175,8 +217,10 @@ if (SpeechRecognition) {
     applyRecognitionPreferences();
 
     recognition.onstart = () => {
+        if (webSpeechStartWatchdog) { clearTimeout(webSpeechStartWatchdog); webSpeechStartWatchdog = null; }
         const prefs = getVoicePreferences();
         isRecording = true;
+        activeVoicePath = 'webspeech';
         micBtn.classList.add('recording');
         setStatus('Listening...');
         if (prefs.soundFeedback) playStartSound();
@@ -185,7 +229,9 @@ if (SpeechRecognition) {
     };
 
     recognition.onend = () => {
+        if (webSpeechStartWatchdog) { clearTimeout(webSpeechStartWatchdog); webSpeechStartWatchdog = null; }
         isRecording = false;
+        activeVoicePath = null;
         micBtn.classList.remove('recording');
         setStatus('Ready');
         if (recordingDotsInterval) {
@@ -194,6 +240,7 @@ if (SpeechRecognition) {
         }
         recordingDotsText = '';
         renderRecordingDraft();
+        dispatchVoiceEnded();
     };
 
     recognition.onresult = (event: any) => {
@@ -224,8 +271,10 @@ if (SpeechRecognition) {
     };
 
     recognition.onerror = (event: any) => {
+        if (webSpeechStartWatchdog) { clearTimeout(webSpeechStartWatchdog); webSpeechStartWatchdog = null; }
         const prefs = getVoicePreferences();
         isRecording = false;
+        activeVoicePath = null;
         micBtn.classList.remove('recording');
         setStatus('Error: ' + event.error);
         if (recordingDotsInterval) {
@@ -236,6 +285,7 @@ if (SpeechRecognition) {
         renderRecordingDraft();
         if (prefs.soundFeedback) playStopSound();
         console.error('Speech recognition error:', event.error);
+        dispatchVoiceEnded();
     };
 }
 
@@ -243,24 +293,34 @@ if (SpeechRecognition) {
 
 let hostRecording = false;
 
-function startHostCapture() {
+// `isContinuation`: true when this is VAD auto-restarting the next segment of
+// an ongoing dictation (maybeContinueDictation) rather than a fresh user
+// click — skips the start beep (a beep on every pause would be obnoxious) but
+// still resets the draft base to the current (already-merged) input text.
+function startHostCapture(isContinuation = false) {
     const prefs = getVoicePreferences();
     vscode.postMessage({ type: 'voice-start' });
     hostRecording = true;
     isRecording = true;
+    activeVoicePath = 'host';
     micBtn.classList.add('recording');
     setStatus('Listening...');
-    if (prefs.soundFeedback) playStartSound();
+    if (prefs.soundFeedback && !isContinuation) playStartSound();
     resetRecordingDraft();
     if (prefs.dotsAnimation) updateRecordingDots();
 }
 
+// dictationActive is still true here for a VAD-triggered segment boundary
+// (only a real stop — mic click or Send — clears it BEFORE calling this), so
+// it doubles as the "is this just a pause, not a real stop" check: skip the
+// stop beep and don't drop the mic's "recording" look for a segment boundary.
 function stopHostCapture() {
     const prefs = getVoicePreferences();
-    if (prefs.soundFeedback) playStopSound();
+    if (prefs.soundFeedback && !dictationActive) playStopSound();
     isRecording = false;
     hostRecording = false;
-    micBtn.classList.remove('recording');
+    activeVoicePath = null;
+    if (!dictationActive) { micBtn.classList.remove('recording'); }
     if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
     recordingInterimText = '';
     recordingDotsText = '';
@@ -271,19 +331,19 @@ function stopHostCapture() {
 
 // --- Local capture path (MediaRecorder → host transcription) ---
 
-async function startLocalCapture() {
+async function startLocalCapture(isContinuation = false) {
     const prefs = getVoicePreferences();
     try {
         mediaStream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-        showToast('Microphone unavailable: ' + ((err as Error).message || err));
+        showToast('Microphone unavailable: ' + ((err as Error).message || err), 'error');
         return;
     }
     audioChunks = [];
     try {
         mediaRecorder = new (window as any).MediaRecorder(mediaStream);
     } catch (err) {
-        showToast('Recording not supported here: ' + ((err as Error).message || err));
+        showToast('Recording not supported here: ' + ((err as Error).message || err), 'error');
         stopMediaStream();
         return;
     }
@@ -302,18 +362,20 @@ async function startLocalCapture() {
     };
     mediaRecorder.start();
     isRecording = true;
+    activeVoicePath = 'local';
     micBtn.classList.add('recording');
     setStatus('Listening...');
-    if (prefs.soundFeedback) playStartSound();
+    if (prefs.soundFeedback && !isContinuation) playStartSound();
     resetRecordingDraft();
     if (prefs.dotsAnimation) updateRecordingDots();
 }
 
 function stopLocalCapture() {
     const prefs = getVoicePreferences();
-    if (prefs.soundFeedback) playStopSound();
+    if (prefs.soundFeedback && !dictationActive) playStopSound();
     isRecording = false;
-    micBtn.classList.remove('recording');
+    activeVoicePath = null;
+    if (!dictationActive) { micBtn.classList.remove('recording'); }
     if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
     try { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); } catch { /* ignore */ }
 }
@@ -321,6 +383,75 @@ function stopLocalCapture() {
 function stopMediaStream() {
     try { if (mediaStream) { for (const t of mediaStream.getTracks()) t.stop(); } } catch { /* ignore */ }
     mediaStream = null;
+}
+
+// Monitors mic level via a SEPARATE getUserMedia stream (independent of
+// whichever stream/process is actually recording the audio that gets
+// transcribed — ffmpeg for host capture, MediaRecorder for local) so silence
+// detection works the same for both paths. If this stream can't be acquired
+// (e.g. permission denied), VAD is simply unavailable and dictation behaves
+// like before: one segment, manual stop.
+async function startVadMonitor(): Promise<void> {
+    stopVadMonitor();
+    try {
+        vadStream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+    } catch {
+        return;
+    }
+    vadAudioCtx = new (window as any).AudioContext();
+    const source = vadAudioCtx.createMediaStreamSource(vadStream);
+    vadAnalyser = vadAudioCtx.createAnalyser();
+    vadAnalyser.fftSize = 512;
+    source.connect(vadAnalyser);
+    const data = new Uint8Array(vadAnalyser.fftSize);
+    vadSilenceStartedAt = 0;
+    vadHadSpeech = false;
+    const tick = () => {
+        if (!vadAnalyser) { return; }
+        vadAnalyser.getByteTimeDomainData(data);
+        let sumSquares = 0;
+        for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sumSquares += v * v; }
+        const rms = Math.sqrt(sumSquares / data.length);
+        const now = Date.now();
+        if (rms > VAD_SILENCE_RMS) {
+            vadHadSpeech = true;
+            vadSilenceStartedAt = 0;
+        } else if (vadHadSpeech) {
+            if (!vadSilenceStartedAt) {
+                vadSilenceStartedAt = now;
+            } else if (now - vadSilenceStartedAt >= VAD_SILENCE_MS) {
+                vadSilenceStartedAt = 0;
+                vadHadSpeech = false;
+                onSilenceDetected();
+            }
+        }
+        vadRafId = requestAnimationFrame(tick);
+    };
+    vadRafId = requestAnimationFrame(tick);
+}
+
+function stopVadMonitor(): void {
+    if (vadRafId) { cancelAnimationFrame(vadRafId); vadRafId = null; }
+    if (vadStream) { try { for (const t of vadStream.getTracks()) t.stop(); } catch { /* ignore */ } vadStream = null; }
+    if (vadAudioCtx) { try { vadAudioCtx.close(); } catch { /* ignore */ } vadAudioCtx = null; }
+    vadAnalyser = null;
+}
+
+// A pause was detected — end just THIS segment. Its stt-result/stt-error
+// handler (maybeContinueDictation) starts the next one automatically, since
+// dictationActive is still true; only a real stop (mic click / Send) turns
+// it off first.
+function onSilenceDetected(): void {
+    if (!dictationActive || !isRecording) { return; }
+    if (activeVoicePath === 'host') { stopHostCapture(); }
+    else if (activeVoicePath === 'local') { stopLocalCapture(); }
+}
+
+// Called after a segment's transcript lands. Restarts the next segment while
+// dictation is still armed; otherwise this really is the end of recording.
+function maybeContinueDictation(): void {
+    if (!dictationActive) { dispatchVoiceEnded(); return; }
+    if (dictationUseHost) { startHostCapture(true); } else { void startLocalCapture(true); }
 }
 
 // Host returns the transcript (or an error) for the local path.
@@ -334,25 +465,29 @@ window.addEventListener('message', (e) => {
         setInputValue((recordingTextBase ? recordingTextBase.replace(/[.\s]*$/, ' ') : '') + text);
         input.focus();
         setStatus('Ready');
+        maybeContinueDictation();
     } else if (e.data.type === 'stt-error') {
         if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
         recordingInterimText = '';
         recordingDotsText = '';
         if (recordingTextBase) { setInputValue(recordingTextBase); }
         setStatus('Ready');
-        showToast('Transcription failed: ' + (e.data.error || 'unknown error'));
+        showToast('Transcription failed: ' + (e.data.error || 'unknown error'), 'error');
+        maybeContinueDictation();
     } else if (e.data.type === 'voice-recording') {
         // Host couldn't open the native mic → reset the UI and fall back to
         // the webview MediaRecorder path (may still hit the permission bug).
         if (!e.data.ok && hostRecording) {
             hostRecording = false;
             isRecording = false;
+            activeVoicePath = null;
+            dictationUseHost = false;   // fell back to local — any further auto-segments stay local too
             micBtn.classList.remove('recording');
             if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
             recordingInterimText = '';
             recordingDotsText = '';
             setInputValue(recordingTextBase);
-            showToast('Native mic capture failed (' + (e.data.error || 'unknown') + ') — falling back to webview mic');
+            showToast('Native mic capture failed (' + (e.data.error || 'unknown') + ') — falling back to webview mic', 'error');
             void startLocalCapture();
         }
     }
@@ -363,25 +498,85 @@ if (micBtn) {
     micBtn.addEventListener('click', () => {
         const prefs = getVoicePreferences();
         const path = chooseVoicePath();
-        if (path === 'none') { showToast('Voice input is not available with the current configuration.'); return; }
+        if (path === 'none') { showToast('Voice input is not available with the current configuration.', 'error'); return; }
         if (path === 'webspeech') {
-            if (!recognition) { showToast('Speech recognition not supported in this browser'); return; }
+            if (!recognition) { showToast('Speech recognition not supported in this browser', 'error'); return; }
             recognition.lang = prefs.language;
             recognition.continuous = prefs.continuous;
             recognition.interimResults = prefs.interimResults;
-            if (isRecording) { if (prefs.soundFeedback) playStopSound(); recognition.stop(); }
-            else { recognition.start(); }
+            if (isRecording) { stopVoiceRecording(); }
+            else {
+                try {
+                    recognition.start();
+                    // The constructor existing doesn't mean the recognition
+                    // service actually works here (e.g. Electron/VS Code
+                    // desktop) — if neither onstart nor onerror fires within a
+                    // few seconds, it silently never started at all.
+                    if (webSpeechStartWatchdog) { clearTimeout(webSpeechStartWatchdog); }
+                    webSpeechStartWatchdog = setTimeout(() => {
+                        webSpeechStartWatchdog = null;
+                        if (isRecording) { return; }
+                        showToast(prefs.hostCapture
+                            ? 'Web Speech API did not respond (it only works in a real browser, not VS Code desktop) — switch "Speech-to-text engine" to a local engine in Config.'
+                            : 'Web Speech API did not respond. Check microphone permission for this page.', 'error');
+                    }, 3000);
+                } catch (err) {
+                    showToast('Could not start Web Speech API: ' + ((err as Error)?.message || err), 'error');
+                }
+            }
             return;
         }
         // local path: prefer native host capture, webview MediaRecorder as fallback
         if (isRecording) {
-            if (hostRecording) { stopHostCapture(); } else { stopLocalCapture(); }
+            stopVoiceRecording();
         } else if (prefs.hostCapture) {
+            // "Continuous" arms silence auto-segmentation: keep dictating
+            // across pauses instead of stopping after one segment. VAD needs
+            // its own getUserMedia stream to monitor level, independent of
+            // ffmpeg/MediaRecorder actually recording the audio.
+            dictationActive = prefs.continuous;
+            dictationUseHost = true;
             startHostCapture();
+            if (dictationActive) { void startVadMonitor(); }
         } else {
+            dictationActive = prefs.continuous;
+            dictationUseHost = false;
             void startLocalCapture();
+            if (dictationActive) { void startVadMonitor(); }
         }
     });
 }
 
 updateMicVisibility();
+
+// Lets composer.ts know a recording just ended and its final text (if any)
+// landed in the input — used to auto-continue a Send that was deferred
+// because the user hit Send while still recording (see stopVoiceRecording()).
+function dispatchVoiceEnded(): void {
+    window.dispatchEvent(new Event('symposium-voice-ended'));
+}
+
+/** Whether a voice capture is currently in progress, on any path. */
+export function isVoiceRecording(): boolean { return isRecording; }
+
+/**
+ * Stops whichever voice path is currently active (mirrors the mic button's
+ * own stop branch). Used by composer.ts's send() to auto-stop-and-defer when
+ * the user hits Send while still recording, instead of sending empty text.
+ */
+export function stopVoiceRecording(): void {
+    // Cleared BEFORE stopping the current segment, so stopHostCapture/
+    // stopLocalCapture (which check dictationActive to tell a real stop from
+    // a mid-dictation pause) correctly treat this as the real stop.
+    dictationActive = false;
+    stopVadMonitor();
+    if (activeVoicePath === 'webspeech' && recognition) {
+        const prefs = getVoicePreferences();
+        if (prefs.soundFeedback) playStopSound();
+        recognition.stop();
+    } else if (activeVoicePath === 'host') {
+        stopHostCapture();
+    } else if (activeVoicePath === 'local') {
+        stopLocalCapture();
+    }
+}

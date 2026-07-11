@@ -163,7 +163,11 @@ export function renderConfigScript(dict: Record<string, string>): string {
                 diagnoseBtn.onclick = () => {
                     const out = document.getElementById("stt-diag-result");
                     if (out) { out.innerHTML = '<div class="desc">' + esc(t("config.voice.diagnose.running")) + '</div>'; }
-                    vscode.postMessage({ type: "stt-diagnose" });
+                    const w = window;
+                    vscode.postMessage({
+                        type: "stt-diagnose",
+                        webSpeechSupported: !!(w.SpeechRecognition || w.webkitSpeechRecognition),
+                    });
                 };
             }
             return;

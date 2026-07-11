@@ -91,7 +91,13 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
     private buildMcpConfig(): string | undefined {
         const servers: Record<string, unknown> = { ...(this.config.mcpServers ?? {}) };
         if (this.config.playwright && !servers.playwright) {
-            servers.playwright = { command: "npx", args: ["-y", "@playwright/mcp@latest"] };
+            // Pin to the bundled Chromium explicitly: @playwright/mcp defaults to
+            // the system "chrome" channel when one is installed, and a branded
+            // Google Chrome's live Safe Browsing/component-update check fails
+            // closed (net::ERR_ACCESS_DENIED on every navigation) on hosts whose
+            // firewall doesn't allow that outbound traffic — bundled Chromium has
+            // no such check and works the same everywhere.
+            servers.playwright = { command: "npx", args: ["-y", "@playwright/mcp@latest", "--browser", "chromium"] };
         }
         if (Object.keys(servers).length === 0) { return undefined; }
         try {

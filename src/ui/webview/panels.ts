@@ -42,9 +42,49 @@ export function clearTodos(which) {
     planBySession[wsKey] = visibleTodos(todos);
     renderPlan();
 }
+// Ids that just turned "completed" and are fading out (~5s), and the ids
+// already-completed as of the last render — both keyed per session so a
+// background session's timers can't clobber the one currently on screen.
+// Mirrors the Hub Tasks panel's taskCompleting/taskPrevDone pattern.
+const planPrevDone = {};    // sessionId -> Set<todoId>
+const planCompleting = {};  // sessionId -> Set<todoId>
+function dismissAll(key, todos) {
+    const removed = new Set(todoDismissals[key] || []);
+    for (const t of todos) { removed.add(todoId(t)); }
+    todoDismissals[key] = [...removed].filter(Boolean);
+    saveState({ todoDismissals });
+    planBySession[key] = [];
+    if (key === wsKey) { renderPlan(); }
+}
 // A TodoWrite carries the full current list; just store it for this session.
 export function renderTodos(todos) {
-    planBySession[wsKey] = visibleTodos(todos);
+    const key = wsKey;
+    const visible = visibleTodos(todos);
+    const prevDone = planPrevDone[key] || (planPrevDone[key] = new Set());
+    const completing = planCompleting[key] || (planCompleting[key] = new Set());
+    // A step that just became completed lingers with a completion animation
+    // (~5s, matches the Hub Tasks panel) before it's auto-dismissed. Once
+    // every step is completed and settled, the whole card auto-clears —
+    // finished work shouldn't sit there forever waiting for a manual "Clear
+    // all" click.
+    for (const t of visible) {
+        const id = todoId(t);
+        if (t.status === "completed" && !prevDone.has(id) && !completing.has(id)) {
+            completing.add(id);
+            setTimeout(() => {
+                completing.delete(id);
+                const cur = planBySession[key] || [];
+                if (cur.length && cur.every((x) => x.status === "completed") && completing.size === 0) {
+                    dismissAll(key, cur);
+                } else if (key === wsKey) {
+                    renderPlan();
+                }
+            }, 5200);
+        }
+    }
+    prevDone.clear();
+    for (const t of visible) { if (t.status === "completed") { prevDone.add(todoId(t)); } }
+    planBySession[key] = visible;
     renderPlan();
 }
 export function renderPlan() {
@@ -54,19 +94,21 @@ export function renderPlan() {
     planEl.classList.add("has");
     if (!activePanel) { activePanel = "plan"; }
     const done = todos.filter((t) => t.status === "completed").length;
-    // Header summary mirrors Copilot Chat: show the task in progress (or the
-    // next pending one, or a generic label once everything is done).
     const current = todos.find((t) => t.status === "in_progress")
         || todos.find((t) => t.status === "pending");
-    const summary = current ? current.content : "Todos";
+    const completing = planCompleting[wsKey] || new Set();
 
-    // Bordered card wrapper (matches the chat-todo-list-widget look).
+    // Bordered card wrapper (matches the chat-todo-list-widget look). Header
+    // is a static label — same treatment as the Hub Tasks panel — so the two
+    // read as one consistent component; "current" is shown in the list itself
+    // (the highlighted in-progress row) instead of duplicated into the header.
     const card = document.createElement("div"); card.className = "plcard";
     const head = document.createElement("div"); head.className = "plhead";
     const chev = svgIcon("chevron"); chev.classList.add("plchev");
     head.appendChild(svgIcon("list"));
     const ttl = document.createElement("span"); ttl.className = "pltitle";
-    ttl.textContent = summary; ttl.title = summary;
+    ttl.textContent = "Tasks";
+    ttl.title = current ? "Current: " + current.content : "Tasks";
     const cnt = document.createElement("span"); cnt.className = "plcount"; cnt.textContent = done + "/" + todos.length;
     head.appendChild(ttl); head.appendChild(cnt); head.appendChild(chev);
     head.addEventListener("click", () => planEl.classList.toggle("collapsed"));
@@ -82,7 +124,7 @@ export function renderPlan() {
     const list = document.createElement("div"); list.className = "pllist";
     for (const t of todos) {
         const item = document.createElement("div");
-        item.className = "todoitem" + (t.status === "completed" ? " done" : t.status === "in_progress" ? " active" : "");
+        item.className = "todoitem" + (t.status === "completed" ? " done" : t.status === "in_progress" ? " active" : "") + (completing.has(todoId(t)) ? " completing" : "");
         const ord = document.createElement("span"); ord.className = "torder"; ord.textContent = String(t.order || (todos.indexOf(t) + 1)) + ".";
         const mk = document.createElement("span"); mk.className = "tmark" + (t.status === "pending" ? " pending" : "");
         mk.appendChild(todoMark(t.status));

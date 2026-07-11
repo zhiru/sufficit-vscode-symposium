@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOptions } from "../adapters/types";
-import { parseTodoFence } from "../adapters/todos";
+import { AgentAdapter, AgentEvent, AgentSession, SessionInfo, SessionStartOptions, TodoItem } from "../adapters/types";
+import { parseTodoFence, todosSummary } from "../adapters/todos";
 import { buildOutboundPrompt, type TrackingMode } from "./outboundPrompt";
 import { probeRtk, rtkCached } from "../adapters/rtk";
 import { HubClient } from "../sync/hubClient";
@@ -35,6 +35,13 @@ export class ChatController {
     private bootstrapInjected = false;
     private checkpointInjected = false;
     private trackingInjected = false;
+    // Latest native/fence TodoWrite state (Claude/Codex/Copilot/OpenAI-fence).
+    // Unlike Hub tasks, this has no server-side reminder of its own — feeds
+    // pendingTasksSummary() below so the agent is re-told its current step on
+    // every message, not just the turn that first stated the plan.
+    private lastTodos: TodoItem[] = [];
+    // Set at the top of every dispatch() — see its use in onEvent() below.
+    private trackingMode: TrackingMode | undefined;
     private readonly hub = new HubClient();
     // Id of the session checkpoint already injected as resume context, so the
     // same one isn't re-prepended every continuity turn.
@@ -233,9 +240,14 @@ export class ChatController {
         await reloadHubTasks(this.hubContext());
     }
 
-    /** Builds a per-message reminder from pending tasks. */
+    /**
+     * Builds a per-message reminder of what's still open. Hub tasks (OpenAI w/
+     * Hub, "hub-tools" mode) take priority when present; otherwise falls back to
+     * the locally-tracked native/fence plan (Claude/Codex/Copilot/OpenAI-fence),
+     * which has no server-side reminder of its own — see `lastTodos` above.
+     */
     private pendingTasksSummary(): string | undefined {
-        return hubPendingTasksSummary(this.hubContext());
+        return hubPendingTasksSummary(this.hubContext()) ?? todosSummary(this.lastTodos);
     }
 
     private async dispatch(msg: PendingMessage): Promise<void> {
@@ -305,6 +317,9 @@ export class ChatController {
                 this.adapter.hasNativeTodo?.() === true ? "native"
                 : hasHubTaskTools ? "hub-tools"
                 : "fence";
+            // onEvent() (a separate, later-firing method) needs this to gate the
+            // fence-parsing fallback — see its use below.
+            this.trackingMode = trackingMode;
             const outbound = buildOutboundPrompt({
                 text: msg.text,
                 fileAttachments: fileAtts,
@@ -324,7 +339,11 @@ export class ChatController {
                 // Sufficit memory tool. Tracking discipline is separate (below).
                 checkpoints: roleAware && ((this.aiToolsInfo()?.available) ?? []).includes("memory_save"),
                 trackingMode,
-                todoInjection: this.adapter.hasNativeTodo?.() === false ? this.adapter.todoInjection?.() : undefined,
+                // Fence mode only: a hub-tools session (OpenAI w/ Hub) must not
+                // ALSO get the raw ```todo fence instruction — it already got
+                // planTrackingPreamble("hub-tools") above, and getting both would
+                // tell the model to track the same plan two different ways.
+                todoInjection: trackingMode === "fence" ? this.adapter.todoInjection?.() : undefined,
                 seedHistory: this.options.seedHistory,
                 bootstrap: this.options.bootstrap,
                 resumeCheckpoint: msg.resumeCheckpoint,
@@ -379,11 +398,18 @@ export class ChatController {
             this.changed.record(event.path, event.added, event.removed);
             this.emitChanged();
         }
-        // For CLIs with no native todo tool, recognize a fenced ```todo block in
-        // the agent's text and surface it as a plan update.
-        if (event.kind === "text" && this.adapter.hasNativeTodo?.() === false) {
+        // Remember the latest native TodoWrite/update_plan state — see lastTodos.
+        if (event.kind === "tool-start" && event.todos) {
+            this.lastTodos = event.todos;
+        }
+        // Fence mode only: a hub-tools session already tracks its plan via
+        // add_task/task_complete, so a stray ```todo block in its text (the
+        // model isn't instructed to emit one, but nothing stops it) must not
+        // also spawn a second, redundant plan-card.
+        if (event.kind === "text" && this.trackingMode === "fence") {
             const todos = parseTodoFence(event.text);
             if (todos) {
+                this.lastTodos = todos;
                 this.emit({ type: "event", event: { kind: "tool-start", toolName: "TodoWrite", detail: "", todos } });
             }
         }

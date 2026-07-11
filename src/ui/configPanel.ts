@@ -27,6 +27,7 @@ export interface ConfigMessage {
     value?: string;
     key?: string;
     modelId?: string;
+    webSpeechSupported?: boolean;
     payload?: McpFormPayload & { name?: string; server?: string; itemType?: string };
 }
 

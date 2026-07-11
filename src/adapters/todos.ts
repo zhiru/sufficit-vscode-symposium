@@ -71,6 +71,27 @@ export function parseTodoFence(text: string): TodoItem[] | undefined {
 }
 
 /**
+ * Per-turn reminder of the current plan/todo state for native/fence tracking
+ * (Claude, Codex, Copilot, OpenAI-fence) — the same idea as the Hub tasks
+ * reminder (controllerHubState.ts's pendingTasksSummary), but sourced from the
+ * locally-parsed TodoWrite/update_plan/fence state instead of Sufficit-memory
+ * task records, so the agent is told what's still open on every message, not
+ * just the turn that first stated the plan.
+ */
+export function todosSummary(todos: TodoItem[]): string | undefined {
+    const open = todos.filter((t) => t.status !== "completed");
+    if (open.length === 0) { return undefined; }
+    const current = open.find((t) => t.status === "in_progress") || open[0];
+    const upNext = open.filter((t) => t !== current).map((t) => `- ${t.content}`).join("\n");
+    return (
+        "[PLAN — current step marked below, still open from your own tracked plan. " +
+        "Re-emit the full plan via your native plan/todo tool the moment a step's state changes.]\n" +
+        `→ CURRENT: ${current.content}` +
+        (upNext ? `\nUp next:\n${upNext}` : "")
+    );
+}
+
+/**
  * Instruction injected into sessions whose CLI has no native todo tool, so the
  * agent still surfaces a plan Symposium can render and check off.
  */

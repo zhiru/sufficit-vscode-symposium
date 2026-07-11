@@ -12,7 +12,7 @@ import { resizeInput } from "./inputSizing";
 import { optimisticUserMessage } from "./messages";
 // Voice input (Web Speech + host/local capture) is extracted to ./voice; its
 // listeners run on import, so importing it here preserves registration order.
-import "./voice";
+import { isVoiceRecording, stopVoiceRecording } from "./voice";
 
 export function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
 sendMode.addEventListener("change", () => saveState({ sendMode: sendMode.value }));
@@ -119,7 +119,30 @@ export function cancelEdit() {
     resizeInput();
     markEditing();
 }
+// A voice recording is still active (e.g. local/whisper capture, which only
+// transcribes on stop — see voice.ts). Sending now would fire with whatever
+// happens to be in the input at this instant (usually empty/just the dots
+// animation), and the eventual transcript would land in the box AFTER the
+// message was already sent, looking like the send silently ate the text.
+// Instead: stop the recording for the user (Send doubles as "I'm done
+// talking") and defer the actual send until its transcript is in.
+let pendingVoiceSend = false;
+let pendingVoiceSendMode: string | undefined;
+window.addEventListener("symposium-voice-ended", () => {
+    if (!pendingVoiceSend) { return; }
+    pendingVoiceSend = false;
+    const mode = pendingVoiceSendMode;
+    pendingVoiceSendMode = undefined;
+    send(mode);
+});
+
 export function send(modeOverride) {
+    if (isVoiceRecording()) {
+        pendingVoiceSend = true;
+        pendingVoiceSendMode = modeOverride;
+        stopVoiceRecording();
+        return;
+    }
     const text = input.value.trim();
     // While busy with an empty composer, the button acts as Stop (nothing to send).
     if (!text) { if (busy) { vscode.postMessage({ type: "cancel" }); } return; }

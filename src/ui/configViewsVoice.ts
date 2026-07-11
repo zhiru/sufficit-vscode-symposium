@@ -15,13 +15,17 @@ export const configViewsVoice = `
             "</select>";
         const input = (key, value, placeholder) =>
             '<input class="pref-input" type="text" data-key="' + esc(key) + '" value="' + esc(value || "") + '" placeholder="' + esc(placeholder || "") + '" />';
+        // name/title are always static strings, t() lookups, or badge() output
+        // (never user-supplied) — some callers embed a badge()'s own <span>
+        // markup in them, so these must NOT be esc()'d or the tags render as
+        // literal text. desc is likewise a fixed string, never a live value.
         const item = (name, desc, ctl) =>
             '<div class="pref-item"><div class="meta">' +
-                '<span class="name">' + esc(name) + '</span>' +
-                '<span class="desc">' + esc(desc) + "</span>" +
+                '<span class="name">' + name + '</span>' +
+                '<span class="desc">' + desc + "</span>" +
             '</div><div class="ctl">' + ctl + "</div></div>";
         const section = (title, body) =>
-            '<section class="section"><div class="section-title">' + esc(title) + "</div>" + body + "</section>";
+            '<section class="section"><div class="section-title">' + title + "</div>" + body + "</section>";
         const onoff = [{ v: "true", l: t("config.value.enabled") }, { v: "false", l: t("config.value.disabled") }];
 
         if (!stt) {
@@ -57,10 +61,11 @@ export const configViewsVoice = `
                     '<span class="desc">' + esc(stt.modelsDir || "") + '</span>')
             );
 
-        // Web Speech (browser) behaviour.
-        html += section("Web Speech (browser) behaviour",
-            item("Continuous", "Keep listening across pauses.", sel("symposium.voice.continuous", s.engine && false ? "true" : (state.prefs && state.prefs.voiceContinuous === false ? "false" : "true"), onoff)) +
-            item("Interim results", "Show partial text while speaking.", sel("symposium.voice.interimResults", (state.prefs && state.prefs.voiceInterimResults === false) ? "false" : "true", onoff)) +
+        // Applies to every path (Web Speech's own continuous/interim flags,
+        // AND local-engine silence auto-segmentation — see "Continuous" below).
+        html += section("Listening behaviour",
+            item("Continuous", "Keep listening across pauses. Web Speech: its own native behavior. Local engines (whisper.cpp/faster-whisper/vosk): auto-segments on silence — transcribes what you said so far, then keeps listening, instead of waiting for a manual stop.", sel("symposium.voice.continuous", s.engine && false ? "true" : (state.prefs && state.prefs.voiceContinuous === false ? "false" : "true"), onoff)) +
+            item("Interim results", "Show partial text while speaking (Web Speech only — local engines have no partial results, see Continuous above).", sel("symposium.voice.interimResults", (state.prefs && state.prefs.voiceInterimResults === false) ? "false" : "true", onoff)) +
             item("Dots animation", "Animated indicator while recording.", sel("symposium.voice.dotsAnimation", (state.prefs && state.prefs.voiceDotsAnimation === false) ? "false" : "true", onoff)) +
             item("Sound feedback", "Start/stop tones.", sel("symposium.voice.soundFeedback", (state.prefs && state.prefs.voiceSoundFeedback === false) ? "false" : "true", onoff))
         );

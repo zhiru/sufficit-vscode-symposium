@@ -124,10 +124,15 @@ export class ChatSurface {
         if (this.deps.account) {
             this.disposables.push(this.deps.account.onDidChange(() => void this.sync.pushAccount()));
         }
-        // Live-apply preference changes (e.g. sessions side) without a reload.
+        // Live-apply preference changes (e.g. sessions side, voice settings)
+        // without a reload — so a change made in the Config panel is testable
+        // immediately on an already-open chat surface.
         this.disposables.push(vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration("symposium.chat.sessionsSide")) {
                 this.post({ type: "prefs", sessionsSide: vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto") });
+            }
+            if (e.affectsConfiguration("symposium.voice") && this.ready) {
+                this.pushVoicePreferences();
             }
         }));
     }
@@ -156,8 +161,23 @@ export class ChatSurface {
         const lang = langCfg.get<string>("preferredLanguage", "").trim() || vscode.env.language || "en";
         void this.webview.postMessage({ type: "setLang", lang });
 
-        // Send voice preferences to webview. `engine` + `localStt` drive the
-        // hybrid mic: Web Speech in the browser, local host transcription on desktop.
+        this.pushVoicePreferences();
+
+        for (const queued of this.queue) {
+            void this.webview.postMessage(queued);
+        }
+        this.queue = [];
+    }
+
+    /**
+     * Sends voice preferences to the webview. `engine` + `localStt` drive the
+     * hybrid mic: Web Speech in the browser, local host transcription on
+     * desktop. Called on ready, AND again on every `symposium.voice.*` config
+     * change (see the onDidChangeConfiguration listener in the constructor) so
+     * a setting changed in the Config panel takes effect on an already-open
+     * chat surface immediately — no reload needed to test it for real.
+     */
+    private pushVoicePreferences(): void {
         const voiceCfg = vscode.workspace.getConfiguration("symposium");
         const voiceEngine = voiceCfg.get<string>("voice.engine", "auto");
         const voicePreferences = {
@@ -173,26 +193,21 @@ export class ChatSurface {
             // getUserMedia is unreliable in VS Code (permission lost on reload).
             hostCapture: vscode.env.uiKind !== vscode.UIKind.Web,
         };
-        void this.webview.postMessage({ type: "setVoicePreferences", preferences: voicePreferences });
+        this.post({ type: "setVoicePreferences", preferences: voicePreferences });
 
-        // The initial localStt above is a cheap string-only gate so the mic
-        // button appears without flicker. Re-validate against the real world
-        // (binary on PATH + model installed for the resolved engine) and post a
+        // The localStt above is a cheap string-only gate so the mic button
+        // appears without flicker. Re-validate against the real world (binary
+        // on PATH + model installed for the resolved engine) and post a
         // corrected preference: if the engine is configured but its binary or
         // model is missing/incompatible, hide the mic instead of letting the
         // user click into a cryptic transcription failure.
         void isLocalSttReady().then((ready) => {
             if (ready === voicePreferences.localStt) { return; }
-            void this.webview.postMessage({
+            this.post({
                 type: "setVoicePreferences",
                 preferences: { ...voicePreferences, localStt: ready },
             });
         });
-
-        for (const queued of this.queue) {
-            void this.webview.postMessage(queued);
-        }
-        this.queue = [];
     }
 
     // Dialogue lifecycle (open / resume / follow / terminal / branch) lives in
