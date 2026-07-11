@@ -8,6 +8,7 @@ import { lmToolInvocationOptions } from "../adapters/lmToolInvocation";
 import { ResourceKind } from "../config/root";
 import { SymposiumApi, SendMode } from "./symposiumApi";
 import { isBridgeAuthorized } from "./bridgeAuth";
+import { BridgePolicy, resolveBridgePolicy, isCwdAllowed, isHostAllowed, isLmToolAllowed } from "./bridgePolicy";
 
 /** VS Code commands the bridge is allowed to run (browser/navigation only). */
 const ALLOWED_COMMANDS = new Set<string>([
@@ -47,6 +48,9 @@ export class RemoteBridge {
             token = randomUUID();
             this.log("[bridge] no token configured; generated ephemeral token (see ~/.symposium/bridge.json)");
         }
+        if ((cfg.get<string[]>("allowedHosts", []) ?? []).length === 0) {
+            this.log("[bridge] symposium.bridge.allowedHosts is empty — Host validation (anti DNS-rebinding) is not enforced; set it once you have a stable tunnel hostname.");
+        }
 
         const url = `http://${host}:${port}`;
         this.server = http.createServer((req, res) => void this.handle(req, res, token));
@@ -75,8 +79,28 @@ export class RemoteBridge {
         return isBridgeAuthorized(req.headers.authorization, url, token);
     }
 
+    /** Reads the current server-side policy from settings (fresh each request). */
+    private policy(): BridgePolicy {
+        const cfg = vscode.workspace.getConfiguration("symposium.bridge");
+        const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+        return resolveBridgePolicy({
+            allowedRoots: cfg.get<string[]>("allowedRoots", []),
+            workspaceRoots,
+            sessionPermission: cfg.get<string>("sessionPermission", "acceptEdits"),
+            allowedLmTools: cfg.get<string[]>("allowedLmTools", []),
+            allowExecutableOverride: cfg.get<boolean>("allowExecutableOverride", false),
+            allowVaultResolve: cfg.get<boolean>("allowVaultResolve", false),
+            allowedHosts: cfg.get<string[]>("allowedHosts", []),
+        });
+    }
+
     private async handle(req: http.IncomingMessage, res: http.ServerResponse, token: string): Promise<void> {
         const url = new URL(req.url ?? "/", "http://localhost");
+        const policy = this.policy();
+        // Anti DNS-rebinding: reject a mismatched Host before touching the token.
+        if (!isHostAllowed(req.headers.host, policy.allowedHosts)) {
+            return json(res, 403, { error: "host not allowed" });
+        }
         if (!this.authorized(req, url, token)) {
             return json(res, 401, { error: "unauthorized" });
         }
@@ -100,6 +124,10 @@ export class RemoteBridge {
             if (method === "POST" && parts[0] === "vscode" && parts[1] === "lmtool") {
                 const body = await readBody(req);
                 if (typeof body.name !== "string") { return json(res, 400, { error: "name must be a string" }); }
+                // LM tools can include terminal execution; require an explicit allowlist.
+                if (!isLmToolAllowed(body.name, policy.allowedLmTools)) {
+                    return json(res, 403, { error: `lm tool not allowed: ${body.name}` });
+                }
                 const cts = new vscode.CancellationTokenSource();
                 try {
                     const input = isRecord(body.input) ? body.input : {};
@@ -122,11 +150,17 @@ export class RemoteBridge {
             if (method === "POST" && parts[0] === "sessions" && parts.length === 1) {
                 const body = await readBody(req);
                 if (typeof body.backend !== "string" || typeof body.cwd !== "string") { return json(res, 400, { error: "backend and cwd are required strings" }); }
-                const options: { cwd: string; model?: string; tools?: string[]; agent?: string } = {
+                // A remote spawn is arbitrary code execution: confine the cwd to the
+                // allowed roots and force a non-bypass permission mode.
+                if (!isCwdAllowed(body.cwd, policy.allowedRoots)) {
+                    return json(res, 403, { error: "cwd not allowed" });
+                }
+                const options: { cwd: string; model?: string; tools?: string[]; agent?: string; permission?: string } = {
                     cwd: body.cwd,
                     model: typeof body.model === "string" ? body.model : undefined,
                     tools: Array.isArray(body.tools) ? body.tools : undefined,
-                    agent: typeof body.agent === "string" ? body.agent : undefined
+                    agent: typeof body.agent === "string" ? body.agent : undefined,
+                    permission: policy.sessionPermission,
                 };
                 const id = await this.api.sessions.create(body.backend, options);
                 return id ? json(res, 200, { id }) : json(res, 400, { error: "unknown backend" });
@@ -187,6 +221,10 @@ export class RemoteBridge {
             }
             // POST /backends/:backend/executable  {value}
             if (method === "POST" && parts[0] === "backends" && parts[2] === "executable") {
+                // Rewriting the spawn binary is a clean RCE primitive; off unless opted in.
+                if (!policy.allowExecutableOverride) {
+                    return json(res, 403, { error: "executable override disabled over bridge" });
+                }
                 const body = await readBody(req);
                 const value = typeof body.value === "string" ? body.value : "";
                 const ok = await this.api.backends.setExecutable(parts[1], value);
@@ -209,6 +247,10 @@ export class RemoteBridge {
             }
             // GET /vault/resolve?reference=
             if (method === "GET" && parts[0] === "vault" && parts[1] === "resolve") {
+                // Direct secret read: off unless explicitly opted in.
+                if (!policy.allowVaultResolve) {
+                    return json(res, 403, { error: "vault resolve disabled over bridge" });
+                }
                 const value = await this.api.vault.resolve(url.searchParams.get("reference") ?? "");
                 return value == null
                     ? json(res, 404, { error: "unknown/expired/offline" })
@@ -216,7 +258,10 @@ export class RemoteBridge {
             }
             return json(res, 404, { error: "not found" });
         } catch (err) {
-            return json(res, 500, { error: String(err) });
+            // Log the detail server-side; a generic 500 avoids leaking absolute
+            // paths / usernames from fs/spawn errors to the remote caller.
+            this.log(`[bridge] request error: ${String(err)}`);
+            return json(res, 500, { error: "internal error" });
         }
     }
 

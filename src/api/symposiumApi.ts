@@ -57,7 +57,7 @@ export interface SymposiumApi {
          * the backend reports its own session id. When `tools` are given, their
          * vault secrets are resolved and injected into the process env at spawn.
          */
-        create(backend: string, options: { cwd: string; model?: string; tools?: string[]; agent?: string }): Promise<string | undefined>;
+        create(backend: string, options: { cwd: string; model?: string; tools?: string[]; agent?: string; permission?: string }): Promise<string | undefined>;
         /** Sends a message to a session. `steer` interrupts the running turn. */
         send(id: string, text: string, mode?: SendMode): boolean;
         /** Interrupts the running turn, if any. */
@@ -171,6 +171,7 @@ export function createSymposiumApi(deps: SymposiumApiDeps): SymposiumApi {
                     return undefined;
                 }
                 const opts: SessionStartOptions = { cwd: options.cwd, model: options.model };
+                if (options.permission) { opts.permission = options.permission; }
                 if (options.tools && options.tools.length > 0) {
                     const { env, missing } = await resolveToolEnv(options.tools);
                     opts.env = env;
