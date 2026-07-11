@@ -4,6 +4,14 @@
 
 # Sufficit Symposium
 
+<p align="center">
+  <a href="https://www.sufficit.com.br">
+    <img src="media/sufficit-ai-logo.png" width="42" height="42" alt="Sufficit AI logo">
+  </a>
+  <br>
+  <strong>Powered by Sufficit</strong>
+</p>
+
 > συμπόσιον — *symposion*: the banquet where many minds dialogue, conducted by a host.
 
 Sufficit Symposium is a VS Code and code-server extension for hosting dialogue
