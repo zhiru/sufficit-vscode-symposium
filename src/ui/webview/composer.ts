@@ -158,6 +158,7 @@ export function send(modeOverride) {
     }
     const editFrom = editAnchor;
     const clientMessageId = editFrom == null ? "local-" + Date.now().toString(36) + "-" + (++sendSeq).toString(36) : undefined;
+    const effectiveMode = modeOverride || sendMode.value;
     const payload = {
         type: "send",
         text,
@@ -165,13 +166,19 @@ export function send(modeOverride) {
         model: modelValue,
         reasoning: reasoningValue,
         permission: permissionValue,
-        mode: modeOverride || sendMode.value,
+        mode: effectiveMode,
         autonomy: autonomyValue,
         editFrom: editFrom,
         clientMessageId,
     };
     vscode.postMessage(payload);
-    if (clientMessageId) { optimisticUserMessage(clientMessageId, text); }
+    // A plain send while busy is QUEUED host-side (see ChatController.onSend) —
+    // it won't actually dispatch until the current turn ends. Showing the
+    // bubble now would splice it into the middle of the still-streaming turn;
+    // the Queued panel already reflects it. The real "user" event (fired at
+    // actual dispatch time) creates the bubble then, in the right order.
+    // Steer interrupts immediately, so it stays optimistic.
+    if (clientMessageId && (!busy || effectiveMode === "steer")) { optimisticUserMessage(clientMessageId, text); }
     if (editAnchor != null) { editAnchor = null; markEditing(); }
     if (!busy && editFrom == null) { setBusy(true); }
     setAttachments([]);
