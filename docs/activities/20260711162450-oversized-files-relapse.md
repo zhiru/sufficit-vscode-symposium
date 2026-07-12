@@ -123,9 +123,9 @@ Each step: keep `npm run compile` + `npm run lint` + `node --test` +
 
 ## Status (updated same day)
 
-10 → 1 violation. Completed splits were verified with tsc + eslint + full
-`node --test` (127/127). Full `npm test` still exits non-zero until the
-remaining `check:size` violations are cleared.
+10 → 0 violations. Completed splits were verified with tsc + eslint + full
+`node --test` (127/127); final pass verified with full `npm test`, including
+`check:size`.
 
 - **DONE** `codex/session.ts` (438→246): MCP helpers moved to `codexMcpConfig.ts`.
 - **DONE** `configPanel.ts` (409→365), `webview/panels.ts` (414→~340),
@@ -145,7 +145,6 @@ remaining `check:size` violations are cleared.
   content-part building moved to small helpers.
 - **DONE** `openai/turnRunner.ts` (481→350): tool-list construction,
   tool execution, and usage emission moved to focused helpers.
-- **TODO** `voice.ts` (592, grew further — live WIP by the user during this
-  same session, holding off to avoid collision). This touches STT runtime and
-  should get a manual webview/voice smoke pass after splitting, not just green
-  CI.
+- **DONE** `webview/voice.ts` (592→397): preferences/path selection and sound
+  feedback moved to focused helpers; long inline commentary trimmed after the
+  plan captured the context.
