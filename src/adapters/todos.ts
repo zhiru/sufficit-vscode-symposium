@@ -26,6 +26,32 @@ function toItems(arr: unknown): TodoItem[] | undefined {
     return out.length ? out : undefined;
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
+    if (typeof value !== "string" || !value.trim()) { return undefined; }
+    try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function todoToolName(toolName: string, input: unknown): string {
+    const obj = typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
+    const inner = typeof obj.name === "string" ? obj.name : "";
+    return String(inner || toolName || "").toLowerCase();
+}
+
+function todoPayload(input: unknown): unknown {
+    if (typeof input !== "object" || input === null) { return input; }
+    const obj = input as Record<string, unknown>;
+    return parseJsonObject(obj.arguments)
+        ?? parseJsonObject(obj.input)
+        ?? (typeof obj.arguments === "object" && obj.arguments !== null ? obj.arguments : undefined)
+        ?? (typeof obj.input === "object" && obj.input !== null ? obj.input : undefined)
+        ?? input;
+}
+
 /**
  * Recognizes a native plan/todo tool call across the different CLIs and returns
  * a normalized list — Claude `TodoWrite` ({todos}), Codex `update_plan`/
@@ -33,13 +59,14 @@ function toItems(arr: unknown): TodoItem[] | undefined {
  * the tool isn't a plan/todo call.
  */
 export function parseNativeTodos(toolName: string, input: unknown): TodoItem[] | undefined {
-    const name = String(toolName || "").toLowerCase();
+    const name = todoToolName(toolName, input);
     const isTodoTool = name.includes("todo") || name.includes("plan");
-    const o = (input ?? {}) as Record<string, unknown>;
+    const payload = todoPayload(input);
+    const o = (payload ?? {}) as Record<string, unknown>;
     const fromKeys = toItems(o.todos) ?? toItems(o.plan) ?? toItems(o.steps) ?? toItems(o.items);
     if (fromKeys) { return fromKeys; }
     // A bare array input on a clearly-named todo tool.
-    if (isTodoTool) { return toItems(input); }
+    if (isTodoTool) { return toItems(payload); }
     return undefined;
 }
 

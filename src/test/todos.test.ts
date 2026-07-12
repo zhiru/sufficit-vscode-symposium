@@ -18,6 +18,26 @@ test("parseNativeTodos: Codex update_plan with steps + status spellings", () => 
     assert.deepEqual(out, [{ content: "x", status: "completed" }, { content: "y", status: "in_progress" }]);
 });
 
+test("parseNativeTodos: Codex function_call update_plan arguments JSON", () => {
+    const out = parseNativeTodos("function_call", {
+        type: "function_call",
+        name: "update_plan",
+        arguments: JSON.stringify({
+            plan: [
+                { step: "Conferir branch", status: "completed" },
+                { step: "Corrigir parser", status: "in_progress" },
+                { step: "Validar", status: "pending" },
+            ],
+        }),
+    });
+
+    assert.deepEqual(out, [
+        { content: "Conferir branch", status: "completed" },
+        { content: "Corrigir parser", status: "in_progress" },
+        { content: "Validar", status: "pending" },
+    ]);
+});
+
 test("parseNativeTodos: non-todo tool → undefined", () => {
     assert.equal(parseNativeTodos("Edit", { file_path: "/a" }), undefined);
 });
