@@ -11,7 +11,7 @@ import { renderChangedFiles, renderGuardrails, renderQueued, renderTasks, render
 import { renderAccount, renderSessions } from "./sessions";
 import { setLang, t } from "./i18n";
 import { applyStaticI18n } from "./staticI18n";
-import { openUsagePopover } from "./statusbar";
+import { openUsagePopover, setLastUsage, setLastTurn, setSessionCostUsd } from "./statusbar";
 import { setStatus, updateSendTitle } from "./status";
 import { hideCtx, openChoiceMenu, showToast } from "./menus";
 import { modelLabels, modelValue, modelList, modelDefault, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, buildModelMenuOpts } from "./models";
@@ -57,6 +57,12 @@ window.addEventListener("message", ({ data }) => {
             copySessionBtn.style.display = "none";
             agentBadge.style.display = "none";
             setActiveModel(""); setBusy(false); setQueued(0);
+            // A new/switched dialogue has no usage yet — without this, the
+            // context meter/popover keeps showing the PREVIOUS session's last
+            // usage snapshot and accumulated cost until this session's own
+            // first "usage" event arrives (looks like a fresh session already
+            // has a full context window).
+            setLastUsage(null); setLastTurn({}); setSessionCostUsd(0);
             resetWorkingState();
             resetToolRows();
             refreshEmpty();
