@@ -2,12 +2,10 @@ import { ChatMessage, OpenAIAdapterConfig } from "./types";
 import { SessionStartOptions } from "../types";
 import { HubClient } from "../../sync/hubClient";
 import {
-    AI_TOOLS, AI_TOOLS_RESPONSES, LOCAL_TOOLS, LOCAL_TOOLS_RESPONSES,
-    SUBAGENT_TOOLS, SUBAGENT_TOOLS_RESPONSES, getSubagentHost,
-    filterTools, runAiTool, ShellExecutionMode,
+    filterTools, ShellExecutionMode,
     classifyTool, classifyLmTool, needsApproval,
 } from "../aiTools";
-import { lmToolDefs, lmToolDefsResponses, isLmTool, invokeLmTool } from "../lmTools";
+import { isLmTool } from "../lmTools";
 import * as ledger from "../../ledger";
 import { toResponsesInput } from "./transform";
 import { diffCounts, editDiff } from "../parse";
@@ -18,8 +16,10 @@ import {
     RequestEstimate, windowMessages, isWindowTruncated, estimateRequest, requestEstimateDiagnostic,
 } from "./requestWindow";
 import { compressMessages, CompressionManager, CompressionPreset } from "../../compression";
-import { mergeToolDefinitions, stripSourcePrefix } from "./toolMerge";
+import { stripSourcePrefix } from "./toolMerge";
 import { findToolHistoryIssues, materializeToolSafeHistory } from "./toolHistory";
+import { buildTurnTools, executeTurnTool } from "./turnTools";
+import { emitTurnUsage } from "./turnUsage";
 
 /**
  * One conversation turn for an OpenAISession: the streaming tool-call loop that
@@ -80,22 +80,6 @@ export class TurnRunner {
         this.abort?.abort();
     }
 
-    /** Runs one tool call (bridged VS Code LM tool or one of Symposium's own). */
-    private async executeTool(isLm: boolean, name: string, args: Record<string, unknown>, toolId: string): Promise<string> {
-        if (isLm) { return invokeLmTool(name, args); }
-        const shellMode = this.d.shellExecutionMode();
-        const progressCbs = {
-            onData: (chunk: string) => this.d.emit({ kind: "tool-output", toolName: name, toolId, text: chunk }),
-            onTerminal: (terminalName: string) => this.d.emit({ kind: "tool-start", toolName: name, detail: `watching in terminal: ${terminalName}`, toolId, terminalName }),
-            onNotify: (message: string) => this.d.emit({ kind: "tool-output", toolName: name, toolId, text: `\n[notify] ${message}\n` }),
-        };
-        return runAiTool(name, args, {
-            hub: this.d.hub, cwd: this.d.options.cwd, permission: this.d.options.permission,
-            sessionId: this.d.sessionId, shellExecution: shellMode, progress: progressCbs,
-            parentBackend: this.d.backend, subagents: getSubagentHost(), abortSignal: this.abort?.signal,
-        });
-    }
-
     async run(): Promise<void> {
         const messages = this.d.getMessages();
         const progress = this.d.getProgress();
@@ -135,8 +119,6 @@ export class TurnRunner {
                 return messages;
             }
         };
-        // Fail early when the Sufficit gateway depends on login auth but no
-        // persisted token is available in this environment.
         const noExplicitAuth = !this.d.cfg.apiKey
             && !Object.keys(this.d.cfg.headers).some((k) => k.toLowerCase() === "authorization");
         if (noExplicitAuth && !loginToken) {
@@ -144,9 +126,6 @@ export class TurnRunner {
             emitTurnEnd();
             return;
         }
-        // Model guard: never POST with an empty model (the gateway 400s). Try a
-        // best-effort discovery from <baseUrl>/models first; if still empty,
-        // tell the user to pick/configure a model instead of failing obscurely.
         if (!this.d.model()) {
             await this.d.discoverModels(loginToken).catch(() => undefined);
         }
@@ -155,57 +134,23 @@ export class TurnRunner {
             emitTurnEnd();
             return;
         }
-        // Tools exposed to the model: local shell/filesystem tools (always — the
-        // parity with the CLI backends) plus memory/web tools when the hub is
-        // configured. The model calls them; we execute and feed results back.
-        const memoryTools = this.d.hub.configured()
-            ? (responses ? AI_TOOLS_RESPONSES : AI_TOOLS)
-            : [];
-        const localTools = responses ? LOCAL_TOOLS_RESPONSES : LOCAL_TOOLS;
-        // Subagent orchestration tools — only when the live runtime is available
-        // (a SubagentHost is set), so a headless/test session never offers them.
-        const subagentTools = getSubagentHost() ? (responses ? SUBAGENT_TOOLS_RESPONSES : SUBAGENT_TOOLS) : [];
-        // VS Code Language Model Tools (runInTerminal, runTask, runTests, …):
-        // computed fresh each turn so registry/setting changes take effect.
-        const vscodeTools = responses ? lmToolDefsResponses() : lmToolDefs();
+        const finalTools = buildTurnTools(this.d.hub.configured(), responses);
 
-        // Tool name collision handling: prefix source for tools with same name
-        // but different descriptions; deduplicate only if name+description match.
-        // Sources: sym_ (memory), local_ (local), agent_ (subagent), vscode_ (VS Code LM)
-        const allTools = [
-            ...memoryTools.map((t) => ({ tool: t, source: "sym_" })),
-            ...localTools.map((t) => ({ tool: t, source: "local_" })),
-            ...subagentTools.map((t) => ({ tool: t, source: "agent_" })),
-            ...vscodeTools.map((t) => ({ tool: t, source: "vscode_" })),
-        ];
-        const finalTools = mergeToolDefinitions(allTools);
-
-        // How many tool round-trips one turn may run before pausing. In
-        // autonomous mode (presence "away") there is NO limit; otherwise the
-        // configurable cap applies (default 50) so it pauses for "continue".
         const unlimited = this.d.options.autonomy === "away";
-        // Even in unlimited (autonomy) mode keep an absolute hard ceiling so a
-        // runaway tool loop can never wedge the turn forever (busy stuck).
         const HARD_CAP = 200;
         const softCap = unlimited ? HARD_CAP : Math.max(1, this.d.cfg.maxToolHops ?? 50);
         const maxHops = Math.min(softCap, HARD_CAP);
         let hitCap = !unlimited;   // cleared when the model finishes on its own
         let toolHistoryMaterializationNoticeEmitted = false;
-        // Loop guard: if the model repeats the exact same tool+args many times
-        // in a row without progress, break out instead of spinning forever.
         const recentCalls: string[] = [];
         const REPEAT_LIMIT = 6;
-        // Optional anti-loop: stop the turn after N consecutive tool-only rounds
-        // (no assistant reply). Off by default (0); user-set in Preferences.
         const noProgressStop = Math.max(0, this.d.cfg.noProgressStop ?? 0);
         let noTextHops = 0;
         try {
-            // Tool-call loop: keep round-tripping while the model requests tools.
             for (let hop = 0; hop < maxHops; hop++) {
                 this.abort = new AbortController();
                 const currentMessages = requestMessages();
                 const windowed = windowMessages(currentMessages, this.d.cfg.maxHistoryMessages ?? 40);
-                // Add a fresh objective/progress anchor when the live view is small.
                 const anchor = (isWindowTruncated(messages, this.d.cfg.maxHistoryMessages ?? 40) || hop >= 3) ? this.d.followupAnchor() : undefined;
                 const materialized = materializeToolSafeHistory(
                     anchor ? [...windowed, anchor] : windowed,
@@ -228,8 +173,6 @@ export class TurnRunner {
                 const body: Record<string, unknown> = responses
                     ? { model: this.d.model(), input: toResponsesInput(outMessages), stream: true }
                     : { model: this.d.model(), messages: outMessages, stream: true, stream_options: { include_usage: true } };
-                // Gate by the bound agent-def's allowlist (options.aiTools); when
-                // unset, expose all; when set to [], expose none (tools off).
                 const allow = this.d.options.aiTools;
                 const toolList = filterTools<{ function?: { name: string }; name?: string }>(
                     finalTools as { function?: { name: string }; name?: string }[], allow);
@@ -271,40 +214,10 @@ export class TurnRunner {
                     onError: (message) => this.d.emit({ kind: "error", message }), onStatusNotice: (notice) => this.d.emit({ kind: "status-notice", text: notice }),
                 });
 
-                // Context monitor: report token usage for this request. inputTokens
-                // is the prompt size = the live context the model just saw, so the
-                // meter tracks "context used / window" like the CLI backends.
-                if (usage && (usage.inputTokens || usage.outputTokens)) {
-                    this.d.setLastInputTokens(usage.inputTokens || this.d.getLastInputTokens());
-                    this.d.emit({
-                        kind: "usage",
-                        inputTokens: usage.inputTokens,
-                        outputTokens: usage.outputTokens,
-                        totalTokens: usage.totalTokens,
-                        reasoningTokens: usage.reasoningTokens,
-                        cacheRead: usage.cacheRead,
-                        contextWindow: this.d.contextWindow(),
-                        model: usage.model,
-                        modelLabel: usage.model ? this.d.label(usage.model) : undefined,
-                        providerKey: usage.providerKey,
-                        providerType: usage.providerType, requestedModel: usage.requestedModel,
-                        attempts: usage.attempts,
-                        fallbackAttempts: usage.fallbackAttempts, compression: usage.compression,
-                        durationMs: usage.durationMs,
-                        ttfbMs: usage.ttfbMs,
-                        firstDeltaMs: usage.firstDeltaMs,
-                    });
-                }
+                if (usage) { emitTurnUsage(this.d, usage); }
 
-                // Fold context BETWEEN hops (awaited): a long tool-calling turn
-                // (many hops) must never wait until turn-end to compact — by then
-                // the prompt may already be well past the window. Checking here
-                // means the very next hop's request sees the folded history.
                 await this.d.maybeAutoCompact();
 
-                // Stream paused/interrupted mid-turn: keep the partial assistant
-                // reply (and any partial tool calls) in history so context is not
-                // lost on the next message, then stop this turn.
                 if (aborted) {
                     if (toolCalls.length > 0) {
                         messages.push({ role: "assistant", content: text || null, tool_calls: toolCalls });
@@ -322,15 +235,8 @@ export class TurnRunner {
                 }
 
                 if (toolCalls.length === 0) {
-                    // Always record an assistant turn, even when the model returned
-                    // empty text (reasoning-only / empty content). Skipping it leaves
-                    // a dangling user/developer turn; Anthropic-backed gateways then
-                    // 400 on the next message because roles no longer alternate.
                     messages.push({ role: "assistant", content: text || "", model: this.d.model() });
                     if (text) { this.d.led("assistant", text); }
-                    // Never-silent guard: no visible reply AND no reasoning shown means
-                    // the turn would end dead-silent (empty completion / dropped
-                    // channel). Surface a notice so the user sees the turn happened.
                     if (!text.trim() && !reasoning.trim()) {
                         this.d.emit({ kind: "status-notice", text: "The model returned an empty response (no content). Try resending, a different model, or a lower reasoning effort." });
                     }
@@ -338,8 +244,6 @@ export class TurnRunner {
                     break;
                 }
 
-                // Optional no-progress stop (Preferences). Count consecutive
-                // tool-only rounds; nudge near the limit, stop at it.
                 if (noProgressStop > 0) {
                     if (text.trim()) { noTextHops = 0; } else { noTextHops++; }
                     if (noTextHops === Math.ceil(noProgressStop / 2)) {
@@ -353,15 +257,9 @@ export class TurnRunner {
                     }
                 }
 
-                // Record the assistant turn that requested tools, then run each.
                 messages.push({ role: "assistant", content: text || null, tool_calls: toolCalls });
                 if (text) { this.d.led("assistant", text); }
-                // Persist mid-turn: a window reload restarts the extension host
-                // and wipes the in-memory render log, so only what's on disk
-                // survives. Without this, reloading while tools run loses the
-                // whole in-progress turn back to the last user message.
                 this.d.safePersist();
-                // Loop guard: detect the model spinning on the same call(s).
                 const sig = toolCalls.map((tc) => `${tc.function.name}:${tc.function.arguments}`).join("|");
                 recentCalls.push(sig);
                 if (recentCalls.length > REPEAT_LIMIT) { recentCalls.shift(); }
@@ -373,10 +271,6 @@ export class TurnRunner {
                 for (const tc of toolCalls) {
                     let args: Record<string, unknown> = {};
                     try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* leave empty */ }
-                    // File-edit tools (write_file/edit_file): track like the Claude
-                    // CLI's Write/Edit — snapshot the pre-edit content (revert) and
-                    // emit added/removed + a diff so the change shows in the
-                    // changed-files panel. This is why these are preferred over sed.
                     const unprefixedName = stripSourcePrefix(tc.function.name);
                     const counts = diffCounts(unprefixedName, args);
                     const editPath = counts ? this.d.resolveToolPath(args.path) : undefined;
@@ -394,33 +288,24 @@ export class TurnRunner {
                         toolId: tc.id,
                         input: tc.function.arguments,
                     });
-                    // Inline permission gate (admin/manager/user modes): plan mode
-                    // hard-blocks write/destructive tools inside runAiTool itself
-                    // (no prompt needed), so it's excluded from needsApproval().
                     const isLm = isLmTool(unprefixedName);
                     const tier = isLm ? classifyLmTool(unprefixedName) : classifyTool(unprefixedName);
                     let result: string;
                     if (tier !== "read" && needsApproval(this.d.options.permission, tier)) {
                         const approved = await this.d.requestApproval(tc.id, unprefixedName, friendlyToolDetail(unprefixedName, args), tier);
                         result = approved
-                            ? await this.executeTool(isLm, unprefixedName, args, tc.id)
+                            ? await executeTurnTool({ name: unprefixedName, input: args, toolId: tc.id, hub: this.d.hub, options: this.d.options, sessionId: this.d.sessionId, backend: this.d.backend, shellMode: this.d.shellExecutionMode(), abortSignal: this.abort?.signal, emit: this.d.emit })
                             : JSON.stringify({ error: "User denied this action." });
                     } else {
-                        result = await this.executeTool(isLm, unprefixedName, args, tc.id);
+                        result = await executeTurnTool({ name: unprefixedName, input: args, toolId: tc.id, hub: this.d.hub, options: this.d.options, sessionId: this.d.sessionId, backend: this.d.backend, shellMode: this.d.shellExecutionMode(), abortSignal: this.abort?.signal, emit: this.d.emit });
                     }
                     this.d.emit({ kind: "tool-end", toolName: unprefixedName, toolId: tc.id, result });
                     messages.push({ role: "tool", tool_call_id: tc.id, name: unprefixedName, content: result });
-                    // Ledger (lossless): record the tool call + its result so the full
-                    // transcript and read_session survive context compaction.
                     this.d.led("tool", result, { name: unprefixedName, detail: friendlyToolDetail(unprefixedName, args) });
-                    // Feed the continuous-follow-up digest (one compact line per step).
                     const step = friendlyToolDetail(unprefixedName, args);
                     progress.push((unprefixedName + (step ? " — " + step : "")).slice(0, 110));
                     if (progress.length > 60) { progress.shift(); }
                     this.d.safePersist();   // each completed tool round is durable immediately
-                    // Natural end-of-work boundary: the agent just cleared the last
-                    // pending session task. Independent of the context-window
-                    // percentage autoCompactAt tracks — gated by its own setting.
                     if (unprefixedName === "task_complete" || unprefixedName === "TaskUpdate") {
                         let parsedResult: { allTasksComplete?: boolean } | null = null;
                         try { parsedResult = JSON.parse(result); } catch { /* not JSON, ignore */ }
@@ -429,17 +314,9 @@ export class TurnRunner {
                             const win = this.d.contextWindow();
                             const used = win > 0 ? this.d.getLastInputTokens() / win : 0;
                             if (at > 0 && used >= at) {
-                                // Already past the configured window threshold — same
-                                // urgency as the percentage-based auto-compact: fold now
-                                // before continuing, same as maybeAutoCompact() above.
                                 this.d.emit({ kind: "status-notice", text: `All tasks complete — context is at ${Math.round(used * 100)}% of the window, compacting now before continuing.` });
                                 await this.d.compactOnTasksComplete();
                             } else {
-                                // Comfortably under the threshold: not urgent, so don't
-                                // stall this turn on a summarization round-trip. Defer to
-                                // when the turn fully ends (see emitTurnEnd below) instead
-                                // of firing it here mid-loop, which would race the tool
-                                // loop still appending to the live messages array.
                                 this.d.emit({ kind: "status-notice", text: "All tasks complete — compacting context in the background once this turn ends." });
                                 this.pendingTasksCompact = true;
                             }
@@ -462,15 +339,8 @@ export class TurnRunner {
             }
         }
         this.d.safePersist();
-        // One immutable ledger commit per turn — the lossless snapshot the Chat
-        // mirror and read_session read from, and the safety net under /compact.
         void ledger.commitTurn(this.d.sessionId, `turn ${this.d.getTurnNo()} — user→assistant (model=${this.d.model()})`);
-        // Auto-compaction: if the context crossed the threshold this turn, fold it
-        // before the next send (lazy, so it never delays this turn-end).
         void this.d.maybeAutoCompact();
-        // Deferred task-complete compaction (see above): the turn is fully done
-        // now, so no more messages will be appended — safe to fold in the
-        // background without racing anything.
         if (this.pendingTasksCompact) {
             this.pendingTasksCompact = false;
             void this.d.compactOnTasksComplete();
