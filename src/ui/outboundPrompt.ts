@@ -131,7 +131,8 @@ export function planTrackingPreamble(mode: TrackingMode): string {
     }
     if (mode === "native") {
         return head + " " +
-            "Use your native plan/todo tool (e.g. TodoWrite, update_plan) to record the plan and re-emit the full list whenever a step changes state — Symposium renders it and keeps the next step in view.";
+            "Use your native plan/todo tool (e.g. TodoWrite, update_plan) to record the plan and re-emit the FULL list, with each step's status, the moment ANY step changes state — Symposium renders it and keeps the next step in view. " +
+            "Calling it once at the start and never again defeats the whole point: the panel is meant to show your CURRENT progress, not a snapshot of your original intent. If you marked a step in_progress, call it again with that step completed as soon as you finish it — do not batch several steps' worth of progress into one call at the end.";
     }
     return head + " " +
         "Keep the plan as a fenced ```todo code block and re-print the whole block whenever a step's state changes.";

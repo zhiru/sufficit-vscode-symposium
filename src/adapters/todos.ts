@@ -112,7 +112,9 @@ export function todosSummary(todos: TodoItem[]): string | undefined {
     const upNext = open.filter((t) => t !== current).map((t) => `- ${t.content}`).join("\n");
     return (
         "[PLAN — current step marked below, still open from your own tracked plan. " +
-        "Re-emit the full plan via your native plan/todo tool the moment a step's state changes.]\n" +
+        "The moment you finish CURRENT (or any other step's state changes), re-emit the FULL plan via your " +
+        "native plan/todo tool with that step marked completed — do not wait until everything is done to " +
+        "report progress in one batch; the panel only shows what you last emitted.]\n" +
         `→ CURRENT: ${current.content}` +
         (upNext ? `\nUp next:\n${upNext}` : "")
     );
