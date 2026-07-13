@@ -81,7 +81,10 @@ export function renderChips() {
         }
         chips.appendChild(chip);
     }
+    // Skip a manual attachment that's ALSO the active-file chip above (same
+    // path shown twice for one file — see send()'s matching guard).
     for (const file of attachments) {
+        if (file.path === activeFile && !activeFileDismissed) { continue; }
         chips.appendChild(makeChip(file.name, file.path, () => {
             setAttachments(attachments.filter((a) => a.path !== file.path));
             renderChips();
@@ -152,8 +155,11 @@ export function send(modeOverride) {
     resizeInput();
     const atts = attachments.map((a) => a.path);
     // A preview-tab file is only attached when the user pinned it (clicked the
-    // suggestion); a really-open file auto-attaches as before.
-    if (activeFile && !activeFileDismissed && (!activeFilePreview || activeFilePinned)) {
+    // suggestion); a really-open file auto-attaches as before. Skip the
+    // auto-attach when that same path is ALREADY in the manual attachments
+    // list (e.g. picked via the file picker while it's also the active
+    // editor tab) — otherwise it's sent (and shown) as two chips for one file.
+    if (activeFile && !activeFileDismissed && (!activeFilePreview || activeFilePinned) && !attachments.some((a) => a.path === activeFile)) {
         atts.unshift(activeFile + (activeFileRange ? " (selected lines " + activeFileRange.start + "-" + activeFileRange.end + ")" : ""));
     }
     const editFrom = editAnchor;
