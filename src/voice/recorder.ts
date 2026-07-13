@@ -92,16 +92,33 @@ export async function startCapture(ffmpegPath: string, onSilence?: () => void): 
         // segment" signal the caller wants, no separate timer needed here.
         if (onSilence && chunk.includes("silence_start")) { onSilence(); }
     });
+    // Startup-only verification: reject if ffmpeg dies within the first
+    // 700ms (no device/permission), resolve if it's still alive after that.
+    // The error/close listeners MUST be removed once settled — otherwise
+    // they stay attached to `p` and a later, perfectly successful stop
+    // (stopCapture() closes ffmpeg gracefully once the user is done talking)
+    // fires this SAME "close" listener too. For a short recording that ends
+    // before the 700ms mark, this verification promise would still be
+    // pending at that point, so the legitimate stop gets misreported as a
+    // startup failure ("audio capture failed (ffmpeg code 0)" — code 0 is
+    // success) even though the WAV was captured fine.
     await new Promise<void>((resolve, reject) => {
-        const ok = setTimeout(resolve, 700);   // still alive after 700ms → capturing
-        p.on("error", (e) => { clearTimeout(ok); if (proc === p) { proc = null; } reject(e); });
-        p.on("close", (code) => {
+        const cleanup = () => {
             clearTimeout(ok);
+            p.off("error", onError);
+            p.off("close", onClose);
+        };
+        const onError = (e: Error) => { cleanup(); if (proc === p) { proc = null; } reject(e); };
+        const onClose = (code: number | null) => {
+            cleanup();
             if (proc === p) {
                 proc = null;
                 reject(new Error(`audio capture failed (ffmpeg code ${code}). ${err.split("\n").filter(Boolean).slice(-2).join(" ").trim()}`));
             }
-        });
+        };
+        const ok = setTimeout(() => { cleanup(); resolve(); }, 700);
+        p.on("error", onError);
+        p.on("close", onClose);
     });
 }
 
