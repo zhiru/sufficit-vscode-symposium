@@ -153,6 +153,15 @@ if (SpeechRecognition) {
 }
 
 let hostRecording = false;
+let hostCaptureStartedAt = 0;
+// A continuous-mode auto-restart (maybeContinueDictation) begins listening
+// again SYNCHRONOUSLY, right after the previous segment's transcript lands —
+// often before the user's very next click (e.g. hitting Send once they see
+// the text) is even processed. Stopping a capture this fresh has no new
+// speech to lose, so treat it as a phantom: cancel it instead of paying for
+// a full stop+transcribe round trip (which also briefly clobbers the box
+// back to recordingTextBase) just to reconfirm text that was already correct.
+const PHANTOM_CAPTURE_MS = 500;
 
 function startHostCapture(isContinuation = false) {
     const prefs = getVoicePreferences();
@@ -160,6 +169,7 @@ function startHostCapture(isContinuation = false) {
     hostRecording = true;
     isRecording = true;
     activeVoicePath = 'host';
+    hostCaptureStartedAt = Date.now();
     micBtn.classList.add('recording');
     setStatus('Listening...');
     if (prefs.soundFeedback && !isContinuation) playStartSound();
@@ -169,7 +179,7 @@ function startHostCapture(isContinuation = false) {
 
 function stopHostCapture() {
     const prefs = getVoicePreferences();
-    if (prefs.soundFeedback && !dictationActive) playStopSound();
+    const phantom = Date.now() - hostCaptureStartedAt < PHANTOM_CAPTURE_MS;
     isRecording = false;
     hostRecording = false;
     activeVoicePath = null;
@@ -177,6 +187,16 @@ function stopHostCapture() {
     if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
     recordingInterimText = '';
     recordingDotsText = '';
+    if (phantom) {
+        // Nothing to transcribe — cancel (no stt-result/stt-error will come
+        // back) and let the caller (e.g. send()'s deferred pendingVoiceSend)
+        // proceed immediately with whatever's already in the box.
+        setStatus('Ready');
+        vscode.postMessage({ type: 'voice-cancel' });
+        dispatchVoiceEnded();
+        return;
+    }
+    if (prefs.soundFeedback && !dictationActive) playStopSound();
     setInputValue(recordingTextBase);   // drop the dots animation text
     setStatus('Transcribing...');
     vscode.postMessage({ type: 'voice-stop' });
@@ -323,8 +343,17 @@ window.addEventListener('message', (e) => {
             recordingInterimText = '';
             recordingDotsText = '';
             setInputValue(recordingTextBase);
-            showToast('Native mic capture failed (' + (e.data.error || 'unknown') + ') — falling back to webview mic', 'error');
-            void startLocalCapture();
+            // Desktop webviews can lose getUserMedia permission after a reload;
+            // never turn a native-capture failure into misleading "Permission denied".
+            setStatus('Ready');
+            showToast('Native microphone capture failed: ' + (e.data.error || 'unknown error'), 'error');
+            // A failed continuous-mode auto-restart must still end dictation
+            // and release a pending deferred send (see send()'s pendingVoiceSend
+            // path) — otherwise a Send click that raced this failure is
+            // silently dropped forever, leaving its (correct) text stuck in
+            // the box with nothing actually dispatched.
+            dictationActive = false;
+            dispatchVoiceEnded();
         }
     } else if (e.data.type === 'voice-silence') {
         onSilenceDetected();
