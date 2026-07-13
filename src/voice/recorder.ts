@@ -14,6 +14,11 @@ import * as path from "path";
 
 let proc: ChildProcess | null = null;
 let outPath = "";
+// ffmpeg takes a short moment to release the input device after `q`. Keeping
+// this promise lets a new recording wait for that release instead of spawning
+// a competing capture process (which commonly surfaces as a permission error
+// on the second use of the microphone).
+let stopping: Promise<void> | null = null;
 
 function ff(ffmpegPath: string): string {
     return ffmpegPath && ffmpegPath.trim() ? ffmpegPath.trim() : "ffmpeg";
@@ -59,7 +64,19 @@ export function isCapturing(): boolean { return !!proc; }
  * mic access that's actually known to work here.
  */
 export async function startCapture(ffmpegPath: string, onSilence?: () => void): Promise<void> {
-    if (proc) { throw new Error("already recording"); }
+    if (stopping) { await stopping; }
+    if (proc) {
+        // There is only ever one legitimate capture at a time, so a proc still
+        // set here is stale state — either a quick stop-then-start raced past
+        // stopCapture()'s `stopping` guard (the webview posts messages without
+        // waiting for the previous handler, and stopCapture's own `await
+        // import(...)` gives a start request a window to run first), or the
+        // webview reloaded/switched mid-recording without ever calling
+        // stopCapture/cancelCapture. Either way, self-heal instead of wedging
+        // every future recording until the extension host restarts.
+        cancelCapture();
+        if (stopping) { await stopping; }
+    }
     const bin = ff(ffmpegPath);
     const args = await inputArgs(bin);
     const filterArgs = onSilence ? ["-af", "silencedetect=noise=-30dB:d=0.9"] : [];
@@ -92,10 +109,21 @@ export async function startCapture(ffmpegPath: string, onSilence?: () => void): 
 export async function stopCapture(): Promise<string> {
     const p = proc;
     if (!p) { throw new Error("not recording"); }
-    proc = null;
+    let resolveStopped: (() => void) | undefined;
+    const stopped = new Promise<void>((resolve) => { resolveStopped = resolve; });
+    stopping = stopped;
+    const finish = () => {
+        if (proc === p) { proc = null; }
+        if (stopping === stopped) { stopping = null; }
+        resolveStopped?.();
+    };
     await new Promise<void>((resolve) => {
-        const done = setTimeout(resolve, 3000);          // hard cap
-        p.on("close", () => { clearTimeout(done); resolve(); });
+        const done = setTimeout(() => {
+            try { p.kill(); } catch { /* gone */ }
+            finish();
+            resolve();
+        }, 3000);          // hard cap
+        p.on("close", () => { clearTimeout(done); finish(); resolve(); });
         try { p.stdin?.write("q"); } catch { /* fall through to kill */ }
         setTimeout(() => { try { p.kill(); } catch { /* gone */ } }, 1500);
     });
@@ -108,7 +136,18 @@ export async function stopCapture(): Promise<string> {
 /** Aborts recording and discards the file. */
 export function cancelCapture(): void {
     const p = proc;
-    proc = null;
+    if (p) {
+        let resolveStopped: (() => void) | undefined;
+        const stopped = new Promise<void>((resolve) => { resolveStopped = resolve; });
+        stopping = stopped;
+        const finish = () => {
+            if (proc === p) { proc = null; }
+            if (stopping === stopped) { stopping = null; }
+            resolveStopped?.();
+        };
+        const done = setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(); }, 3000);
+        p.once("close", () => { clearTimeout(done); finish(); });
+    }
     if (p) {
         try { p.stdin?.write("q"); } catch { try { p.kill(); } catch { /* gone */ } }
     }
