@@ -282,6 +282,7 @@ export class SurfaceDialogues {
         void this.d.sync.refreshGuardrails();
 
         const sessionsSide = vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto");
+        const configuredReasoning = vscode.workspace.getConfiguration("symposium." + adapter.backend).get<string>("reasoning", "default");
         this.d.post({
             type: "meta",
             backend: adapter.backend,
@@ -295,7 +296,11 @@ export class SurfaceDialogues {
             resumed: !!options.resumeSessionId,
             models: adapter.models?.() ?? [],
             reasoningLevels: adapter.reasoningLevels?.() ?? [],
-            reasoningDefault: vscode.workspace.getConfiguration("symposium." + adapter.backend).get<string>("reasoning", "default"),
+            // "default" means no explicit CLI/API override. Name the underlying
+            // adapter default so the picker is informative (default (medium)).
+            reasoningDefault: configuredReasoning !== "default"
+                ? configuredReasoning
+                : (adapter.defaultReasoning?.() ?? "default"),
             modelDefault: vscode.workspace.getConfiguration("symposium." + adapter.backend).get<string>("model", ""),
             pinnedModels: this.d.deps.modelPrefs.getPinned(adapter.backend),
             // Last model used in this session (resume), so the picker restores it

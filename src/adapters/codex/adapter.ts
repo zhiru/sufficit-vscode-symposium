@@ -7,6 +7,7 @@ import { resolveExecutable } from "../exec";
 import { scrubJsonlLines, scrubSqliteRows } from "../scrub";
 import { findNamedDirs, loadSlashCommands, mergeCommands } from "../skills";
 import { PERMISSION_MODES } from "../aiTools";
+import { DEFAULT_REASONING_EFFORT } from "../reasoning";
 import {
     AgentAdapter,
     AgentSession,
@@ -195,6 +196,8 @@ export class CodexAdapter implements AgentAdapter {
     reasoningLevels(): string[] {
         return ["default", "minimal", "low", "medium", "high"];
     }
+
+    defaultReasoning(): string { return DEFAULT_REASONING_EFFORT.codex; }
 
     // Unified modes shared with every adapter's picker. admin/plan map 1:1 to
     // real native approval_policy+sandbox flags (session.ts's

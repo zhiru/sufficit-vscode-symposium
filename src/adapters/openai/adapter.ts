@@ -26,6 +26,7 @@ import { historyFromLedger, ledgerWasCompacted } from "./history";
 import { discoverModels as discoverModelsFromCatalog } from "./discovery";
 import { OpenAISession } from "./session";
 import { PERMISSION_MODES } from "../aiTools";
+import { DEFAULT_REASONING_EFFORT } from "../reasoning";
 
 export class OpenAIAdapter implements AgentAdapter {
     /**
@@ -232,6 +233,8 @@ export class OpenAIAdapter implements AgentAdapter {
     reasoningLevels(): string[] {
         return ["default", "minimal", "low", "medium", "high"];
     }
+
+    defaultReasoning(): string { return DEFAULT_REASONING_EFFORT.openai; }
 
     // Unified permission modes (same vocabulary/semantics across every
     // adapter): admin (no approval, default), manager (approval only for

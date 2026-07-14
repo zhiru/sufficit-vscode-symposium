@@ -8,6 +8,8 @@ import {
     SUFFICIT_MCP_SERVER,
     SUFFICIT_MCP_URL,
     SUFFICIT_MCP_TOKEN_ENV,
+    SUFFICIT_MCP_CONTEXT_ID,
+    SUFFICIT_MCP_SOURCE_ID,
     buildSufficitMcpSection,
     hasSufficitMcpSection,
     upsertSufficitMcpSection,
@@ -34,6 +36,9 @@ test("buildSufficitMcpSection returns TOML with enabled/disabled and URL/env", (
     assert.ok(enabled.some((l: string) => l.trim() === "enabled = true"));
     assert.ok(enabled.some((l: string) => l.includes(`url = ${JSON.stringify(SUFFICIT_MCP_URL)}`)));
     assert.ok(enabled.some((l: string) => l.includes(`bearer_token_env_var = ${JSON.stringify(SUFFICIT_MCP_TOKEN_ENV)}`)));
+    assert.ok(enabled.includes(`[mcp_servers.${SUFFICIT_MCP_SERVER}.http_headers]`));
+    assert.ok(enabled.some((l: string) => l.includes(SUFFICIT_MCP_CONTEXT_ID)));
+    assert.ok(enabled.some((l: string) => l.includes(SUFFICIT_MCP_SOURCE_ID)));
 
     const disabled = buildSufficitMcpSection(false).split("\n");
     assert.ok(disabled.some((l: string) => l.trim() === "enabled = false"));
@@ -64,6 +69,8 @@ root = true
 enabled = false
 url = "http://old"
 bearer_token_env_var = "OLD"
+[mcp_servers.sufficit_ai.http_headers]
+X-MEMORY-CONTEXT-ID = "old-context"
 
 [other]
 foo = bar
@@ -74,6 +81,8 @@ foo = bar
     assert.ok(result.includes(SUFFICIT_MCP_URL));
     assert.ok(!result.includes("http://old"));
     assert.ok(!result.includes("OLD"));
+    assert.ok(!result.includes("old-context"));
+    assert.equal(result.split("[mcp_servers.sufficit_ai.http_headers]").length - 1, 1);
     assert.ok(result.includes("enabled = true"));
     assert.ok(lines.some((l: string) => l.includes("[other]")));
     assert.ok(lines.some((l: string) => l.includes("foo = bar")));

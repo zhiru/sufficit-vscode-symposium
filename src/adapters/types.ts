@@ -254,6 +254,11 @@ export interface AgentSession extends EventEmitter {
      * ignore it — they get the instructions prepended to `text` instead).
      */
     send(text: string, images?: string[], preamble?: string[]): void;
+    /**
+     * Replaces the model for the next turn. The currently running CLI/API
+     * request is intentionally left unchanged.
+     */
+    setModel?(model: string): void;
     /** Interrupt the current turn if the backend supports it. */
     cancel(): void;
     dispose(): void;
@@ -322,6 +327,8 @@ export interface AgentAdapter {
     refreshModels?(force?: boolean): Promise<{ models: string[]; labels?: Record<string, string> }>;
     /** Reasoning/thinking effort levels for the picker; first entry = CLI default (no flag). */
     reasoningLevels?(): string[];
+    /** Effective effort used by the backend when no explicit picker override is sent. */
+    defaultReasoning?(): string;
     /** Permission/approval modes for the config menu (backend-specific). */
     permissionModes?(): string[];
     /** The currently configured default permission mode. */

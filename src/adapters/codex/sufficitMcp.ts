@@ -5,6 +5,8 @@ import * as path from "path";
 export const SUFFICIT_MCP_SERVER = "sufficit_ai";
 export const SUFFICIT_MCP_URL = "https://ai.sufficit.com.br/mcp";
 export const SUFFICIT_MCP_TOKEN_ENV = "SYMPOSIUM_SUFFICIT_MCP_TOKEN";
+export const SUFFICIT_MCP_CONTEXT_ID = "d21cfb04-9d37-473b-837c-67591a26feed";
+export const SUFFICIT_MCP_SOURCE_ID = "vscode-codex";
 
 type TokenProvider = (forceRefresh?: boolean) => Promise<string | null>;
 let tokenProvider: TokenProvider | undefined;
@@ -39,6 +41,9 @@ export function buildSufficitMcpSection(enabled: boolean): string {
         `enabled = ${enabled ? "true" : "false"}`,
         `url = ${JSON.stringify(SUFFICIT_MCP_URL)}`,
         `bearer_token_env_var = ${JSON.stringify(SUFFICIT_MCP_TOKEN_ENV)}`,
+        `[mcp_servers.${SUFFICIT_MCP_SERVER}.http_headers]`,
+        `X-MEMORY-CONTEXT-ID = ${JSON.stringify(SUFFICIT_MCP_CONTEXT_ID)}`,
+        `X-MEMORY-SOURCE-ID = ${JSON.stringify(SUFFICIT_MCP_SOURCE_ID)}`,
     ].join("\n");
 }
 
@@ -58,7 +63,8 @@ export function upsertSufficitMcpSection(content: string, enabled: boolean): str
     let end = lines.length;
     for (let i = start + 1; i < lines.length; i += 1) {
         const trimmed = lines[i].trim();
-        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")
+            && !trimmed.startsWith(`[mcp_servers.${SUFFICIT_MCP_SERVER}.`)) {
             end = i;
             break;
         }

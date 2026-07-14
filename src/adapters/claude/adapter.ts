@@ -7,6 +7,7 @@ import { resolveExecutable } from "../exec";
 import { removeMatchingFiles, scrubJsonlLines } from "../scrub";
 import { findNamedDirs, loadSlashCommands, mergeCommands } from "../skills";
 import { PERMISSION_MODES } from "../aiTools";
+import { DEFAULT_REASONING_EFFORT } from "../reasoning";
 import {
     AgentAdapter,
     AgentSession,
@@ -210,6 +211,8 @@ export class ClaudeAdapter implements AgentAdapter {
     reasoningLevels(): string[] {
         return ["default", "low", "medium", "high", "xhigh", "max"];
     }
+
+    defaultReasoning(): string { return DEFAULT_REASONING_EFFORT.claude; }
 
     // Unified modes shared with every adapter's picker. admin/plan map 1:1 to
     // real native --permission-mode flags (session.ts's mapUnifiedToClaudeFlag);

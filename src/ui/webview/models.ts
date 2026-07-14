@@ -15,9 +15,9 @@ const SVG_STAR = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.9
 export function modelLabel(id: any) { return (id && modelLabels[id]) || id; }
 const modelLbl = modelPicker.querySelector(".lbl") as HTMLElement;
 const reasoningLbl = reasoningPicker.querySelector(".lbl") as HTMLElement;
-// "default" means: don't override — the backend uses its own default. When a
-// default is configured in settings, show it in parens so it's not blind.
-export function defLabel(configured: any) { return configured && configured !== "default" ? "default (" + configured + ")" : "default"; }
+// "default" means: don't override — the backend uses its own default. Show
+// that effective value first, then mark it as the default like permission mode.
+export function defLabel(configured: any) { return configured && configured !== "default" ? configured + " (default)" : "default"; }
 export function setModelLabel() { modelLbl.textContent = modelValue && modelValue !== "default" ? modelLabel(modelValue) : defLabel(modelDefault); }
 export function setReasoningLabel() { reasoningLbl.textContent = reasoningValue && reasoningValue !== "default" ? "effort: " + reasoningValue : defLabel(reasoningDefault); }
 export function buildModelMenuOpts() {

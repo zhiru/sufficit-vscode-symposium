@@ -7,6 +7,7 @@ import { resolveExecutable } from "../exec";
 import { findNamedDirs, loadSlashCommands, mergeCommands } from "../skills";
 import { TODO_INJECTION } from "../todos";
 import { PERMISSION_MODES } from "../aiTools";
+import { DEFAULT_REASONING_EFFORT } from "../reasoning";
 import {
     AgentAdapter,
     AgentSession,
@@ -151,6 +152,8 @@ export class CopilotAdapter implements AgentAdapter {
     reasoningLevels(): string[] {
         return ["default", "low", "medium", "high", "xhigh"];
     }
+
+    defaultReasoning(): string { return DEFAULT_REASONING_EFFORT.copilot; }
 
     // Unified modes shown for picker consistency with every other adapter.
     // The GitHub Copilot CLI exposes no approval/sandbox flag Symposium can

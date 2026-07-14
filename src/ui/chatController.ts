@@ -117,8 +117,11 @@ export class ChatController {
     /** First user message, used as a title for a not-yet-persisted live session. */
     get title(): string { return this.firstTitle || "New session"; }
 
-    /** Define o modelo para a sessão atual. */
-    setModel(model: string): void { this.options.model = model; }
+    /** Define o modelo para a próxima mensagem da sessão atual. */
+    setModel(model: string): void {
+        this.options.model = model === "default" ? undefined : model;
+        this.session?.setModel?.(model);
+    }
     /** Retorna o modelo atual da sessão. */
     getModel(): string { return this.options.model || ""; }
 

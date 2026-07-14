@@ -6,6 +6,13 @@ import { contextWindowFor, parseCodexUsage } from "../parse";
 import { parseNativeTodos } from "../todos";
 import { AgentSession, SessionStartOptions } from "../types";
 import { CodexAdapterConfig, codexWorkspaceArgs, loadVscodeMcpServers, mapUnifiedToCodexFlags } from "./codexMcpConfig";
+import { syncCodexSufficitMcp } from "./sufficitMcp";
+
+/** Resolve a picker value into the explicit model argument for one Codex turn. */
+export function codexModelArgs(selected: string | undefined, configured: string): string[] {
+    const model = selected && selected !== "default" ? selected : configured;
+    return model && model !== "default" ? ["--model", model] : [];
+}
 
 /**
  * Drives the Codex CLI through `codex exec --json` (JSONL events), one
@@ -21,6 +28,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
     private cancelled = false;
     private reportedError = false;
     private warnedUnenforcedMode = false; // emitted the manager/user "not yet enforced" notice once
+    private turnSequence = 0;
     private vscodeMcpServers: Record<string, { command: string; args: string[] }>;
 
     constructor(
@@ -32,6 +40,12 @@ export class CodexSession extends EventEmitter implements AgentSession {
         this.sessionId = options.resumeSessionId;
     }
 
+    setModel(model: string): void {
+        // `default` means remove this conversation's override and let the
+        // configured Codex/default model take over on the next spawn.
+        this.options.model = model === "default" ? undefined : model;
+    }
+
     send(text: string): void {
         // A mid-turn send must not leave two `codex exec` processes writing
         // the same rollout. Cancel the in-flight child before starting another.
@@ -40,16 +54,31 @@ export class CodexSession extends EventEmitter implements AgentSession {
             this.current.kill("SIGINT");
             this.current = undefined;
         }
+        const sequence = ++this.turnSequence;
+        void this.spawnTurn(text, sequence).catch((error) => {
+            if (!this.disposed && sequence === this.turnSequence) {
+                this.emit("event", { kind: "error", message: `Codex MCP sync failed: ${error instanceof Error ? error.message : String(error)}` });
+                this.emit("event", { kind: "turn-end" });
+            }
+        });
+    }
+
+    private async spawnTurn(text: string, sequence: number): Promise<void> {
+        // Refresh and export the bearer token immediately before every spawn.
+        // Extension activation performs the same sync eagerly, but awaiting it
+        // here closes the race where a user starts Codex before activation or a
+        // login/token-refresh callback has finished.
+        await syncCodexSufficitMcp();
+        if (this.disposed || sequence !== this.turnSequence) {
+            return;
+        }
         const base = [
             "exec",
             "--json",
             "--skip-git-repo-check",
             ...codexWorkspaceArgs(this.options.cwd, this.config.workspaceDirs),
         ];
-        const model = this.options.model || this.config.model;
-        if (model) {
-            base.push("--model", model);
-        }
+        base.push(...codexModelArgs(this.options.model, this.config.model));
         const requestedMode = (this.options.permission || this.config.approvalPolicy || "admin").replace(/^default$/, "admin");
         const mapped = mapUnifiedToCodexFlags(requestedMode, this.config.sandboxMode);
         if (mapped.unenforced && !this.warnedUnenforcedMode) {

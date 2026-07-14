@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { parseCodexModelCatalog } from "../adapters/codex/models";
 import { buildHttpMcpWrapperScript, codexWorkspaceArgs, mcpHttpWrapperPath } from "../adapters/codex/codexMcpConfig";
+import { codexModelArgs } from "../adapters/codex/session";
 
 test("HTTP MCP wrapper reads URL and headers from mcp.json at runtime", () => {
     const script = buildHttpMcpWrapperScript("/tmp/mcp.json", "sufficit'quoted");
@@ -47,4 +48,10 @@ test("Codex model catalog uses CLI metadata without model-name hardcoding", () =
         "alpha-agent": "Alpha Agent",
         "zeta-agent": "Zeta Agent",
     });
+});
+
+test("Codex applies a model picker change to the next exec turn", () => {
+    assert.deepEqual(codexModelArgs("gpt-5.6", "gpt-5.5-codex"), ["--model", "gpt-5.6"]);
+    assert.deepEqual(codexModelArgs("default", "gpt-5.5-codex"), ["--model", "gpt-5.5-codex"]);
+    assert.deepEqual(codexModelArgs(undefined, ""), []);
 });

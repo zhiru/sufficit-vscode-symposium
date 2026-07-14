@@ -50,8 +50,8 @@ export async function prepareDispatch(ctx: DispatchPrepContext, msg: PendingMess
         } catch { /* best-effort; resume still proceeds without it */ }
     }
     // Apply per-message model/reasoning to the live options before (re)starting.
-    // Stateless backends (OpenAI HTTP) read options.model per request, so the
-    // user can switch model between messages; a running CLI keeps its spawn-time model.
+    // API backends read this per request; CLI changes take effect on the next
+    // spawned turn and never alter a process that is already running.
     if (msg.model && msg.model !== "default" && msg.model !== "auto") {
         ctx.options.model = msg.model;
     }
