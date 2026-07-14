@@ -19,6 +19,13 @@ let outPath = "";
 // a competing capture process (which commonly surfaces as a permission error
 // on the second use of the microphone).
 let stopping: Promise<void> | null = null;
+// ffmpeg's own process exit does NOT mean PulseAudio has finished tearing down
+// that client's connection to the "default" source server-side — there's a
+// real gap between "our child process is gone" and "the audio server actually
+// freed the device". Without this buffer, a start immediately following a
+// stop intermittently hit a pulse open failure (desktop only — code-server
+// sessions use the browser's Web Speech API instead, never this ffmpeg path).
+const DEVICE_RELEASE_GRACE_MS = 250;
 
 function ff(ffmpegPath: string): string {
     return ffmpegPath && ffmpegPath.trim() ? ffmpegPath.trim() : "ffmpeg";
@@ -130,9 +137,13 @@ export async function stopCapture(): Promise<string> {
     const stopped = new Promise<void>((resolve) => { resolveStopped = resolve; });
     stopping = stopped;
     const finish = () => {
-        if (proc === p) { proc = null; }
-        if (stopping === stopped) { stopping = null; }
-        resolveStopped?.();
+        // Grace period: see DEVICE_RELEASE_GRACE_MS above the process ends,
+        // the audio server needs a moment to actually free the device.
+        setTimeout(() => {
+            if (proc === p) { proc = null; }
+            if (stopping === stopped) { stopping = null; }
+            resolveStopped?.();
+        }, DEVICE_RELEASE_GRACE_MS);
     };
     await new Promise<void>((resolve) => {
         const done = setTimeout(() => {
@@ -158,9 +169,12 @@ export function cancelCapture(): void {
         const stopped = new Promise<void>((resolve) => { resolveStopped = resolve; });
         stopping = stopped;
         const finish = () => {
-            if (proc === p) { proc = null; }
-            if (stopping === stopped) { stopping = null; }
-            resolveStopped?.();
+            // Grace period: see DEVICE_RELEASE_GRACE_MS.
+            setTimeout(() => {
+                if (proc === p) { proc = null; }
+                if (stopping === stopped) { stopping = null; }
+                resolveStopped?.();
+            }, DEVICE_RELEASE_GRACE_MS);
         };
         const done = setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(); }, 3000);
         p.once("close", () => { clearTimeout(done); finish(); });
