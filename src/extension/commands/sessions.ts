@@ -80,20 +80,35 @@ export function registerSessionCommands(ctx: CommandContext): void {
             refreshAll();
         }),
 
-        vscode.commands.registerCommand("symposium.deleteSession", async (item: { info?: SessionInfo } | SessionInfo, opts?: { skipConfirm?: boolean }) => {
+        // `silent` (used by the multi-session cascade delete in
+        // surfaceMessageSessions.ts): suppresses the per-session refreshAll()/
+        // toast — a 4+ session cascade otherwise fires ~3 renderer refreshes
+        // and a native OS notification PER session, back-to-back with no
+        // yield between them. That burst of extension-host <-> renderer IPC
+        // has been observed to crash the extension host outright (SIGILL deep
+        // inside VS Code's own Electron/V8 binary, not Symposium's JS) when
+        // deleting a parent session with several subagent children. The
+        // caller does ONE refresh + ONE summary toast after the whole batch
+        // instead. Returns { ok, residual? } so the caller can aggregate.
+        vscode.commands.registerCommand("symposium.deleteSession", async (
+            item: { info?: SessionInfo } | SessionInfo,
+            opts?: { skipConfirm?: boolean; silent?: boolean },
+        ): Promise<{ ok: boolean; title: string; residual?: string[] } | undefined> => {
             const info = infoOf(item);
+            const silent = !!opts?.silent;
             const adapter = adapterByBackend.get(info.backend);
             if (!adapter?.deleteSession) {
+                if (silent) { return { ok: false, title: info.title }; }
                 const details = JSON.stringify({ action: "deleteSession", backend: info.backend, sessionId: info.sessionId, title: info.title }, null, 2);
                 const pick = await vscode.window.showWarningMessage(`Deleting ${info.backend} sessions is not supported.`, "Copy details");
                 if (pick === "Copy details") { await vscode.env.clipboard.writeText(details); }
-                return;
+                return { ok: false, title: info.title };
             }
             // Flag it as deleting BEFORE the confirm modal so the list shows the
             // marker immediately — the modal itself can lag, and the user needs
             // instant feedback that the click registered. Reverted if cancelled.
             deleting.add(info.sessionId);
-            refreshAll();
+            if (!silent) { refreshAll(); }
             if (!opts?.skipConfirm) {
                 const confirm = await vscode.window.showWarningMessage(
                     `Permanently delete "${info.title}"?\n\nThis scrubs the transcript and all history/index entries for this session (${info.sessionId}) from the ${info.backend} CLI on disk. It cannot be undone.`,
@@ -102,15 +117,15 @@ export function registerSessionCommands(ctx: CommandContext): void {
                 );
                 if (confirm !== "Delete permanently") {
                     deleting.delete(info.sessionId);
-                    refreshAll();
-                    return;
+                    if (!silent) { refreshAll(); }
+                    return { ok: false, title: info.title };
                 }
             }
             runtime.disposeBySessionId(info.sessionId); // stop it if running
             // Close the conversation pane now if it's showing this session.
             chatView.sessionDeleted(info.sessionId);
             ChatPanel.sessionDeleted(info.sessionId);
-            refreshAll();
+            if (!silent) { refreshAll(); }
             try {
                 snapshots.clearSession(info.sessionId);      // drop in-memory baselines
                 const residual = await adapter.deleteSession(info);
@@ -120,23 +135,30 @@ export function registerSessionCommands(ctx: CommandContext): void {
                 let expired = 0;
                 try { expired = await expireSessionTasks(new HubClient(), info.sessionId); } catch { /* best-effort */ }
                 if (expired) { symposiumLog(`[delete] expired ${expired} memory task(s) for ${info.sessionId}`); }
-                if (Array.isArray(residual) && residual.length) {
-                    void vscode.window.showWarningMessage(
-                        `Session deleted. Residual data may remain in: ${residual.join(", ")} — clear it manually if required.`);
-                } else {
-                    void vscode.window.showInformationMessage(`Session "${info.title}" permanently deleted.`);
+                const residualList = Array.isArray(residual) && residual.length ? residual : undefined;
+                if (!silent) {
+                    if (residualList) {
+                        void vscode.window.showWarningMessage(
+                            `Session deleted. Residual data may remain in: ${residualList.join(", ")} — clear it manually if required.`);
+                    } else {
+                        void vscode.window.showInformationMessage(`Session "${info.title}" permanently deleted.`);
+                    }
                 }
+                return { ok: true, title: info.title, residual: residualList };
             } catch (error) {
-                void showErrorWithCopy(
-                    `Delete failed: ${error instanceof Error ? error.message : error}`,
-                    JSON.stringify({ action: "deleteSession", backend: info.backend, sessionId: info.sessionId, title: info.title, error: errorDetails(error) }, null, 2),
-                );
+                if (!silent) {
+                    void showErrorWithCopy(
+                        `Delete failed: ${error instanceof Error ? error.message : error}`,
+                        JSON.stringify({ action: "deleteSession", backend: info.backend, sessionId: info.sessionId, title: info.title, error: errorDetails(error) }, null, 2),
+                    );
+                }
+                return { ok: false, title: info.title };
             } finally {
                 // Whether scrub succeeded or failed, stop flagging it; a failed
                 // delete reappears (now off disk-or-not per adapter) so the user
                 // can retry, a successful one is already gone from disk.
                 deleting.delete(info.sessionId);
-                refreshAll();
+                if (!silent) { refreshAll(); }
             }
         }),
     );

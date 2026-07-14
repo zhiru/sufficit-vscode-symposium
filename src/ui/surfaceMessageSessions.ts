@@ -72,8 +72,32 @@ export async function handleSessionMessage(message: WebviewToHost, d: SurfaceMes
                     if (confirm !== "Delete all") {
                         return true;
                     }
+                    // silent: true — one refresh + one summary toast for the
+                    // whole batch instead of per-session (see deleteSession's
+                    // comment: that per-session IPC/notification burst has
+                    // been observed to crash the extension host outright on a
+                    // parent + several subagent children cascade). The
+                    // between-deletes yield gives the event loop a moment to
+                    // drain before the next heavy dispose+delete.
+                    const results: { ok: boolean; title: string; residual?: string[] }[] = [];
                     for (const target of targets) {
-                        await vscode.commands.executeCommand("symposium.deleteSession", target, { skipConfirm: true });
+                        const r = await vscode.commands.executeCommand<{ ok: boolean; title: string; residual?: string[] }>(
+                            "symposium.deleteSession", target, { skipConfirm: true, silent: true },
+                        );
+                        if (r) { results.push(r); }
+                        await new Promise((resolve) => setTimeout(resolve, 0));
+                    }
+                    await vscode.commands.executeCommand("symposium.refreshSessions");
+                    const failed = results.filter((r) => !r.ok);
+                    const withResidual = results.filter((r) => r.residual?.length);
+                    if (failed.length) {
+                        void vscode.window.showWarningMessage(
+                            `Deleted ${results.length - failed.length}/${targets.length} sessions; ${failed.length} failed: ${failed.map((r) => r.title).join(", ")}.`);
+                    } else if (withResidual.length) {
+                        void vscode.window.showWarningMessage(
+                            `Deleted all ${targets.length} sessions. Residual data may remain for: ${withResidual.map((r) => r.title).join(", ")} — clear manually if required.`);
+                    } else {
+                        void vscode.window.showInformationMessage(`Deleted all ${targets.length} sessions permanently.`);
                     }
                     return true;
                 }
