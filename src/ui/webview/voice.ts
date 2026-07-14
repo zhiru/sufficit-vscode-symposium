@@ -153,15 +153,19 @@ if (SpeechRecognition) {
 }
 
 let hostRecording = false;
-let hostCaptureStartedAt = 0;
 // A continuous-mode auto-restart (maybeContinueDictation) begins listening
 // again SYNCHRONOUSLY, right after the previous segment's transcript lands —
 // often before the user's very next click (e.g. hitting Send once they see
-// the text) is even processed. Stopping a capture this fresh has no new
-// speech to lose, so treat it as a phantom: cancel it instead of paying for
-// a full stop+transcribe round trip (which also briefly clobbers the box
+// the text) is even processed. Stopping a capture that (a) was such an
+// auto-restart, not a manual mic click, AND (b) hasn't picked up real speech
+// yet (voice-speech, from ffmpeg's own silencedetect — see recorder.ts) has
+// nothing to transcribe: treat it as a phantom and cancel instead of paying
+// for a full stop+transcribe round trip (which also briefly clobbers the box
 // back to recordingTextBase) just to reconfirm text that was already correct.
-const PHANTOM_CAPTURE_MS = 500;
+// NOT a fixed timeout: the user reading back the transcript before clicking
+// Send routinely takes longer than any short timeout would allow.
+let currentCaptureIsContinuation = false;
+let hadSpeechThisSegment = false;
 
 function startHostCapture(isContinuation = false) {
     const prefs = getVoicePreferences();
@@ -169,7 +173,8 @@ function startHostCapture(isContinuation = false) {
     hostRecording = true;
     isRecording = true;
     activeVoicePath = 'host';
-    hostCaptureStartedAt = Date.now();
+    currentCaptureIsContinuation = isContinuation;
+    hadSpeechThisSegment = false;
     micBtn.classList.add('recording');
     setStatus('Listening...');
     if (prefs.soundFeedback && !isContinuation) playStartSound();
@@ -179,7 +184,7 @@ function startHostCapture(isContinuation = false) {
 
 function stopHostCapture() {
     const prefs = getVoicePreferences();
-    const phantom = Date.now() - hostCaptureStartedAt < PHANTOM_CAPTURE_MS;
+    const phantom = currentCaptureIsContinuation && !hadSpeechThisSegment;
     isRecording = false;
     hostRecording = false;
     activeVoicePath = null;
@@ -357,6 +362,8 @@ window.addEventListener('message', (e) => {
         }
     } else if (e.data.type === 'voice-silence') {
         onSilenceDetected();
+    } else if (e.data.type === 'voice-speech') {
+        hadSpeechThisSegment = true;
     }
 });
 

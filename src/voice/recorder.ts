@@ -69,8 +69,15 @@ export function isCapturing(): boolean { return !!proc; }
  * is unreliable in VS Code desktop for the exact same permission reason host
  * capture exists at all, so silence detection needs to ride along on the one
  * mic access that's actually known to work here.
+ *
+ * `onSpeech`, when given, fires on the SAME filter's `silence_end` marker —
+ * i.e. real audio activity happened, as opposed to a still-silent capture.
+ * Lets the caller distinguish "this continuous-mode auto-restart genuinely
+ * captured new speech" from "nothing was said yet", which a fixed timeout
+ * can't do reliably (the user reading back the transcript before clicking
+ * Send routinely takes longer than any short timeout).
  */
-export async function startCapture(ffmpegPath: string, onSilence?: () => void): Promise<void> {
+export async function startCapture(ffmpegPath: string, onSilence?: () => void, onSpeech?: () => void): Promise<void> {
     if (stopping) { await stopping; }
     if (proc) {
         // There is only ever one legitimate capture at a time, so a proc still
@@ -86,7 +93,7 @@ export async function startCapture(ffmpegPath: string, onSilence?: () => void): 
     }
     const bin = ff(ffmpegPath);
     const args = await inputArgs(bin);
-    const filterArgs = onSilence ? ["-af", "silencedetect=noise=-30dB:d=0.9"] : [];
+    const filterArgs = (onSilence || onSpeech) ? ["-af", "silencedetect=noise=-30dB:d=0.9"] : [];
     outPath = path.join(os.tmpdir(), `symposium-rec-${Date.now()}.wav`);
     const p = spawn(bin, ["-hide_banner", "-y", ...args, ...filterArgs, "-ac", "1", "-ar", "16000", outPath], { stdio: ["pipe", "ignore", "pipe"] });
     proc = p;
@@ -98,6 +105,9 @@ export async function startCapture(ffmpegPath: string, onSilence?: () => void): 
         // confirmed (the `d` param above) — exactly the "pause, cut the
         // segment" signal the caller wants, no separate timer needed here.
         if (onSilence && chunk.includes("silence_start")) { onSilence(); }
+        // "silence_end: <t> | silence_duration: <d>" logs when audio resumes
+        // after a silent stretch — i.e. actual speech, not just an open mic.
+        if (onSpeech && chunk.includes("silence_end")) { onSpeech(); }
     });
     // Startup-only verification: reject if ffmpeg dies within the first
     // 700ms (no device/permission), resolve if it's still alive after that.

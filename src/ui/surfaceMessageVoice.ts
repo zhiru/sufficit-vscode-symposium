@@ -21,6 +21,7 @@ export async function handleVoiceMessage(message: WebviewToHost, d: SurfaceMessa
                 await startCapture(
                     readSettings().ffmpegPath,
                     message.vad ? () => d.post({ type: "voice-silence" }) : undefined,
+                    message.vad ? () => d.post({ type: "voice-speech" }) : undefined,
                 );
                 d.post({ type: "voice-recording", ok: true });
             } catch (e) {
