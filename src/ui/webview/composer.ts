@@ -12,7 +12,7 @@ import { resizeInput } from "./inputSizing";
 import { optimisticUserMessage } from "./messages";
 // Voice input (Web Speech + host/local capture) is extracted to ./voice; its
 // listeners run on import, so importing it here preserves registration order.
-import { isVoiceRecording, stopVoiceRecording } from "./voice";
+import { isVoiceRecording, isVoiceTranscribing, endDictationMode, stopVoiceRecording } from "./voice";
 
 export function activeFileSuffix() { return activeFileRange ? ":" + activeFileRange.start + "-" + activeFileRange.end : ""; }
 sendMode.addEventListener("change", () => saveState({ sendMode: sendMode.value }));
@@ -144,6 +144,20 @@ export function send(modeOverride) {
         pendingVoiceSend = true;
         pendingVoiceSendMode = modeOverride;
         stopVoiceRecording();
+        return;
+    }
+    if (isVoiceTranscribing()) {
+        // A segment just auto-stopped (e.g. VAD silence) and its transcript
+        // hasn't landed yet — isVoiceRecording() is already false here, so
+        // sending now would use stale/incomplete text; the pending result
+        // would then land AFTER send and, in continuous mode, restart the
+        // mic right into the box send() just cleared. End dictation mode so
+        // that restart can't happen, and defer: the stt-result/stt-error
+        // handler's dispatchVoiceEnded() fires the actual send once the
+        // final text is in.
+        endDictationMode();
+        pendingVoiceSend = true;
+        pendingVoiceSendMode = modeOverride;
         return;
     }
     const text = input.value.trim();

@@ -17,6 +17,13 @@ let activeVoicePath: 'webspeech' | 'host' | 'local' | null = null;
 
 let dictationActive = false;
 let dictationUseHost = false;
+// True from the moment a segment's capture stops (host or local) until its
+// stt-result/stt-error lands. isRecording alone goes false the instant the
+// mic stops — well before the transcript is ready — so a send() that only
+// checks isRecording() during this window sees "not recording" and sends
+// stale/incomplete text, then the pending transcript arrives afterward and
+// (in continuous mode) restarts the mic right into the just-cleared box.
+let transcriptionInFlight = false;
 let vadStream: any = null;
 let vadAudioCtx: any = null;
 let vadAnalyser: any = null;
@@ -204,6 +211,7 @@ function stopHostCapture() {
     if (prefs.soundFeedback && !dictationActive) playStopSound();
     setInputValue(recordingTextBase);   // drop the dots animation text
     setStatus('Transcribing...');
+    transcriptionInFlight = true;
     vscode.postMessage({ type: 'voice-stop' });
 }
 
@@ -227,7 +235,7 @@ async function startLocalCapture(isContinuation = false) {
     mediaRecorder.onstop = async () => {
         const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
         stopMediaStream();
-        if (!blob.size) { setStatus('Ready'); return; }
+        if (!blob.size) { transcriptionInFlight = false; setStatus('Ready'); return; }
         setStatus('Transcribing...');
         const buf = await blob.arrayBuffer();
         let binary = '';
@@ -253,7 +261,8 @@ function stopLocalCapture() {
     activeVoicePath = null;
     if (!dictationActive) { micBtn.classList.remove('recording'); }
     if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
-    try { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); } catch { /* ignore */ }
+    transcriptionInFlight = true;
+    try { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); } catch { transcriptionInFlight = false; }
 }
 
 function stopMediaStream() {
@@ -321,6 +330,7 @@ function maybeContinueDictation(): void {
 window.addEventListener('message', (e) => {
     if (!e.data) { return; }
     if (e.data.type === 'stt-result') {
+        transcriptionInFlight = false;
         const text = (e.data.text || '').trim();
         if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
         recordingInterimText = '';
@@ -330,6 +340,7 @@ window.addEventListener('message', (e) => {
         setStatus('Ready');
         maybeContinueDictation();
     } else if (e.data.type === 'stt-error') {
+        transcriptionInFlight = false;
         if (recordingDotsInterval) { clearInterval(recordingDotsInterval); recordingDotsInterval = null; }
         recordingInterimText = '';
         recordingDotsText = '';
@@ -417,6 +428,18 @@ function dispatchVoiceEnded(): void {
 }
 
 export function isVoiceRecording(): boolean { return isRecording; }
+
+/** True between a segment's capture stopping and its stt-result/stt-error landing. */
+export function isVoiceTranscribing(): boolean { return transcriptionInFlight; }
+
+/**
+ * Turns off continuous-dictation mode without touching an in-flight
+ * transcription — used when the caller wants to make sure NO further
+ * auto-restart happens once the current segment's result lands (e.g.
+ * composer.ts's send(), clicked while a just-auto-stopped segment is still
+ * transcribing).
+ */
+export function endDictationMode(): void { dictationActive = false; }
 
 export function stopVoiceRecording(): void {
     dictationActive = false;
