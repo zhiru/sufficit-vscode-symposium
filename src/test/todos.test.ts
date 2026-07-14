@@ -38,6 +38,53 @@ test("parseNativeTodos: Codex function_call update_plan arguments JSON", () => {
     ]);
 });
 
+test("parseNativeTodos: Codex custom_tool_call exec-sandboxed update_plan (real payload)", () => {
+    // Captured verbatim from a real Codex CLI 0.144.1 rollout: the whole turn
+    // is a JS "program" as source text (`input`), not a structured
+    // function_call/arguments envelope — update_plan is one of several
+    // `tools.*` calls inside it.
+    const input = "const p = await tools.update_plan({plan:[\n" +
+        "  {step:\"Consultar memórias Sufficit, instruções locais e estado Git do projeto\",status:\"in_progress\"},\n" +
+        "  {step:\"Mapear arquitetura do backend, API, autenticação, dados e dependências\",status:\"pending\"},\n" +
+        "  {step:\"Auditar segurança com evidências e validar riscos relevantes\",status:\"pending\"}\n" +
+        "]});\n" +
+        "const r = await tools.list_mcp_resources({});\n" +
+        "const t = await tools.list_mcp_resource_templates({});\n" +
+        "text(JSON.stringify({plan:p,resources:r,templates:t}));\n";
+    const out = parseNativeTodos("custom_tool_call", {
+        type: "custom_tool_call",
+        id: "ctc_017abb2bd2dfe81b016a52ec102cf48191ba4c6752f5ee6c24",
+        status: "completed",
+        call_id: "call_ZMcpR9F6WzLPW7gPXqd00K5e",
+        name: "exec",
+        input,
+    });
+    assert.deepEqual(out, [
+        { content: "Consultar memórias Sufficit, instruções locais e estado Git do projeto", status: "in_progress" },
+        { content: "Mapear arquitetura do backend, API, autenticação, dados e dependências", status: "pending" },
+        { content: "Auditar segurança com evidências e validar riscos relevantes", status: "pending" },
+    ]);
+});
+
+test("parseNativeTodos: Codex exec update_plan, later call marks earlier steps completed", () => {
+    const input = "const p = await tools.update_plan({plan:[" +
+        "{step:\"a\",status:\"completed\"}," +
+        "{step:\"b\",status:\"in_progress\"}," +
+        "{step:\"c\",status:\"pending\"}" +
+        "]});\n";
+    const out = parseNativeTodos("custom_tool_call", { type: "custom_tool_call", name: "exec", input });
+    assert.deepEqual(out, [
+        { content: "a", status: "completed" },
+        { content: "b", status: "in_progress" },
+        { content: "c", status: "pending" },
+    ]);
+});
+
+test("parseNativeTodos: exec call with no update_plan → undefined", () => {
+    const input = "const r = await tools.exec_command({cmd:\"ls\",workdir:\"/tmp\"});\n";
+    assert.equal(parseNativeTodos("custom_tool_call", { type: "custom_tool_call", name: "exec", input }), undefined);
+});
+
 test("parseNativeTodos: non-todo tool → undefined", () => {
     assert.equal(parseNativeTodos("Edit", { file_path: "/a" }), undefined);
 });

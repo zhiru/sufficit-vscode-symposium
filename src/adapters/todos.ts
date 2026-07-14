@@ -36,6 +36,107 @@ function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
     }
 }
 
+/**
+ * From `text[openIdx]` (an opening `(`/`[`/`{`), returns the text strictly
+ * between it and its matching close, skipping quoted-string contents (with
+ * `\"` escapes) so a bracket char inside a step/status string can't throw the
+ * balance count off. Returns undefined if unbalanced.
+ */
+function extractBalanced(text: string, openIdx: number): string | undefined {
+    const open = text[openIdx];
+    const close = open === "(" ? ")" : open === "[" ? "]" : open === "{" ? "}" : undefined;
+    if (!close) { return undefined; }
+    let depth = 0;
+    let inString: string | null = null;
+    for (let i = openIdx; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (ch === "\\") { i++; continue; }
+            if (ch === inString) { inString = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'" || ch === "`") { inString = ch; continue; }
+        if (ch === open) { depth++; }
+        else if (ch === close) {
+            depth--;
+            if (depth === 0) { return text.slice(openIdx + 1, i); }
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Splits the top-level `{...}` object chunks within `text` (e.g. an array
+ * literal's body), quote-aware like extractBalanced, so each array element
+ * comes back as its own self-contained chunk instead of one giant blob.
+ */
+function splitTopLevelObjects(text: string): string[] {
+    const out: string[] = [];
+    let depth = 0;
+    let start = -1;
+    let inString: string | null = null;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (ch === "\\") { i++; continue; }
+            if (ch === inString) { inString = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'" || ch === "`") { inString = ch; continue; }
+        if (ch === "{" || ch === "[" || ch === "(") {
+            if (ch === "{" && depth === 0) { start = i; }
+            depth++;
+        } else if (ch === "}" || ch === "]" || ch === ")") {
+            depth--;
+            if (ch === "}" && depth === 0 && start >= 0) {
+                out.push(text.slice(start, i + 1));
+                start = -1;
+            }
+        }
+    }
+    return out;
+}
+
+/** First `key: "value"` match among the given unquoted-JS-identifier key names. */
+function matchQuotedField(objText: string, keys: string[]): string | undefined {
+    for (const key of keys) {
+        const m = objText.match(new RegExp(`\\b${key}\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+        if (m) { return m[1].replace(/\\(.)/g, "$1"); }
+    }
+    return undefined;
+}
+
+/**
+ * Codex's `custom_tool_call` (name "exec") sandboxes a whole small JS program
+ * as source TEXT in `input`, e.g.
+ *   const p = await tools.update_plan({plan:[{step:"...",status:"pending"}]});
+ *   const r = await tools.exec_command({...});
+ * — not a structured function_call/arguments JSON envelope, so JSON.parse on
+ * it (todoPayload's normal path) always fails and the call goes unrecognized.
+ * Find the update_plan(...) call, pull its argument text out (balanced, never
+ * eval'd), locate the steps array inside it, and read each element's
+ * step/status pair via plain regex (the object literal has unquoted JS keys,
+ * not JSON).
+ */
+function parseExecUpdatePlanCall(source: string): TodoItem[] | undefined {
+    const marker = "tools.update_plan(";
+    const callIdx = source.indexOf(marker);
+    if (callIdx < 0) { return undefined; }
+    const argsText = extractBalanced(source, callIdx + marker.length - 1);
+    if (argsText === undefined) { return undefined; }
+    const arrayStart = argsText.indexOf("[");
+    if (arrayStart < 0) { return undefined; }
+    const arrayText = extractBalanced(argsText, arrayStart);
+    if (arrayText === undefined) { return undefined; }
+    const items: TodoItem[] = [];
+    for (const objText of splitTopLevelObjects(arrayText)) {
+        const content = matchQuotedField(objText, ["step", "content", "title", "text"]);
+        if (!content) { continue; }
+        items.push({ content, status: normStatus(matchQuotedField(objText, ["status", "state"])) });
+    }
+    return items.length ? items : undefined;
+}
+
 function todoToolName(toolName: string, input: unknown): string {
     const obj = typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
     const inner = typeof obj.name === "string" ? obj.name : "";
@@ -59,6 +160,16 @@ function todoPayload(input: unknown): unknown {
  * the tool isn't a plan/todo call.
  */
 export function parseNativeTodos(toolName: string, input: unknown): TodoItem[] | undefined {
+    // Codex exec-sandboxed custom_tool_call: check this shape first, since its
+    // `input` is JS source text that JSON.parse (todoPayload's normal path)
+    // can never make sense of.
+    if (typeof input === "object" && input !== null) {
+        const raw = (input as Record<string, unknown>).input;
+        if (typeof raw === "string" && raw.includes("tools.update_plan(")) {
+            const fromExec = parseExecUpdatePlanCall(raw);
+            if (fromExec) { return fromExec; }
+        }
+    }
     const name = todoToolName(toolName, input);
     const isTodoTool = name.includes("todo") || name.includes("plan");
     const payload = todoPayload(input);
