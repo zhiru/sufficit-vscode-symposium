@@ -80,6 +80,12 @@ export const AGENT_ROLE_PREAMBLE =
     "ASKING THE USER: when you genuinely need a decision or clarification, ask it as plain text in your reply and end your turn so the user can answer in their next message. " +
     "Do NOT use interactive prompt tools (AskUserQuestion, ExitPlanMode, or plan mode) — they are NOT interactive in this environment, the user never sees or answers them, and they resolve with an empty/placeholder response, so you would proceed on a non-answer. Plain-text questions are the only way to reach the user.";
 
+/** Repeated every turn so an already-open session does not retain old terminal advice. */
+export const SHELL_EXECUTION_PREAMBLE =
+    "[Terminal execution] When a `shell`/command tool is available, use it directly for local commands. " +
+    "It does not require an active VS Code terminal, a terminal id, or a Chat invocation context. " +
+    "Do not ask the user to select or activate a terminal to work around an invocation-context error; use `shell` instead.";
+
 export const CANCELED_RETRY_PREAMBLE =
     "[Operational rule] If any tool, command or step returns a status/error containing \"canceled\" or \"cancelled\", do not immediately retry. " +
     "First inspect the tool's own message/output and classify whether it was a manual user cancellation, a timeout, a deterministic error, or a transient issue. " +
@@ -183,6 +189,9 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
             + guardrails.map((g, i) => `${i + 1}. ${g}`).join("\n"),
         );
     }
+    // This must be per-message (rather than part of the one-shot role prompt):
+    // a running session may have started before the terminal-tool migration.
+    prefixes.push(SHELL_EXECUTION_PREAMBLE);
     if (!state.policyInjected) {
         prefixes.push(AGENT_ROLE_PREAMBLE);
         prefixes.push(CANCELED_RETRY_PREAMBLE);

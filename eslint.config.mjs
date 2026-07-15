@@ -37,6 +37,9 @@ export default tseslint.config(
             "src/ui/chatHtml.ts",
             "src/ui/configHtml.ts",
             "src/ui/webview/**",
+            // The service worker is bundled as standalone JavaScript and is not
+            // part of the extension-host TypeScript project used by ESLint.
+            "src/pwa/sw.js",
         ],
     },
     js.configs.recommended,

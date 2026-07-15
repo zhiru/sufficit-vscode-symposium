@@ -4,8 +4,24 @@ import {
     AUTONOMY_PREAMBLE,
     buildOutboundPrompt,
     CANCELED_RETRY_PREAMBLE,
+    SHELL_EXECUTION_PREAMBLE,
     planTrackingPreamble,
 } from "../ui/outboundPrompt";
+
+test("buildOutboundPrompt keeps native shell guidance on every turn", () => {
+    const first = buildOutboundPrompt({
+        text: "Collect diagnostics",
+        fileAttachments: [],
+        policyInjected: false,
+        todoInjected: false,
+        seedInjected: false,
+        autonomyInjected: false,
+    });
+    assert.ok(first.text.includes(SHELL_EXECUTION_PREAMBLE));
+
+    const second = buildOutboundPrompt({ text: "Continue", fileAttachments: [], ...first.state });
+    assert.ok(second.text.includes(SHELL_EXECUTION_PREAMBLE));
+});
 
 test("buildOutboundPrompt injects canceled policy once", () => {
     const first = buildOutboundPrompt({
@@ -237,6 +253,6 @@ test("role-aware backends receive session note as developer preamble, not user t
         asRoles: true,
     });
     assert.equal(out.text, "Investigate");
-    assert.equal(out.preamble.length, 1);
-    assert.match(out.preamble[0], /\[session: 54c22186a57a42058de358784ffd192b\]/);
+    assert.ok(out.preamble.includes(SHELL_EXECUTION_PREAMBLE));
+    assert.ok(out.preamble.some((p) => /\[session: 54c22186a57a42058de358784ffd192b\]/.test(p)));
 });
