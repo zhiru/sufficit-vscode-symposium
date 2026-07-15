@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -18,9 +18,20 @@ function firstShellWord(command: string): string {
     return m ? path.basename(m[1]) : "";
 }
 
+function nativeShell(): { file: string; args: string[] } {
+    if (process.platform === "win32") {
+        return { file: "powershell.exe", args: ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"] };
+    }
+    return { file: "bash", args: ["-lc"] };
+}
+
 async function commandExists(cmd: string, cwd: string): Promise<boolean> {
     return new Promise((resolve) => {
-        execFile("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`], { cwd, env: process.env }, (err) => resolve(!err));
+        const shell = nativeShell();
+        const probe = process.platform === "win32"
+            ? `$found = Get-Command -Name '${cmd.replace(/'/g, "''")}' -ErrorAction SilentlyContinue; if ($null -ne $found) { exit 0 } else { exit 1 }`
+            : `command -v ${cmd} >/dev/null 2>&1`;
+        execFile(shell.file, [...shell.args, probe], { cwd, env: process.env }, (err) => resolve(!err));
     });
 }
 
@@ -44,7 +55,8 @@ export async function canUseRtk(command: string, cwd: string): Promise<boolean> 
 /** Runs a shell command, capturing combined output. Never throws. */
 export function runShell(command: string, cwd: string, timeoutMs: number, progress?: ToolProgressSink, abortSignal?: AbortSignal): Promise<{ stdout: string; code: number }> {
     return new Promise((resolve) => {
-        const child = spawn("bash", ["-lc", command], { cwd, env: process.env });
+        const shell = nativeShell();
+        const child = spawn(shell.file, [...shell.args, command], { cwd, env: process.env });
         let out = "";
         let done = false;
         const terminate = () => {
@@ -102,6 +114,31 @@ function terminalNameFor(id: string): string {
     return `symposium:${id}`;
 }
 
+/** Resolve Git Bash to the absolute path required by VS Code shellPath. */
+function windowsBashPath(): string | undefined {
+    if (process.platform !== "win32") { return undefined; }
+    const candidates = [
+        process.env.GIT_BASH,
+        process.env.GIT_BASH_PATH,
+        path.join(process.env.ProgramFiles ?? "", "Git", "bin", "bash.exe"),
+        path.join(process.env["ProgramFiles(x86)"] ?? "", "Git", "bin", "bash.exe"),
+        path.join(process.env.LOCALAPPDATA ?? "", "Programs", "Git", "bin", "bash.exe"),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) { return candidate; }
+    }
+    // Git Bash may be installed outside the conventional directories. `where`
+    // consults the same PATH that lets the non-visible shell runner spawn bash.
+    try {
+        const found = String(execFileSync("where.exe", ["bash.exe"], {
+            encoding: "utf8", windowsHide: true, timeout: 1500,
+        })).split(/\r?\n/).map((p) => p.trim()).find((p) => p && fs.existsSync(p));
+        return found;
+    } catch {
+        return undefined;
+    }
+}
+
 export function normalizeTerminalId(raw: unknown): string | undefined {
     const id = String(raw ?? "").trim();
     if (!id) { return undefined; }
@@ -130,8 +167,9 @@ function terminalHandleFor(requestedId: string | undefined, cwd: string): Termin
     // corrupts the captured output and leaves the launcher in a mixed-shell
     // state. The native shell runner already depends on `bash`, so use that
     // same shell for the visible-terminal mode as well.
+    const bashPath = windowsBashPath();
     const terminal = vscode.window.createTerminal(process.platform === "win32"
-        ? { name, cwd, shellPath: "bash", shellArgs: ["--noprofile", "--norc"] }
+        ? { name, cwd, shellPath: bashPath ?? "bash.exe", shellArgs: ["--noprofile", "--norc"] }
         : { name, cwd });
     const handle = { id, name, terminal, cwd };
     TERMINALS.set(id, handle);
@@ -144,6 +182,14 @@ function shellQuote(value: string): string {
 
 export async function runShellInTerminal(command: string, cwd: string, timeoutMs: number, progress?: ToolProgressSink, terminalId?: string, abortSignal?: AbortSignal): Promise<{ stdout: string; code: number; terminal_id: string; reused: boolean }> {
     const prior = terminalId ? TERMINALS.get(terminalId) : undefined;
+    if (process.platform === "win32" && !windowsBashPath()) {
+        return {
+            stdout: "[Symposium] Bash was not found. Install Git for Windows with Git Bash, or select silent/inline command execution.",
+            code: 127,
+            terminal_id: "",
+            reused: false,
+        };
+    }
     const handle = terminalHandleFor(terminalId, cwd);
     const existed = prior === handle;
     const name = handle.name;
