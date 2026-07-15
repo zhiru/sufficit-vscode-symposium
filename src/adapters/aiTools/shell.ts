@@ -124,7 +124,15 @@ function terminalHandleFor(requestedId: string | undefined, cwd: string): Termin
     }
     const id = requestedId || `t${++terminalSeq}-${randomUUID().slice(0, 8)}`;
     const name = terminalNameFor(id);
-    const terminal = vscode.window.createTerminal({ name, cwd });
+    // The terminal launcher below is POSIX (`bash`, `printf`, `tee`). On
+    // Windows, letting VS Code choose PowerShell makes `tee` resolve to the
+    // Tee-Object alias, whose Windows PowerShell output is UTF-16. That both
+    // corrupts the captured output and leaves the launcher in a mixed-shell
+    // state. The native shell runner already depends on `bash`, so use that
+    // same shell for the visible-terminal mode as well.
+    const terminal = vscode.window.createTerminal(process.platform === "win32"
+        ? { name, cwd, shellPath: "bash", shellArgs: ["--noprofile", "--norc"] }
+        : { name, cwd });
     const handle = { id, name, terminal, cwd };
     TERMINALS.set(id, handle);
     return handle;
