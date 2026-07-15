@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Sufficit Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.711.34",
+  "version": "2026.715.1",
   "publisher": "sufficit",
   "license": "MIT",
   "icon": "media/symposium-icon.png",
@@ -572,6 +572,11 @@
           "default": "",
           "description": "Bearer token required by the remote bridge. Empty generates an ephemeral token logged to the Symposium output channel."
         },
+        "symposium.bridge.pwa": {
+          "type": "boolean",
+          "default": false,
+          "description": "Serve the installable remote PWA at /pwa. Every data endpoint remains token-gated."
+        },
         "symposium.bridge.allowedRoots": {
           "type": "array",
           "items": { "type": "string" },
@@ -940,9 +945,10 @@
   "scripts": {
     "test": "npm run compile:test && node --test out/test/*.test.js && npm run check:webview && npm run check:configscript && npm run check:size",
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
-    "compile": "npm run clean && tsc -p ./ && npm run build:webview && npm run bundle",
+    "compile": "npm run clean && tsc -p ./ && npm run build:webview && npm run build:pwa && npm run bundle",
     "compile:test": "npm run clean && tsc -p ./ && npm run build:webview",
     "build:webview": "esbuild src/ui/webview/index.ts --bundle --format=iife --target=es2020 --outfile=out/ui/webview.bundle.js && esbuild src/ui/webview/chat.css --bundle --outfile=out/ui/webview.css",
+    "build:pwa": "node scripts/build-pwa.mjs",
     "bundle": "node scripts/bundle.js",
     "bundle:dev": "node scripts/bundle.js --dev",
     "watch": "tsc -watch -p ./",

@@ -2,28 +2,14 @@ import { chatStyles } from "./chatStyles";
 import { chatClientJs } from "./chatClient";
 
 /**
- * Shared chat webview markup for the sidebar view and the editor panel.
+ * The chat DOM subtree — everything inside `<body>` except the client `<script>`.
  *
- * Master-detail layout mirroring the built-in Chat sessions viewer: a
- * sessions list pane beside the conversation, shown automatically when the
- * surface is wide enough and collapsible behind a toggle when narrow. The
- * pane side (left/right) comes from the `meta` message.
+ * Shared by the VS Code webview (`renderHtml`) and the browser PWA
+ * (`src/ui/pwaHtml.ts`) so the two never drift: both mount the identical set of
+ * element ids that `src/ui/webview/dom.ts` resolves at load. Only the outer
+ * shell (CSP/nonce vs manifest/external script) differs between the two hosts.
  */
-export function renderHtml(): string {
-    // Nonce required by VSCode 1.90+ webview CSP enforcement (unsafe-inline alone is blocked).
-    const nonce = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
-    const csp = `default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
-    return /* html */ `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="${csp}">
-<style>
-${chatStyles}
-</style>
-</head>
-<body>
-<div id="root">
+export const chatBodyMarkup = /* html */ `<div id="root">
     <div id="bootState">
         <div class="bootLogo"><svg viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="15" height="10" rx="3" fill="white" fill-opacity="0.3"/><path d="M4 11 L2 15 L8 11 Z" fill="white" fill-opacity="0.3"/><rect x="8" y="11" width="15" height="10" rx="3" fill="white" fill-opacity="0.92"/><path d="M20 21 L22 24 L17 21 Z" fill="white" fill-opacity="0.92"/><circle cx="12" cy="16" r="1.3" fill="#7C3AED"/><circle cx="15.5" cy="16" r="1.3" fill="#4F46E5"/><circle cx="19" cy="16" r="1.3" fill="#3B82F6"/></svg></div>
         <div class="bootTitle">Symposium</div>
@@ -125,7 +111,31 @@ ${chatStyles}
 </div>
 <div id="ctxMenu"></div>
 <div id="tip" role="tooltip"></div>
-<div id="toast" role="status" aria-live="polite"></div>
+<div id="toast" role="status" aria-live="polite"></div>`;
+
+/**
+ * Shared chat webview markup for the sidebar view and the editor panel.
+ *
+ * Master-detail layout mirroring the built-in Chat sessions viewer: a
+ * sessions list pane beside the conversation, shown automatically when the
+ * surface is wide enough and collapsible behind a toggle when narrow. The
+ * pane side (left/right) comes from the `meta` message.
+ */
+export function renderHtml(): string {
+    // Nonce required by VSCode 1.90+ webview CSP enforcement (unsafe-inline alone is blocked).
+    const nonce = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const csp = `default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
+    return /* html */ `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
+<style>
+${chatStyles}
+</style>
+</head>
+<body>
+${chatBodyMarkup}
 <script nonce="${nonce}">
 ${chatClientJs}
 </script>

@@ -62,9 +62,10 @@ export function updateSendTitle() {
 export function setStatus() {
     const q = queued > 0 ? " · " + queued + " queued" : "";
     status.textContent = busy ? ("thinking..." + q) : (activeModel ? "model: " + modelLabel(activeModel) : "");
-    // Model/reasoning stay changeable at all times (a change applies to the next
-    // message); only disabled when there are no options to pick.
-    (modelPicker as HTMLButtonElement).disabled = !modelList.length;
+    // The model menu remains useful with an empty catalog: it exposes Refresh
+    // models and manual entry, which is how a new Sufficit installation recovers
+    // after presets/login become available. Reasoning has no such fallback.
+    (modelPicker as HTMLButtonElement).disabled = false;
     (reasoningPicker as HTMLButtonElement).disabled = !reasoningList.length;
     updateSendTitle();   // mode caret/icon depends on busy state
     syncProgress();

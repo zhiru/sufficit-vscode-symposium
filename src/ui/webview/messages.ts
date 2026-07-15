@@ -40,27 +40,30 @@ export function renderError(message, historical, retryable) {
     const lastUser = lastUserRow();
     if (lastUser && !historical) {
         const bar = document.createElement("div"); bar.className = "errActions";
-        const retry = document.createElement("button"); retry.className = "retryBtn errBtn";
-        retry.appendChild(svgIcon("history"));
-        retry.appendChild(document.createTextNode(" Retry"));
-        retry.addEventListener("click", () => {
-            // Plain retry: resend the same text to the CURRENT session, no branching.
-            vscode.postMessage({ type: "retry-last-message", index: lastUser.idx, errorMessage: message });
-            if (!busy) { setBusy(true); }
-            setStatus();
-            retry.disabled = true;
-            retry.textContent = "";
+        if (retryable === true) {
+            const retry = document.createElement("button"); retry.className = "retryBtn errBtn";
             retry.appendChild(svgIcon("history"));
-            retry.appendChild(document.createTextNode(" Retrying…"));
-            pendingRetryBar = bar;
-        });
+            retry.appendChild(document.createTextNode(" Retry"));
+            retry.addEventListener("click", () => {
+                // Plain retry: resend the same text to the CURRENT session, no branching.
+                vscode.postMessage({ type: "retry-last-message", index: lastUser.idx, errorMessage: message });
+                if (!busy) { setBusy(true); }
+                setStatus();
+                retry.disabled = true;
+                retry.textContent = "";
+                retry.appendChild(svgIcon("history"));
+                retry.appendChild(document.createTextNode(" Retrying…"));
+                pendingRetryBar = bar;
+            });
+            bar.appendChild(retry);
+        }
 
         const edit = document.createElement("button"); edit.className = "retryBtn errBtn";
         edit.appendChild(svgIcon("edit"));
         edit.appendChild(document.createTextNode(" Edit"));
         edit.addEventListener("click", () => beginEdit(lastUser.idx, lastUser.text));
 
-        bar.append(retry, edit); el.appendChild(bar);
+        bar.appendChild(edit); el.appendChild(bar);
     }
     log.appendChild(el); refreshEmpty(); autoScroll(stick);
 }

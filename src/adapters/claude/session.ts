@@ -186,6 +186,10 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
         child.on("error", (error) => {
             this.config.log?.(`[claude] spawn error: ${error.message}`);
             this.emit("event", { kind: "error", message: `claude spawn failed (${executable}): ${error.message}` });
+            // A failed spawn (notably ENOENT) does not reliably emit `exit`.
+            // Drop the dead ChildProcess here so a later send can actually
+            // spawn again instead of writing to its unusable stdin forever.
+            if (this.child === child) { this.child = undefined; }
             this.turnActive = false;
             this.pendingToolIds.clear();
             this.deferredTurnEnd = undefined;
@@ -199,7 +203,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
                 this.emit("event", { kind: "error", message: `claude exited with code ${code}: ${detail}` });
             }
             this.cancelled = false;   // reset for next spawn
-            this.child = undefined;
+            if (this.child === child) { this.child = undefined; }
             // The process ended (incl. SIGINT from cancel/steer) without a final
             // result event — close the turn so the UI unblocks and the queue runs.
             if (this.turnActive && !this.disposed) {

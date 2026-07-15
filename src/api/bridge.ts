@@ -9,6 +9,12 @@ import { ResourceKind } from "../config/root";
 import { SymposiumApi, SendMode } from "./symposiumApi";
 import { isBridgeAuthorized } from "./bridgeAuth";
 import { BridgePolicy, resolveBridgePolicy, isCwdAllowed, isHostAllowed, isLmToolAllowed } from "./bridgePolicy";
+import { renderPwaHtml } from "../ui/pwaHtml";
+
+const PWA_MIME: Record<string, string> = {
+    ".js": "text/javascript", ".css": "text/css", ".map": "application/json",
+    ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml",
+};
 
 /** VS Code commands the bridge is allowed to run (browser/navigation only). */
 const ALLOWED_COMMANDS = new Set<string>([
@@ -76,7 +82,7 @@ export class RemoteBridge {
     }
 
     private authorized(req: http.IncomingMessage, url: URL, token: string): boolean {
-        return isBridgeAuthorized(req.headers.authorization, url, token);
+        return isBridgeAuthorized(req.headers.authorization, url, token, req.headers["x-symposium-token"]);
     }
 
     /** Reads the current server-side policy from settings (fresh each request). */
@@ -101,11 +107,18 @@ export class RemoteBridge {
         if (!isHostAllowed(req.headers.host, policy.allowedHosts)) {
             return json(res, 403, { error: "host not allowed" });
         }
+        const parts = url.pathname.split("/").filter(Boolean);
+        const method = req.method ?? "GET";
+
+        if (method === "GET" && parts[0] === "pwa") {
+            if (!vscode.workspace.getConfiguration("symposium.bridge").get<boolean>("pwa", false)) {
+                return json(res, 404, { error: "not found" });
+            }
+            return this.serveStatic(parts.slice(1).join("/") || "index.html", res);
+        }
         if (!this.authorized(req, url, token)) {
             return json(res, 401, { error: "unauthorized" });
         }
-        const parts = url.pathname.split("/").filter(Boolean);
-        const method = req.method ?? "GET";
 
         try {
             // GET /health
@@ -145,6 +158,12 @@ export class RemoteBridge {
             // GET /sessions
             if (method === "GET" && parts[0] === "sessions" && parts.length === 1) {
                 return json(res, 200, this.api.sessions.list());
+            }
+            // PWA bootstrap metadata. Roots are already an explicit remote-spawn
+            // allowlist; exposing them lets the browser start a first session
+            // without guessing a local filesystem path.
+            if (method === "GET" && parts[0] === "bridge" && parts[1] === "config") {
+                return json(res, 200, { allowedRoots: policy.allowedRoots });
             }
             // POST /sessions  {backend, cwd, model?, tools?}
             if (method === "POST" && parts[0] === "sessions" && parts.length === 1) {
@@ -262,6 +281,24 @@ export class RemoteBridge {
             // paths / usernames from fs/spawn errors to the remote caller.
             this.log(`[bridge] request error: ${String(err)}`);
             return json(res, 500, { error: "internal error" });
+        }
+    }
+
+    private serveStatic(rel: string, res: http.ServerResponse): void {
+        if (rel === "index.html" || rel === "") {
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+            res.end(renderPwaHtml());
+            return;
+        }
+        const root = path.join(__dirname, "pwa");
+        const file = path.resolve(root, rel);
+        if (!file.startsWith(root + path.sep)) { return json(res, 403, { error: "forbidden" }); }
+        try {
+            const body = fs.readFileSync(file);
+            res.writeHead(200, { "Content-Type": PWA_MIME[path.extname(file)] ?? "application/octet-stream" });
+            res.end(body);
+        } catch {
+            return json(res, 404, { error: "not found" });
         }
     }
 
