@@ -110,6 +110,12 @@ if (scrollBtn) { scrollBtn.addEventListener("click", scrollToBottom); }
 export function refreshEmpty(): void { root.classList.toggle("empty", log.childElementCount === 0); }
 
 let stickyUserMessage: HTMLElement | null = null;
+let stickyStateRaf = 0;
+// Entering and leaving the sticky state cannot use the exact same pixel. The
+// sticky chrome adds a border/padding, which can otherwise move the scroll
+// geometry just enough to flip the predicate on the next scroll event.
+const STICKY_ENTER_PX = 8;
+const STICKY_EXIT_PX = 24;
 
 export function armStickyUserMessage(el: HTMLElement): void {
     // Clear previous sticky
@@ -128,6 +134,7 @@ export function clearStickyUserMessage(): void {
 // Check sticky state on scroll: apply when user message scrolled out of view upward
 // Only activate when user manually scrolls up (not at bottom)
 function updateStickyState(): void {
+    stickyStateRaf = 0;
     if (!stickyUserMessage) { return; }
 
     // Don't apply sticky if we're at or near bottom (auto-scroll / not manually scrolled up)
@@ -139,8 +146,18 @@ function updateStickyState(): void {
     // Use the in-flow offsetTop (stable; position:sticky keeps the element in flow)
     // instead of getBoundingClientRect — whose top snaps to logRect.top the instant
     // we pin, flipping the predicate every scroll event and making the header blink.
-    const shouldStick = logScroller.scrollTop >= stickyUserMessage.offsetTop;
-    stickyUserMessage.classList.toggle("stickyUser", shouldStick);
+    const threshold = stickyUserMessage.offsetTop;
+    const isSticky = stickyUserMessage.classList.contains("stickyUser");
+    const shouldStick = isSticky
+        ? logScroller.scrollTop >= threshold - STICKY_EXIT_PX
+        : logScroller.scrollTop >= threshold + STICKY_ENTER_PX;
+    if (shouldStick !== isSticky) {
+        stickyUserMessage.classList.toggle("stickyUser", shouldStick);
+    }
 }
 
-logScroller.addEventListener("scroll", updateStickyState, { passive: true });
+function scheduleStickyState(): void {
+    if (!stickyStateRaf) { stickyStateRaf = requestAnimationFrame(updateStickyState); }
+}
+
+logScroller.addEventListener("scroll", scheduleStickyState, { passive: true });
