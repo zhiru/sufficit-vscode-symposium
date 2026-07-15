@@ -1,35 +1,14 @@
 import * as vscode from "vscode";
 
-type RuntimeLanguageModelToolInvocationOptions<T extends object> =
-    vscode.LanguageModelToolInvocationOptions<T> & {
-        invocationContext: {
-            requestId: string;
-            toolCallId: string;
-            sessionId: string;
-            source: string;
-        };
-    };
-
-function invocationId(): string {
-    return `symposium-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 export function lmToolInvocationOptions<T extends object>(
     input: T,
-): RuntimeLanguageModelToolInvocationOptions<T> {
-    const id = invocationId();
+): vscode.LanguageModelToolInvocationOptions<T> {
     return {
         input,
+        // An extension can only receive a valid token from a ChatRequest. The
+        // native Sufficit flow runs outside that request, so use the documented
+        // no-context form. Do not invent an invocationContext: VS Code ignores
+        // it and tools such as runInTerminal still reject the call.
         toolInvocationToken: undefined,
-        // Newer VS Code/code-server runtimes require an invocation context even
-        // though the 1.100 extension typings used by this project do not expose
-        // it yet. Without this, built-in tools such as runInTerminal fail before
-        // executing with "Invocation context must be provided for this tool".
-        invocationContext: {
-            requestId: id,
-            toolCallId: id,
-            sessionId: "symposium",
-            source: "sufficit-vscode-symposium",
-        },
     };
 }

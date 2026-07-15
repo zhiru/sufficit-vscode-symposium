@@ -318,7 +318,7 @@ export class ConfigPanel {
                 // No default arg: get() returns the package.json default so the
                 // textarea shows the built-in hint; a cleared field ("") stays "".
                 memoryInstruction: chat.get<string>("memoryInstruction"),
-                lmTools: root.get<string>("lmTools", "terminal"),
+                lmTools: root.get<string>("lmTools", "off"),
                 turnSilenceMinutes: root.get<number>("turnSilenceMinutes", 5),
                 maxToolHops: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxToolHops", 50),
                 noProgressStop: vscode.workspace.getConfiguration("symposium.openai").get<number>("noProgressStop", 0),

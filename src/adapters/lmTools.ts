@@ -6,22 +6,22 @@ import { sanitizeToolParametersForOpenAI } from "./openaiSchema";
 /**
  * Bridges VS Code's Language Model Tools (`vscode.lm.tools`) to the OpenAI
  * function-tool protocol so the native "Sufficit AI" backend can use the same
- * rich, UI-integrated tools the built-in Copilot chat uses: runInTerminal (a
- * real visible terminal), runTask (tasks.json), runTests (test UI), notebook
- * cell execution, and so on — instead of only our headless `shell`.
+ * rich, UI-integrated tools the built-in Copilot chat uses. Tools that require
+ * a Chat invocation context (terminal/tasks/tests) are deliberately excluded:
+ * the public extension API cannot create that context outside a ChatRequest.
+ * Symposium's native `shell` handles command execution in those flows.
  *
- * Selection is controlled by `symposium.lmTools` (off | terminal | all). We map
+ * Selection is controlled by `symposium.lmTools` (off | all). We map
  * each tool's JSON inputSchema straight through as the function parameters, and
  * sanitize names to the OpenAI-allowed charset (keeping a reverse map).
  */
 
-export type LmToolMode = "off" | "terminal" | "all";
+export type LmToolMode = "off" | "all";
 
-// The "terminal/execute" family from the screenshot — matched by substring so
-// it survives provider/extension renames across VS Code versions. Notebook
-// execution is intentionally excluded from the default set (still reachable via
-// the "all" mode for tool-discovery skills); it only matters for .ipynb work.
-const TERMINAL_MATCH = /terminal|task|test|exec|browser|playwright|navigate/i;
+// Tools in this family require VS Code's internal Chat invocation context.
+// Match by substring so provider/extension renames across VS Code versions do
+// not reintroduce calls that fail before execution.
+const CONTEXT_REQUIRED_TOOL = /terminal|task|test|exec/i;
 
 // Tools we never bridge, regardless of mode. Copilot ships its own memory
 // tools (copilot_memory / *memory*) that persist to Copilot's own store —
@@ -46,7 +46,7 @@ const TERMINAL_MATCH = /terminal|task|test|exec|browser|playwright|navigate/i;
 const DEFAULT_TOOL_BLOCKLIST = /copilot_memory|^memory$|_memory|memory_|read[_-]?file|write[_-]?file|list[_-]?dir|find[_-]?file|search[_-]?file|grep|glob|workspace[_-]?symbol|text[_-]?search|find[_-]?text|view[_-]?image|read[_-]?image|copilot_\w*image|switch[_-]?agent|sub[_-]?agent|new[_-]?workspace|create[_-]?(file|directory|folder|workspace)|edit[_-]?file|insert[_-]?edit|apply[_-]?patch|replace[_-]?string|(?:^|[_-])usages|get[_-]?errors|copilot_fetch/i;
 
 // Exact names of Symposium's own hub tools (aiTools/defs.ts). "task" is inside
-// TERMINAL_MATCH (for runTask/tasks.json), so any other extension's LM tool
+// CONTEXT_REQUIRED_TOOL (for runTask/tasks.json), so any other extension's LM tool
 // that happens to share one of these exact names — e.g. a built-in
 // todo/task-tracking tool — would otherwise get bridged and silently collide.
 // mergeToolDefinitions() only prefixes SAME-NAME/DIFFERENT-DESCRIPTION
@@ -65,8 +65,11 @@ function isBlocked(name: string): boolean {
 }
 
 function mode(): LmToolMode {
-    const v = vscode.workspace.getConfiguration("symposium").get<string>("lmTools", "terminal");
-    return v === "off" || v === "all" ? v : "terminal";
+    const v = vscode.workspace.getConfiguration("symposium").get<string>("lmTools", "off");
+    // "terminal" was offered by earlier versions. It cannot work from this
+    // extension flow because VS Code only supplies the required context to a
+    // ChatRequest, so migrate that saved value safely to off.
+    return v === "all" ? "all" : "off";
 }
 
 /** OpenAI tool names must be [A-Za-z0-9_-]{1,64}; map sanitized → real. */
@@ -82,9 +85,8 @@ function selectedTools(): readonly vscode.LanguageModelToolInformation[] {
     const m = mode();
     if (m === "off") { return []; }
     const all = vscode.lm?.tools ?? [];
-    const picked = (m === "all"
-        ? all
-        : all.filter((t) => TERMINAL_MATCH.test(t.name) || (t.tags ?? []).some((g) => TERMINAL_MATCH.test(g))))
+    const picked = all
+        .filter((t) => !CONTEXT_REQUIRED_TOOL.test(t.name) && !(t.tags ?? []).some((g) => CONTEXT_REQUIRED_TOOL.test(g)))
         .filter((t) => !isBlocked(t.name));
     // De-dupe by sanitized name (collisions would map to one tool anyway) and
     // cap the total to keep the tool payload small for the model.

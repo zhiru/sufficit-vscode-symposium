@@ -260,8 +260,8 @@ export const configViews = `    function resourceList(kind) {
             ) +
             section(t("config.prefs.section.toolsExecution"),
                 item(t("config.prefs.lmTools.name"), t("config.prefs.lmTools.desc"),
-                    sel("symposium.lmTools", p.lmTools || "terminal",
-                        [{ v: "off", l: t("config.prefs.lmTools.off") }, { v: "terminal", l: t("config.prefs.lmTools.terminal") }, { v: "all", l: t("config.prefs.lmTools.all") }])) +
+                    sel("symposium.lmTools", p.lmTools || "off",
+                        [{ v: "off", l: t("config.prefs.lmTools.off") }, { v: "all", l: t("config.prefs.lmTools.all") }])) +
                 item(t("config.prefs.shellExecution.name"), t("config.prefs.shellExecution.desc"),
                     sel("symposium.openai.shellExecution", p.shellExecution || "silent",
                         [{ v: "silent", l: t("config.prefs.shellExecution.silent") }, { v: "inline", l: t("config.prefs.shellExecution.inline") }, { v: "terminal", l: t("config.prefs.shellExecution.terminal") }]))
