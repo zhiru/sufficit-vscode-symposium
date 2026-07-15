@@ -172,14 +172,16 @@ export class ChatSurface {
     /**
      * Sends voice preferences to the webview. `engine` + `localStt` drive the
      * hybrid mic: Web Speech in the browser, local host transcription on
-     * desktop. Called on ready, AND again on every `symposium.voice.*` config
-     * change (see the onDidChangeConfiguration listener in the constructor) so
-     * a setting changed in the Config panel takes effect on an already-open
-     * chat surface immediately — no reload needed to test it for real.
+     * desktop. The local path starts disabled and is enabled only after its
+     * binary/model readiness check succeeds, preventing a broken setup from
+     * exposing a microphone that can only fail. Called on ready, AND again on
+     * every `symposium.voice.*` config change (see the listener in the
+     * constructor) so a setting changed in Config takes effect immediately.
      */
     private pushVoicePreferences(): void {
         const voiceCfg = vscode.workspace.getConfiguration("symposium");
         const voiceEngine = voiceCfg.get<string>("voice.engine", "auto");
+        const localSttRequested = canUseLocalStt(voiceEngine, vscode.env.uiKind === vscode.UIKind.Web);
         const voicePreferences = {
             language: voiceCfg.get<string>("voice.language", "pt-BR"),
             continuous: voiceCfg.get<boolean>("voice.continuous", true),
@@ -187,25 +189,24 @@ export class ChatSurface {
             dotsAnimation: voiceCfg.get<boolean>("voice.dotsAnimation", true),
             soundFeedback: voiceCfg.get<boolean>("voice.soundFeedback", true),
             engine: voiceEngine,
-            // `auto` uses browser speech in web/code-server UI and local STT on desktop.
-            localStt: canUseLocalStt(voiceEngine, vscode.env.uiKind === vscode.UIKind.Web),
+            // Fail closed while the host checks the configured local engine.
+            localStt: false,
             // Desktop: the host records the mic natively (ffmpeg) — webview
             // getUserMedia is unreliable in VS Code (permission lost on reload).
             hostCapture: vscode.env.uiKind !== vscode.UIKind.Web,
         };
         this.post({ type: "setVoicePreferences", preferences: voicePreferences });
 
-        // The localStt above is a cheap string-only gate so the mic button
-        // appears without flicker. Re-validate against the real world (binary
-        // on PATH + model installed for the resolved engine) and post a
-        // corrected preference: if the engine is configured but its binary or
-        // model is missing/incompatible, hide the mic instead of letting the
-        // user click into a cryptic transcription failure.
+        if (!localSttRequested) { return; }
+
+        // Validate against the real world (binary on PATH + compatible model)
+        // before exposing the microphone. A failed check deliberately leaves
+        // the initial disabled preference in place.
         void isLocalSttReady().then((ready) => {
-            if (ready === voicePreferences.localStt) { return; }
+            if (!ready) { return; }
             this.post({
                 type: "setVoicePreferences",
-                preferences: { ...voicePreferences, localStt: ready },
+                preferences: { ...voicePreferences, localStt: true },
             });
         });
     }

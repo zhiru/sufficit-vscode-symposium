@@ -402,6 +402,10 @@
     #toast svg { width: 14px; height: 14px; flex: none; color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fb950)); }
     #toast.error { border-left-color: var(--vscode-errorForeground, var(--vscode-charts-red, #f14c4c)); }
     #toast.error svg { color: var(--vscode-errorForeground, var(--vscode-charts-red, #f14c4c)); }
+    #toast.error.copyable { pointer-events: auto; cursor: copy; }
+    #toast.error.copyable:hover { filter: brightness(1.1); }
+    #toast.error.copyable:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: 2px; }
+    #toast.error.copyable.copied { border-left-color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fb950)); }
     @media (prefers-reduced-motion: reduce) {
         #tip, #toast { transition: opacity 100ms ease; transform: none; }
         #tip.below, #tip.show, #toast.show { transform: translateX(0); }

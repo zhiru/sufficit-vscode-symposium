@@ -20,7 +20,10 @@ let voicePreferences: VoicePreferences = {
     dotsAnimation: true,
     soundFeedback: true,
     engine: "auto",
-    localStt: true,
+    // Fail closed until the host has confirmed a usable local STT path.
+    // Otherwise the microphone flashes/appears during webview startup even
+    // when diagnostics will shortly report the voice configuration invalid.
+    localStt: false,
     hostCapture: false,
 };
 

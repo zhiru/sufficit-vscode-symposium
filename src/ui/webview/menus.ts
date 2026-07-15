@@ -4,6 +4,7 @@ import { ctxMenu, tipEl } from "./dom";
 import { svgIcon } from "./icons";
 import { lastAutoScroll } from "./scroll";
 import { setPendingSessionSwitch } from "./state";
+import { copyText } from "./markdown";
 
 const CLI_BACKENDS: any = { claude: 1, codex: 1, copilot: 1 };
 
@@ -107,12 +108,52 @@ export function openChoiceMenu(anchorEl, options, current, onPick, opts) {
 const TOAST_CHECK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.5 3.5 6 11 2.5 7.5l1-1L6 9l6.5-6.5 1 1Z"/></svg>';
 const TOAST_ERROR = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm.75 3v5h-1.5V4h1.5Zm0 6.5v1.5h-1.5v-1.5h1.5Z"/></svg>';
 let toastTimer = null;
+let toastText = "";
+
+function markToastCopied(el: HTMLElement): void {
+    el.classList.add("copied");
+    el.setAttribute("aria-label", "Error copied to clipboard");
+    setTimeout(() => {
+        el.classList.remove("copied");
+        if (el.classList.contains("error")) {
+            el.setAttribute("aria-label", "Error notification. Click to copy its text.");
+        }
+    }, 1200);
+}
+
+function copyToastError(): void {
+    const el = document.getElementById("toast");
+    if (!el || !el.classList.contains("error") || !toastText) { return; }
+    copyText(toastText, () => markToastCopied(el));
+}
+
+document.addEventListener("click", (event) => {
+    const toast = (event.target as HTMLElement).closest?.("#toast.error.copyable") as HTMLElement | null;
+    if (toast) { copyToastError(); }
+});
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") { return; }
+    const toast = (event.target as HTMLElement).closest?.("#toast.error.copyable") as HTMLElement | null;
+    if (!toast) { return; }
+    event.preventDefault();
+    copyToastError();
+});
+
 export function showToast(message, kind = "info") {
     const el = document.getElementById("toast");
     if (!el) { return; }
+    const isError = kind === "error";
+    toastText = isError ? message : "";
     el.innerHTML = (kind === "error" ? TOAST_ERROR : TOAST_CHECK) + "<span></span>";
     el.querySelector("span").textContent = message;
-    el.classList.toggle("error", kind === "error");
+    el.classList.toggle("error", isError);
+    el.classList.toggle("copyable", isError);
+    el.classList.remove("copied");
+    el.tabIndex = isError ? 0 : -1;
+    el.setAttribute("role", isError ? "button" : "status");
+    el.setAttribute("aria-label", isError ? "Error notification. Click to copy its text." : "Notification");
+    if (isError) { el.setAttribute("title", "Click to copy error"); }
+    else { el.removeAttribute("title"); }
     el.classList.add("show");
     if (toastTimer) { clearTimeout(toastTimer); }
     toastTimer = setTimeout(() => el.classList.remove("show"), 2200);

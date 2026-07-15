@@ -64,6 +64,10 @@ function renderRecordingDraft() {
 
 window.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'setVoicePreferences') {
+        // This listener is registered before index.ts's general message
+        // listener. Store the incoming preferences here as well, so the
+        // visibility calculation never observes the optimistic defaults.
+        (window as any).voicePreferences = e.data.preferences;
         getVoicePreferences();
         applyRecognitionPreferences(recognition);
         updateMicVisibility(webSpeechSupported);
