@@ -250,9 +250,12 @@ export class SurfaceMessages {
                 }
                 case "install-agent": {
                     if (typeof message.backend === "string") {
-                        const { promptInstallCli } = await import("../extension/cli");
+                        const { installCli } = await import("../extension/cli");
                         const adapter = this.d.deps.adapterByBackend.get(message.backend);
-                        void promptInstallCli(message.backend, adapter?.displayName ?? message.backend, "");
+                        // The picker only sends this message for a backend that
+                        // advertised an installer. Unlike the native QuickPick
+                        // flow, its card click is already the user's consent.
+                        installCli(message.backend, adapter?.displayName ?? message.backend);
                     }
                     return;
                 }

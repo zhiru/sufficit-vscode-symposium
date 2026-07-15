@@ -138,6 +138,7 @@ export class SurfaceDialogues {
         const generation = ++this.generation;
         this.d.detachActive();
         this.d.post({ type: "clear" });
+        this.d.post({ type: "history-start" });
         const sessionsSide = vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto");
         this.d.post({
             type: "meta",
@@ -145,6 +146,7 @@ export class SurfaceDialogues {
             backendName: adapter.displayName,
             modelLabels: adapter.modelLabels?.() ?? {},
             resumed: true,
+            historyPending: true,
             readOnly: true,
             busy: false,
             models: [],
@@ -169,6 +171,10 @@ export class SurfaceDialogues {
                 this.d.post({ type: "history", messages });
             }
         }
+        if (generation !== this.generation) {
+            return;
+        }
+        this.d.post({ type: "history-end" });
         const handle = adapter.follow(info, (message) => {
             this.d.post({ type: "append", message });
         });
@@ -249,9 +255,13 @@ export class SurfaceDialogues {
         if (!adapter) {
             return;
         }
-        this.generation++;
+        const generation = ++this.generation;
         this.d.detachActive();
         this.d.post({ type: "clear" });
+        const historyPending = !!options.resumeSessionId;
+        if (historyPending) {
+            this.d.post({ type: "history-start" });
+        }
 
         // New (non-resumed) sessions: inject the language hint and the
         // per-workspace bootstrap (standing Sufficit context) before the first
@@ -296,6 +306,7 @@ export class SurfaceDialogues {
                 : null,
             bootstrapLink: bootstrapLink ?? null,   // per-workspace bootstrap link (null = none)
             resumed: !!options.resumeSessionId,
+            historyPending,
             models: adapter.models?.() ?? [],
             reasoningLevels: adapter.reasoningLevels?.() ?? [],
             // "default" means no explicit CLI/API override. Name the underlying
@@ -332,7 +343,15 @@ export class SurfaceDialogues {
         });
         controller.attach((message) => handleControllerEvent(this.d, backend, message));
         if (!existing && info && !seededVisual) {
-            void controller.loadHistory(info);
+            void controller.loadHistory(info).finally(() => {
+                if (generation === this.generation) {
+                    this.d.post({ type: "history-end" });
+                }
+            });
+        } else if (historyPending) {
+            // Existing controllers and persisted visual logs replay
+            // synchronously during attach(), so their tail is ready now.
+            this.d.post({ type: "history-end" });
         }
         if (options.resumeSessionId) {
             this.d.deps.lastActive.set({ backend, sessionId: options.resumeSessionId });

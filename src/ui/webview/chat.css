@@ -56,7 +56,13 @@
     @keyframes ldPulse { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
     #loadingState {
         display: none; flex-direction: column; align-items: center; justify-content: center;
-        gap: 16px; flex: 1;
+        gap: 16px;
+        /* Overlay instead of a second flex item. If this shares the available
+           height with #log, the hidden transcript is laid out in a shorter
+           scrollport; removing the loader then changes clientHeight and loses
+           the tail position (most visible in the desktop VS Code webview). */
+        position: absolute; inset: 0; z-index: 3;
+        background: var(--vscode-sideBar-background, var(--vscode-editor-background));
     }
     #root.loading #loadingState { display: flex; animation: ldFadeIn 0.22s ease; }
     /* visibility (not display): layout stays live while hidden, so the restored

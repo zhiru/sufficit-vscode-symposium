@@ -105,8 +105,14 @@ export function applyMeta(data: any): void {
     setActiveFileRange((data.activeFile_start && data.activeFile_end) ? { start: data.activeFile_start, end: data.activeFile_end } : null);
     setActiveFilePreview(!!data.activeFilePreview); setActiveFilePinned(false);
     setActiveFileDismissed(false); renderChips();
-    setLoading(false);   // session resolved — reveal the conversation
-    scrollToBottom();
+    // Resumed sessions remain hidden until the host finishes replaying their
+    // stored render log/history. Revealing here used to expose the first rows
+    // while they were appended, making the conversation visibly load from top
+    // to bottom before jumping to the newest message.
+    if (!data.historyPending) {
+        scrollToBottom();
+        setLoading(false);
+    }
 }
 
 /** Fills the chat-header badge with the AGENT-DEF driving this session. Hidden

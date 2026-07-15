@@ -12,7 +12,7 @@ import { renderAccount, renderSessions } from "./sessions";
 import { setLang, t } from "./i18n";
 import { applyStaticI18n } from "./staticI18n";
 import { openUsagePopover, setLastUsage, setLastTurn, setSessionCostUsd } from "./statusbar";
-import { setStatus, updateSendTitle } from "./status";
+import { setLoading, setStatus, updateSendTitle } from "./status";
 import { hideCtx, openChoiceMenu, showToast } from "./menus";
 import { modelLabels, modelValue, modelList, modelDefault, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, buildModelMenuOpts } from "./models";
 import { armStickyUserMessage, layout, refreshEmpty, scrollToBottom, nearBottom, autoScroll } from "./scroll";
@@ -20,6 +20,8 @@ import { svgIcon } from "./icons";
 import { renderAgentPicker, hideAgentPicker } from "./agentPicker";
 import { log, composerEl, status, switchAgentBtn, copySessionBtn, sendBtn, input, presencePicker, ctxMenu, modelPicker, agentBadge } from "./dom";
 import { sessions, busy, activeModel, attachments, activeFile, commands, conversationRows, setActiveFile, setActiveFileDismissed, setActiveFilePinned, setActiveFilePreview, setActiveFileRange, setActiveModel, setBusy, setCommands, setConversationRows, setPendingSessionSwitch, setQueued, setSessions, setSideMode, pendingSessionSwitch, permissionModes, permissionValue, permissionDefault, aiToolsAvailable, aiToolsEnabled, pendingSwitchAnchor, setPendingSwitchAnchor } from "./state";
+
+let historyCycle = 0;
 
 window.addEventListener("message", ({ data }) => {
     switch (data.type) {
@@ -51,6 +53,7 @@ window.addEventListener("message", ({ data }) => {
             break;
         }
         case "clear": {
+            historyCycle++; // invalidate a reveal already queued for the prior session
             hideAgentPicker();   // a session/dialogue is taking over the surface
             setConversationRows([]);
             log.textContent = "";
@@ -69,6 +72,27 @@ window.addEventListener("message", ({ data }) => {
             sendBtn.disabled = false;
             document.getElementById("composer").style.display = "flex";
             setStatus();
+            break;
+        }
+        case "history-start": {
+            // Keep the old transcript out of view while its chronological DOM
+            // is rebuilt. The host sends history-end only after the replay (or
+            // async adapter history load) has completed.
+            historyCycle++;
+            setLoading(true, "Loading session…");
+            break;
+        }
+        case "history-end": {
+            // Position the viewport at the useful tail before revealing it.
+            // A second snap on the next frame covers markdown/font layout that
+            // settles between DOM insertion and paint.
+            const cycle = historyCycle;
+            scrollToBottom();
+            requestAnimationFrame(() => {
+                if (cycle !== historyCycle) { return; }
+                scrollToBottom();
+                setLoading(false);
+            });
             break;
         }
         case "queue": {
