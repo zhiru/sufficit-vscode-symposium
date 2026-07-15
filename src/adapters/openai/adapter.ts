@@ -24,6 +24,7 @@ import {
 import { friendlyToolDetail, toolPath } from "./toolDetail";
 import { historyFromLedger, ledgerWasCompacted } from "./history";
 import { discoverModels as discoverModelsFromCatalog } from "./discovery";
+import { resolveAuthToken } from "./httpAuth";
 import { OpenAISession } from "./session";
 import { PERMISSION_MODES } from "../aiTools";
 import { DEFAULT_REASONING_EFFORT } from "../reasoning";
@@ -44,7 +45,8 @@ export class OpenAIAdapter implements AgentAdapter {
         const cfg = this.getConfig();
         if (!cfg.baseUrl) { return { ok: false, error: `set baseUrl for ${this.displayName}` }; }
         // Best-effort model discovery so the picker is populated when opened.
-        await discoverModelsFromCatalog(cfg, this.backend).catch(() => undefined);
+        const loginToken = await resolveAuthToken(cfg).catch(() => null);
+        await discoverModelsFromCatalog(cfg, this.backend, loginToken).catch(() => undefined);
         return { ok: true, version: cfg.baseUrl };
     }
 
@@ -223,7 +225,15 @@ export class OpenAIAdapter implements AgentAdapter {
             if (!force && stored && isFresh(stored)) {
                 setDiscovered(cfg.baseUrl, stored.models, stored.labels ?? {}, stored.context);
             } else {
-                await discoverModelsFromCatalog(cfg, this.backend).catch(() => undefined);
+                // Model catalogs can be user-specific. Resolve the same Sufficit
+                // identity token used by chat requests; otherwise an explicit
+                // refresh may query /models anonymously, keep a stale cache, and
+                // misleadingly report fewer models than Config's /api/tags list.
+                const loginToken = await resolveAuthToken(cfg, force);
+                const updated = await discoverModelsFromCatalog(cfg, this.backend, loginToken);
+                if (force && !updated) {
+                    throw new Error(`No models returned by ${cfg.baseUrl.replace(/\/+$/, "")}/models`);
+                }
             }
         }
         return { models: this.models(), labels: this.modelLabels() };

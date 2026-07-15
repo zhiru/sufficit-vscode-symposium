@@ -17,12 +17,12 @@ export async function discoverModels(
     cfg: OpenAIAdapterConfig,
     backend: string,
     loginToken?: string | null,
-): Promise<void> {
-    if (cfg.models.length || !cfg.baseUrl) { return; }
+): Promise<boolean> {
+    if (cfg.models.length || !cfg.baseUrl) { return false; }
     const url = cfg.baseUrl.replace(/\/+$/, "") + "/models";
     const headers = buildHeaders(cfg, loginToken);
     const res = await fetch(url, { headers });
-    if (!res.ok) { return; }
+    if (!res.ok) { return false; }
     const json = await res.json() as { data?: unknown[]; models?: unknown[] };
     const raw = json?.data ?? json?.models ?? [];
     const list: string[] = [];
@@ -49,5 +49,7 @@ export async function discoverModels(
         setDiscovered(cfg.baseUrl, list, labels, context);
         setCached(`openai:${cfg.baseUrl}`, { models: list, labels, context, lastUpdate: new Date().toISOString() });
         cfg.log?.(`[${backend}] discovered ${list.length} models from ${url}`);
+        return true;
     }
+    return false;
 }
