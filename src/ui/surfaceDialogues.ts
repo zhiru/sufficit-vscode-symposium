@@ -69,9 +69,11 @@ export class SurfaceDialogues {
         this.startDefaultDialogue();
     }
 
-    /** Starts a new dialogue with the first available backend in the workspace cwd. */
+    /** Starts a new dialogue with Sufficit AI by default, then falls back to any available backend. */
     startDefaultDialogue(): void {
-        const backend = this.d.deps.adapterByBackend.keys().next().value;
+        const backend = this.d.deps.adapterByBackend.has("openai")
+            ? "openai"
+            : this.d.deps.adapterByBackend.keys().next().value;
         if (!backend) {
             void this.d.webview.postMessage({ type: "boot", id: "session", label: "No backend available", status: "fail", detail: "configure an adapter" });
             void this.d.webview.postMessage({ type: "boot", complete: true });
