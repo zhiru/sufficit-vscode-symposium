@@ -841,8 +841,8 @@
             "chat",
             "responses"
           ],
-          "default": "chat",
-          "description": "Request type for the built-in OpenAI adapter: 'chat' (/chat/completions) or 'responses' (/responses)."
+          "default": "responses",
+          "description": "Request type for the built-in Sufficit AI adapter. Defaults to 'responses' (/responses), required by current reasoning models when tools are enabled; select 'chat' only for a legacy-compatible gateway."
         },
         "symposium.openai.baseUrl": {
           "type": "string",

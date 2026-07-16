@@ -79,7 +79,10 @@ export function openaiConfig(context: vscode.ExtensionContext): OpenAIAdapterCon
     const config = vscode.workspace.getConfiguration("symposium.openai");
     return {
         clientInfo: symposiumClientInfo(context),
-        api: config.get<"chat" | "responses">("api", "chat"),
+        // The Sufficit gateway and current reasoning models support the Responses
+        // API. It is required when a turn combines tools with reasoning effort.
+        // Users can still explicitly select legacy chat/completions in settings.
+        api: config.get<"chat" | "responses">("api", "responses"),
         // The built-in "Sufficit AI" backend points at the Sufficit gateway by
         // default and authenticates with the logged-in token — no manual setup.
         baseUrl: config.get<string>("baseUrl", "https://ai.sufficit.com.br/openai/v1"),
