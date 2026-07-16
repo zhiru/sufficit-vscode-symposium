@@ -47,7 +47,8 @@ Ligar nas settings:
 "symposium.bridge.port": 47600
 ```
 
-Rode `Symposium: Restart Remote Bridge` após mudar settings.
+As settings `symposium.bridge.*` são reaplicadas automaticamente. O comando
+`Symposium: Restart Remote Bridge` também pode ser usado para recuperação manual.
 
 ```bash
 TOKEN=meu-token
@@ -57,6 +58,7 @@ curl -s $BASE/health -H "Authorization: Bearer $TOKEN"
 curl -s $BASE/resources -H "Authorization: Bearer $TOKEN"
 curl -s -X POST $BASE/resources/seed -H "Authorization: Bearer $TOKEN"
 curl -s $BASE/backends -H "Authorization: Bearer $TOKEN"
+curl -s $BASE/bridge/diagnostics -H "Authorization: Bearer $TOKEN"
 
 # criar sessão e enviar comando remoto
 ID=$(curl -s -X POST $BASE/sessions -H "Authorization: Bearer $TOKEN" \
@@ -71,9 +73,11 @@ curl -N "$BASE/sessions/$ID/follow?token=$TOKEN"
 Endpoints: `GET /health` · `GET/POST /sessions` · `POST /sessions/:id/send` ·
 `POST /sessions/:id/interrupt` · `GET /sessions/:id/follow` (SSE) ·
 `GET/POST /resources` · `POST /resources/seed` · `DELETE /resources/:kind/:name` ·
-`GET /backends` · `GET /sync`.
+`GET /backends` · `GET /sync` · `GET /bridge/diagnostics`.
 
 ## Segurança
 
 - Bridge **off** por padrão. Bind `127.0.0.1`. Token obrigatório (401 sem ele).
 - Exposição remota real só atrás de túnel autenticado — não expor a porta crua.
+- O diagnóstico autenticado mostra configuração efetiva sem token e a última
+  recusa por `allowedHosts`.

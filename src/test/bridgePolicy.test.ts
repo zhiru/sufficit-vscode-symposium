@@ -57,5 +57,8 @@ test("isHostAllowed always accepts loopback and enforces the allowlist otherwise
     assert.equal(isHostAllowed("evil.example.com", ["node.ts.net"]), false);
     assert.equal(isHostAllowed("node.ts.net", ["node.ts.net"]), true);
     assert.equal(isHostAllowed("node.ts.net:8443", ["node.ts.net"]), true);
+    assert.equal(isHostAllowed("10.20.30.40:47600", ["10.20.30.40"]), true);
+    assert.equal(isHostAllowed("10.20.30.40:47600", ["10.20.30.41"]), false);
+    assert.equal(isHostAllowed("proxy.internal:47600", ["proxy.internal:47600"]), true);
     assert.equal(isHostAllowed(undefined, ["node.ts.net"]), false);
 });

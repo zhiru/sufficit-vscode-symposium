@@ -24,7 +24,7 @@ endpoints perigosos têm limite próprio:
 | `allowedLmTools` | `[]` | ferramentas LM do VS Code invocáveis remotamente. Vazio = nenhuma (podem incluir terminal) |
 | `allowExecutableOverride` | `false` | permitir reescrever o binário de spawn (é RCE limpo) |
 | `allowVaultResolve` | `false` | permitir ler segredos do vault via `/vault/resolve` |
-| `allowedHosts` | `[]` | Hosts HTTP aceitos (anti DNS-rebinding). Loopback sempre passa; defina o hostname do tailnet quando tiver |
+| `allowedHosts` | `[]` | valores aceitos no cabeçalho HTTP `Host` (anti DNS-rebinding), não endereços de bind. Loopback sempre passa; inclua o hostname/IP efetivamente usado pelo túnel ou proxy |
 
 Exemplo mínimo seguro (troque os placeholders):
 
@@ -38,6 +38,17 @@ Exemplo mínimo seguro (troque os placeholders):
 }
 ```
 
+`allowedHosts` valida o cabeçalho HTTP `Host` que chega à Bridge. Por isso o
+valor pode ser diferente de `symposium.bridge.host`: em proxy reverso, Docker,
+Tailscale ou `ssh -R`, permita somente o hostname/IP interno usado na URL do
+cliente. Porta é opcional; tanto `bridge.internal` quanto
+`bridge.internal:47600` são aceitos quando o host corresponde. Não use `*` nem
+uma lista ampla para contornar um `403`.
+
+As alterações em `symposium.bridge.*` reiniciam a Bridge automaticamente. O
+comando **Symposium: Restart Remote Bridge** permanece disponível para
+recuperação manual; não é necessário recarregar toda a janela.
+
 Gere um token forte:
 
 ```bash
@@ -46,8 +57,8 @@ node -e "console.log(require('crypto').randomUUID())"
 
 ## Fase 0 — provar que o celular alcança (sem escrever cliente)
 
-1. **Ligar o bridge.** Aplique o `settings.json` acima e recarregue a janela do
-   VS Code. No canal de saída "Symposium" deve aparecer `[bridge] listening on
+1. **Ligar o bridge.** Aplique o `settings.json` acima; a Bridge reinicia
+   automaticamente. No canal de saída "Symposium" deve aparecer `[bridge] listening on
    http://127.0.0.1:47600`.
 
 2. **Expor pelo Tailscale** (o notebook disca pra fora; nenhuma porta inbound):
@@ -82,6 +93,39 @@ node -e "console.log(require('crypto').randomUUID())"
 Na Fase 0 use só leitura (`/health`, `/sessions`, `/follow`). Criar sessão
 (`POST /sessions`) já respeita `allowedRoots` + `sessionPermission`, mas deixe pra
 validar junto com o cliente na Fase 1.
+
+## Túnel SSH reverso
+
+Mantenha a Bridge vinculada a `127.0.0.1` e encaminhe apenas pela rede privada.
+Exemplo conceitual, executado na máquina que roda o VS Code:
+
+```bash
+ssh -N -R <IP-INTERNO-DO-HOST-SSH>:47600:127.0.0.1:47600 usuario@host-ssh
+```
+
+Se o agente chamar `http://<IP-INTERNO-DO-HOST-SSH>:47600`, configure:
+
+```jsonc
+{
+  "symposium.bridge.host": "127.0.0.1",
+  "symposium.bridge.allowedHosts": ["<IP-INTERNO-DO-HOST-SSH>"]
+}
+```
+
+Valide primeiro `GET /health` e depois uma rota autenticada como
+`GET /sessions`. Um `403` com a mensagem `Host is not in
+symposium.bridge.allowedHosts` significa que a requisição chegou à Bridge, mas
+o `Host` recebido não está permitido; não indica token inválido. Consulte o
+canal de saída **Symposium**, que registra o host recebido e a allowlist sem
+registrar o token.
+
+De um cliente local ou cujo host já seja permitido, o endpoint autenticado
+`GET /bridge/diagnostics` mostra bind efetivo, política sem segredos e a última
+recusa por host. Isso permite diagnosticar a chamada bloqueada sem expor token
+ou ampliar temporariamente a allowlist.
+
+Para uso contínuo, mantenha o token fora de arquivos versionados, faça o túnel
+reiniciar automaticamente e monitore `/health` por dentro da rede privada.
 
 ## Verificação rápida dos limites
 

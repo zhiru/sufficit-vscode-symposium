@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Sufficit Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.715.11",
+  "version": "2026.716.1",
   "publisher": "sufficit",
   "license": "MIT",
   "icon": "media/symposium-icon.png",
@@ -400,9 +400,7 @@
         },
         "symposium.lmToolsBlocklist": {
           "type": "array",
-          "items": {
-            "type": "string"
-          },
+          "items": { "type": "string" },
           "default": [],
           "description": "Extra VS Code Language Model Tools to never bridge to the native 'Sufficit AI' backend (substring match on the tool name). Copilot's own memory tools (copilot_memory and *memory* tools, which write to Copilot's store — NOT the Sufficit memory) are always blocked regardless of this list."
         },
@@ -577,7 +575,9 @@
         },
         "symposium.bridge.allowedRoots": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Absolute directories a remotely-created session may use as its working directory. A remote spawn is code execution, so it is confined to these roots. Empty falls back to the open workspace folders; with no workspace open, remote session creation is refused."
         },
@@ -607,7 +607,7 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "Accepted HTTP Host header values (e.g. your-node.ts.net), for anti DNS-rebinding. Loopback is always accepted. Empty cannot enforce (the tunnel hostname is unknown) and logs a warning; set it once you have a stable hostname."
+          "description": "Accepted HTTP Host header values (not bind/listen addresses), for anti DNS-rebinding. Include the hostname or internal IP seen in the request Host header when using SSH reverse tunnels, reverse proxies, Docker, or Tailscale. Loopback is always accepted. Empty cannot enforce and logs a warning. Bridge settings are reapplied automatically."
         },
         "symposium.claude.executable": {
           "type": "string",

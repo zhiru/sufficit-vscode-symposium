@@ -85,7 +85,7 @@ export function registerMiscCommands(ctx: CommandContext): void {
             ConfigPanel.show(context, { api, auth, chatView });
         }),
 
-        // Restart the bridge to apply changed bridge settings.
+        // Manual recovery action; bridge setting changes are also applied live.
         vscode.commands.registerCommand("symposium.restartBridge", () => {
             bridge.stop();
             const url = bridge.start();

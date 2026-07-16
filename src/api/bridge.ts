@@ -35,6 +35,8 @@ const ALLOWED_COMMANDS = new Set<string>([
  */
 export class RemoteBridge {
     private server: http.Server | undefined;
+    private listening: { host: string; port: number } | undefined;
+    private lastRejection: { at: string; reason: "allowedHosts"; receivedHost: string; allowedHosts: string[] } | undefined;
 
     constructor(
         private readonly api: SymposiumApi,
@@ -65,6 +67,7 @@ export class RemoteBridge {
             removeBridgeAdvertisement();
         });
         this.server.listen(port, host, () => {
+            this.listening = { host, port };
             this.log(`[bridge] listening on ${url}`);
             // Publish url+token so local skills/scripts can reach the bridge without
             // hardcoding them, but only after we own the advertised listener.
@@ -78,6 +81,7 @@ export class RemoteBridge {
     stop(): void {
         this.server?.close();
         this.server = undefined;
+        this.listening = undefined;
         removeBridgeAdvertisement();
     }
 
@@ -105,7 +109,18 @@ export class RemoteBridge {
         const policy = this.policy();
         // Anti DNS-rebinding: reject a mismatched Host before touching the token.
         if (!isHostAllowed(req.headers.host, policy.allowedHosts)) {
-            return json(res, 403, { error: "host not allowed" });
+            const receivedHost = req.headers.host?.trim() || "<missing>";
+            this.lastRejection = {
+                at: new Date().toISOString(),
+                reason: "allowedHosts",
+                receivedHost,
+                allowedHosts: [...policy.allowedHosts],
+            };
+            this.log(`[bridge] request rejected: Host ${JSON.stringify(receivedHost)} is not in symposium.bridge.allowedHosts (${JSON.stringify(policy.allowedHosts)})`);
+            return json(res, 403, {
+                error: "host not allowed",
+                message: "Bridge request rejected: Host is not in symposium.bridge.allowedHosts.",
+            });
         }
         const parts = url.pathname.split("/").filter(Boolean);
         const method = req.method ?? "GET";
@@ -124,6 +139,17 @@ export class RemoteBridge {
             // GET /health
             if (method === "GET" && parts[0] === "health") {
                 return json(res, 200, { ok: true, version: this.api.version });
+            }
+            // Non-secret state + latest Host rejection for local diagnosis.
+            if (method === "GET" && parts[0] === "bridge" && parts[1] === "diagnostics") {
+                return json(res, 200, {
+                    ok: true, listening: this.listening ?? null,
+                    allowedHosts: policy.allowedHosts, allowedRoots: policy.allowedRoots,
+                    sessionPermission: policy.sessionPermission,
+                    allowedLmTools: policy.allowedLmTools, allowExecutableOverride: policy.allowExecutableOverride,
+                    allowVaultResolve: policy.allowVaultResolve,
+                    lastRejection: this.lastRejection ?? null,
+                });
             }
             // POST /vscode/command  {id, args?}  — run a whitelisted VS Code command
             if (method === "POST" && parts[0] === "vscode" && parts[1] === "command") {

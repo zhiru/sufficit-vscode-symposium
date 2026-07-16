@@ -210,6 +210,14 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     const bridge = new RemoteBridge(api, (msg) => output.appendLine(msg));
     bridge.start();
     context.subscriptions.push({ dispose: () => bridge.stop() });
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
+        if (!e.affectsConfiguration("symposium.bridge")) { return; }
+        bridge.stop();
+        const url = bridge.start();
+        output.appendLine(url
+            ? `[bridge] configuration changed; restarted on ${url}`
+            : "[bridge] configuration changed; bridge is disabled");
+    }));
 
     registerCommands({
         context, adapters, adapterByBackend, surfaceDeps, chatView,
