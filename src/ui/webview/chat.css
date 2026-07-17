@@ -409,6 +409,9 @@
     #toast.error { border-left-color: var(--vscode-errorForeground, var(--vscode-charts-red, #f14c4c)); }
     #toast.error svg { color: var(--vscode-errorForeground, var(--vscode-charts-red, #f14c4c)); }
     #toast.error.copyable { pointer-events: auto; cursor: copy; }
+    /* Error toasts remain copyable while visible, but must never leave an
+       invisible click shield over the voice/send controls after dismissal. */
+    #toast.error.copyable:not(.show) { pointer-events: none; }
     #toast.error.copyable:hover { filter: brightness(1.1); }
     #toast.error.copyable:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: 2px; }
     #toast.error.copyable.copied { border-left-color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fb950)); }

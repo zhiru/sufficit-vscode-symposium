@@ -1,6 +1,8 @@
 // Unit tests for voice input functionality
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { shouldDiscardUntouchedContinuation } from "../ui/webview/voiceContinuation";
 
 // Mock voice preferences for testing
 interface VoicePreferences {
@@ -256,4 +258,22 @@ test("voice integration: continuous mode", () => {
     mockEvents.forEach(event => { if (recognition.onresult) recognition.onresult(event); });
     assert.strictEqual(finalResults.length, 2);
     assert.strictEqual(finalResults[0], "First sentence");
+});
+
+test("VAD silence never discards an unconfirmed continuous segment", () => {
+    // In native desktop capture, ffmpeg may not emit silence_end when the
+    // speaker resumes immediately, so it cannot be used to discard a segment.
+    assert.equal(shouldDiscardUntouchedContinuation(false, true, false), false);
+    assert.equal(shouldDiscardUntouchedContinuation(false, true, true), false);
+});
+
+test("manual stop may discard an untouched automatic continuation", () => {
+    assert.equal(shouldDiscardUntouchedContinuation(true, true, false), true);
+    assert.equal(shouldDiscardUntouchedContinuation(true, true, true), false);
+    assert.equal(shouldDiscardUntouchedContinuation(true, false, false), false);
+});
+
+test("dismissed copyable error toast cannot intercept composer clicks", () => {
+    const css = readFileSync("src/ui/webview/chat.css", "utf8");
+    assert.match(css, /#toast\.error\.copyable:not\(\.show\)\s*\{\s*pointer-events:\s*none;/);
 });

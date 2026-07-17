@@ -10,6 +10,7 @@ import { configViews } from "./configViews";
 import { configScriptMcp } from "./configScriptMcp";
 import { configScriptOllama } from "./configScriptOllama";
 import { configScriptStt } from "./configScriptStt";
+import { configScriptResources } from "./configScriptResources";
 export function renderConfigScript(dict: Record<string, string>): string {
     const i18n = JSON.stringify(dict).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
     return `
@@ -304,7 +305,7 @@ export function renderConfigScript(dict: Record<string, string>): string {
         const ia = document.getElementById("import-agents");
         if (ia) { ia.onclick = () => vscode.postMessage({ type: "import-agents" }); }
         const isk = document.getElementById("import-skills");
-        if (isk) { isk.onclick = () => vscode.postMessage({ type: "import-skills" }); }
+        if (isk) { isk.onclick = startSkillImport; }
         const itl = document.getElementById("import-tools");
         if (itl) { itl.onclick = () => vscode.postMessage({ type: "import-tools" }); }
         const iin = document.getElementById("import-instructions");
@@ -369,6 +370,7 @@ export function renderConfigScript(dict: Record<string, string>): string {
 
     window.addEventListener("message", (e) => {
         if (e.data?.type === "state") { applyState(e.data.state); return; }
+        if (applySkillImportProgress(e.data)) { return; }
         if (applySttHostMessage(e.data)) { return; }
         if (e.data?.type === "ollama-models-list") {
             applyOllamaModels(e.data.models);
@@ -381,5 +383,5 @@ export function renderConfigScript(dict: Record<string, string>): string {
     });
     vscode.postMessage({ type: "ready" });
 `
-    + configScriptMcp + configScriptOllama + configScriptStt;
+    + configScriptMcp + configScriptOllama + configScriptStt + configScriptResources;
 }

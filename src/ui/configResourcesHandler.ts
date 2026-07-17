@@ -74,9 +74,15 @@ export async function handleResourcesMessage(message: ConfigMessage, ctx: Config
                 found.map((s) => ({ label: s.name, description: s.source, detail: s.description, srcPath: s.path })),
                 { canPickMany: true, placeHolder: ctx.tr("msg.import.skills.pickPlaceholder") });
             if (!picked || !picked.length) {
+                ctx.post({ type: "skill-import-progress", phase: "idle" });
                 return true;
             }
-            const r = api.resources.importSkills(picked.map((p) => p.srcPath));
+            const paths = picked.map((p) => p.srcPath);
+            ctx.post({ type: "skill-import-progress", phase: "copying", current: 0, total: paths.length });
+            const r = api.resources.importSkills(paths, false, (progress) => {
+                ctx.post({ type: "skill-import-progress", phase: "copying", ...progress });
+            });
+            ctx.post({ type: "skill-import-progress", phase: "done", current: paths.length, total: paths.length, imported: r.imported, skipped: r.skipped, errors: r.errors.length });
             void vscode.window.showInformationMessage(
                 ctx.tr("msg.import.skills.done", { n: r.imported }) +
                 (r.skipped ? ctx.tr("msg.import.skills.skippedSuffix", { n: r.skipped }) : "") +

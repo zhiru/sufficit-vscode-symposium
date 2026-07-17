@@ -5,6 +5,7 @@ import { showToast } from "./menus";
 import { resizeInput } from "./inputSizing";
 import { playStartSound, playStopSound } from "./voiceSounds";
 import { applyRecognitionPreferences, chooseVoicePath, getVoicePreferences, updateMicVisibility } from "./voicePrefs";
+import { shouldDiscardUntouchedContinuation } from "./voiceContinuation";
 
 let recognition: any = null;
 let isRecording = false;
@@ -193,9 +194,16 @@ function startHostCapture(isContinuation = false) {
     if (prefs.dotsAnimation) updateRecordingDots();
 }
 
-function stopHostCapture() {
+function stopHostCapture(discardUntouchedContinuation = false) {
     const prefs = getVoicePreferences();
-    const phantom = currentCaptureIsContinuation && !hadSpeechThisSegment;
+    // `silencedetect` only emits `silence_end` after an initial silent
+    // stretch. When the user resumes speaking immediately after an automatic
+    // restart, that marker may never arrive even though the capture contains
+    // speech. Never discard a VAD-ended segment on that weak signal: doing so
+    // left continuous dictation visually active but with no live microphone.
+    // The optimization remains safe for an explicit manual stop before the
+    // user has said anything in an auto-started continuation.
+    const phantom = shouldDiscardUntouchedContinuation(discardUntouchedContinuation, currentCaptureIsContinuation, hadSpeechThisSegment);
     isRecording = false;
     hostRecording = false;
     activeVoicePath = null;
@@ -322,7 +330,7 @@ function stopVadMonitor(): void {
 
 function onSilenceDetected(): void {
     if (!dictationActive || !isRecording) { return; }
-    if (activeVoicePath === 'host') { stopHostCapture(); }
+    if (activeVoicePath === 'host') { stopHostCapture(false); }
     else if (activeVoicePath === 'local') { stopLocalCapture(); }
 }
 
@@ -453,7 +461,7 @@ export function stopVoiceRecording(): void {
         if (prefs.soundFeedback) playStopSound();
         recognition.stop();
     } else if (activeVoicePath === 'host') {
-        stopHostCapture();
+        stopHostCapture(true);
     } else if (activeVoicePath === 'local') {
         stopLocalCapture();
     }
