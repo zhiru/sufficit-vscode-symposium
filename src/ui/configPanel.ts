@@ -4,6 +4,7 @@ import { renderConfigHtml } from "./configHtml";
 import { tr } from "./configI18n";
 import { listServers, ensureSufficitNativeServer } from "../config/servers";
 import { getSttState, downloadSttModel, deleteSttModel } from "../voice/sttService";
+import { removeLegacySufficitToolImports } from "../config/importResources";
 import { handleCompressionMessage } from "./configCompressionHandler";
 import { handleBackendsMessage } from "./configBackendsHandler";
 import { handleMcpMessage } from "./configMcpHandler";
@@ -285,6 +286,7 @@ export class ConfigPanel {
         if (profile) {   // ensure the Sufficit native MCP server exists when logged in
             try {
                 ensureSufficitNativeServer();
+                removeLegacySufficitToolImports();
             } catch (e) {
                 console.error("Failed to ensure Sufficit native MCP server:", e);
             }

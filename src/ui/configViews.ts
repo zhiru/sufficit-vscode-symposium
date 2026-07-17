@@ -120,7 +120,7 @@ export const configViews = `    function resourceList(kind) {
                     + (transport ? '<span class="mcp-transport">' + esc(transport) + '</span>' : '')
                     + (counts.length ? '<span class="resource-meta">' + esc(counts.join(", ")) + '</span>' : '')
                     + '<span class="mcp-spacer"></span>'
-                    + (m.builtin ? '' : '<button class="secondary edit-server" data-name="' + esc(s.name) + '">' + esc(t("config.btn.edit")) + '</button>'
+                    + (m.builtin ? '<span class="mcp-transport builtin">' + esc(t("config.mcpServers.builtin")) + '</span>' : '<button class="secondary edit-server" data-name="' + esc(s.name) + '">' + esc(t("config.btn.edit")) + '</button>'
                         + '<button class="danger delete-server" data-name="' + esc(s.name) + '">' + esc(t("config.btn.delete")) + '</button>')
                 + '</div>'
                 + (m.description ? '<div class="resource-desc">' + esc(m.description) + '</div>' : '')

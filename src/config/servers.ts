@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { repoDir, sanitize } from "./root";
+import { isSufficitNativeMcpIdentity, SUFFICIT_NATIVE_MCP_ID } from "./mcpIdentity";
 
 /**
  * Writes `content` to `file` only when it differs from what is already on disk.
@@ -52,6 +53,8 @@ export function serverManifestPath(serverName: string): string {
 }
 
 export interface ServerManifest {
+    /** Stable server identity, independent from its display name or import source. */
+    id?: string;
     name: string;
     description?: string;
     version?: string;
@@ -221,8 +224,9 @@ export function shouldIncludeSufficitServer(): boolean {
  * Ensures the native Sufficit MCP server exists (when logged in)
  */
 export function ensureSufficitNativeServer(): void {
-    const serverName = "sufficit-ai";
+    const serverName = SUFFICIT_NATIVE_MCP_ID;
     writeManifest(serverName, {
+        id: SUFFICIT_NATIVE_MCP_ID,
         name: serverName,
         description: "Native Sufficit AI MCP server (auto-detected when logged in)",
         version: "1.0.0",
@@ -361,6 +365,10 @@ function createServerFromConfig(
     config: Record<string, string | undefined>,
     result: ImportServersResult
 ): void {
+    if (isSufficitNativeMcpIdentity(name)) {
+        result.serversSkipped++;
+        return;
+    }
     // Check if server already exists
     const existing = readManifest(name);
     if (existing) {
