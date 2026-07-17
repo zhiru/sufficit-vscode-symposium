@@ -85,7 +85,7 @@ export interface SymposiumApi {
         /** Lists importable skill bundles from Claude/Codex dirs. */
         scanForeignSkills(): { source: string; name: string; description: string; path: string }[];
         /** Copies the given skill bundle dirs into repo/skills/. */
-        importSkills(srcDirs: string[], overwrite?: boolean, onProgress?: (progress: { current: number; total: number; imported: number; skipped: number; errors: number }) => void): { imported: number; skipped: number; errors: string[] };
+        importSkills(srcDirs: string[], overwrite?: boolean, onProgress?: (progress: { current: number; total: number; imported: number; skipped: number; errors: number }) => void): Promise<{ imported: number; skipped: number; errors: string[] }>;
         /** Local storage root (~/.symposium by default). */
         root(): string;
     };
@@ -218,7 +218,7 @@ export function createSymposiumApi(deps: SymposiumApiDeps): SymposiumApi {
             importTools: () => importTools(),
             importInstructions: () => importInstructions(),
             scanForeignSkills: () => scanForeignSkills(),
-            importSkills: (srcDirs, overwrite, onProgress) => {
+            importSkills: async (srcDirs, overwrite, onProgress) => {
                 let imported = 0, skipped = 0;
                 const errors: string[] = [];
                 for (const [index, dir] of srcDirs.entries()) {
@@ -227,6 +227,9 @@ export function createSymposiumApi(deps: SymposiumApiDeps): SymposiumApi {
                     else if (r.status === "skipped") { skipped++; }
                     else { errors.push(r.name); }
                     onProgress?.({ current: index + 1, total: srcDirs.length, imported, skipped, errors: errors.length });
+                    // Give the webview renderer a turn to paint progress before
+                    // copying a potentially large next skill bundle.
+                    await new Promise<void>((resolve) => setTimeout(resolve, 0));
                 }
                 return { imported, skipped, errors };
             },

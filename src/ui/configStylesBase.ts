@@ -104,6 +104,10 @@ export const configStylesBase = /* css */ `
         box-shadow: 0 2px 12px color-mix(in srgb, var(--sym-accent) 35%, transparent);
     }
     button.primary:hover { box-shadow: 0 4px 18px color-mix(in srgb, var(--sym-accent) 50%, transparent); }
+    button:disabled { cursor: progress; opacity: .72; transform: none; }
+    button:disabled:hover { transform: none; }
+    .btn-spinner { display: inline-block; width: 11px; height: 11px; margin-right: 7px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sym-spin .7s linear infinite; }
+    @keyframes sym-spin { to { transform: rotate(360deg); } }
     button.danger { color: var(--sym-bad); background: transparent; border: 1px solid color-mix(in srgb, var(--sym-bad) 40%, transparent); }
     button.danger:hover { background: color-mix(in srgb, var(--sym-bad) 16%, transparent); }
 
@@ -179,6 +183,10 @@ export const configStylesBase = /* css */ `
     .row .del:hover { background: color-mix(in srgb, var(--sym-bad) 18%, transparent); opacity: 1; }
 
     .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .resource-operation { display: flex; align-items: center; gap: 8px; margin: -4px 0 14px; padding: 9px 11px; border-radius: var(--sym-radius-sm); border: 1px solid var(--sym-border); background: color-mix(in srgb, var(--sym-accent) 10%, var(--sym-surface)); animation: sym-fade 180ms var(--sym-ease); }
+    .resource-operation .btn-spinner { margin: 0; }
+    .resource-operation.done { border-color: color-mix(in srgb, var(--sym-ok) 45%, var(--sym-border)); }
+    .resource-operation.error { border-color: color-mix(in srgb, var(--sym-bad) 45%, var(--sym-border)); color: var(--sym-bad); }
     .empty {
         opacity: .75; padding: 40px 16px; text-align: center; line-height: 1.6;
         border: 1px dashed var(--sym-border); border-radius: var(--sym-radius);

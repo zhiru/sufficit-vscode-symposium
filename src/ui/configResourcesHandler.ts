@@ -79,7 +79,10 @@ export async function handleResourcesMessage(message: ConfigMessage, ctx: Config
             }
             const paths = picked.map((p) => p.srcPath);
             ctx.post({ type: "skill-import-progress", phase: "copying", current: 0, total: paths.length });
-            const r = api.resources.importSkills(paths, false, (progress) => {
+            // Let the webview paint the loading state before synchronous file
+            // work starts; importSkills yields between bundles thereafter.
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            const r = await api.resources.importSkills(paths, false, (progress) => {
                 ctx.post({ type: "skill-import-progress", phase: "copying", ...progress });
             });
             ctx.post({ type: "skill-import-progress", phase: "done", current: paths.length, total: paths.length, imported: r.imported, skipped: r.skipped, errors: r.errors.length });
