@@ -63,6 +63,43 @@ function ledgerRoot(): string {
     return path.join(os.homedir(), ".symposium", "ledger");
 }
 
+/** Persistent tombstones prevent a scrubbed session from being recovered by a stale ledger. */
+function deletedSessionsFile(): string {
+    return path.join(ledgerRoot(), ".deleted-sessions.json");
+}
+
+function deletedSessionIds(): Set<string> {
+    try {
+        const value = JSON.parse(fs.readFileSync(deletedSessionsFile(), "utf8"));
+        return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
+    } catch {
+        return new Set();
+    }
+}
+
+/** Whether this session was permanently deleted by Symposium. */
+export function isLedgerDeleted(sessionId: string): boolean {
+    return deletedSessionIds().has(sessionId);
+}
+
+/**
+ * Records deletion before disk cleanup. This is deliberately durable: an old
+ * process or delayed filesystem write must not make a permanently deleted
+ * conversation reappear as a recovered session.
+ */
+export function markLedgerDeleted(sessionId: string): void {
+    try {
+        const ids = deletedSessionIds();
+        if (ids.has(sessionId)) { return; }
+        ids.add(sessionId);
+        fs.mkdirSync(ledgerRoot(), { recursive: true });
+        const target = deletedSessionsFile();
+        const temp = `${target}.${process.pid}.tmp`;
+        fs.writeFileSync(temp, JSON.stringify([...ids]));
+        fs.renameSync(temp, target);
+    } catch { /* best-effort: the physical scrub still runs */ }
+}
+
 /** Absolute path of a session's ledger repo. */
 export function ledgerDir(sessionId: string): string {
     return path.join(ledgerRoot(), sessionId);
@@ -77,6 +114,7 @@ function metaFile(dir: string): string { return path.join(dir, "meta.json"); }
  * git identity that never touches the user's config or hooks.
  */
 export async function ensureLedger(sessionId: string, meta: LedgerMeta): Promise<string | undefined> {
+    if (isLedgerDeleted(sessionId)) { return undefined; }
     const dir = ledgerDir(sessionId);
     try {
         fs.mkdirSync(dir, { recursive: true });
@@ -113,6 +151,7 @@ function readMetaFrom(dir: string): LedgerMeta | undefined {
 
 /** Appends one message to the session ledger (append-only, never rewrites). */
 export function appendMessage(sessionId: string, msg: LedgerMessage): void {
+    if (isLedgerDeleted(sessionId)) { return; }
     try {
         const dir = ledgerDir(sessionId);
         fs.mkdirSync(dir, { recursive: true });
@@ -145,6 +184,7 @@ export function lastMessageAtMs(sessionId: string): number | undefined {
  * truth of what the LLM received (system/developer/user + tools + model + effort).
  */
 export function recordRequest(sessionId: string, body: unknown): void {
+    if (isLedgerDeleted(sessionId)) { return; }
     try {
         const dir = ledgerDir(sessionId);
         fs.mkdirSync(dir, { recursive: true });
@@ -154,6 +194,7 @@ export function recordRequest(sessionId: string, body: unknown): void {
 
 /** Commits the current ledger state as one immutable snapshot for this turn. */
 export async function commitTurn(sessionId: string, message: string): Promise<void> {
+    if (isLedgerDeleted(sessionId)) { return; }
     try {
         const dir = ledgerDir(sessionId);
         if (!fs.existsSync(path.join(dir, ".git"))) { return; }
@@ -182,6 +223,7 @@ export function readMessages(sessionId: string): LedgerMessage[] {
 
 /** True if a ledger repo exists for this session. */
 export function hasLedger(sessionId: string): boolean {
+    if (isLedgerDeleted(sessionId)) { return false; }
     try { return fs.existsSync(path.join(ledgerDir(sessionId), ".git")); } catch { return false; }
 }
 
@@ -214,10 +256,12 @@ export function removeLedger(sessionId: string): void {
  */
 export function listLedgerSessions(): LedgerMeta[] {
     const root = ledgerRoot();
+    const deleted = deletedSessionIds();
     let entries: string[];
     try { entries = fs.readdirSync(root).filter((e) => fs.statSync(path.join(root, e)).isDirectory()); } catch { return []; }
     const out: LedgerMeta[] = [];
     for (const sessionId of entries) {
+        if (deleted.has(sessionId)) { continue; }
         const meta = readMetaFrom(ledgerDir(sessionId));
         if (meta) { out.push(meta); }
     }
