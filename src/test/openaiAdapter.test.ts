@@ -55,6 +55,20 @@ test("consumeStream surfaces responses-API reasoning_text delta as thinking", as
     assert.equal(out.text, "answer");
 });
 
+test("consumeStream hides gateway think blocks split across content deltas", async () => {
+    const seen: string[] = [];
+    const body =
+        `data: {"choices":[{"delta":{"content":"<thi"}}]}\n` +
+        `data: {"choices":[{"delta":{"content":"nk>internal reasoning</think>Resposta"}}]}\n` +
+        `data: {"choices":[{"delta":{"content":" final</think>"}}]}\n` +
+        `data: [DONE]\n`;
+    const out = await consumeStream(sseStream(body), "m", timing, false, {
+        onText: (d) => seen.push(d), onReasoning: () => {}, onError: () => {},
+    });
+    assert.equal(out.text, "Resposta final");
+    assert.deepEqual(seen, ["Resposta", " final"]);
+});
+
 test("buildOpenAIModelList does not invent OpenAI fallback models", () => {
     assert.deepEqual(buildOpenAIModelList([], ""), []);
     assert.deepEqual(buildOpenAIModelList([], "sufficit-dev"), ["sufficit-dev"]);

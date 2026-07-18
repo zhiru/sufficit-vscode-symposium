@@ -10,6 +10,7 @@ import { renderMarkdown, inline, copyText } from "./markdown";
 import { svgIcon, fileIcon } from "./icons";
 import { middleEllipsisPath, allDigits } from "./format";
 import { beginEdit, lastUserRow } from "./composer";
+import { clearFailedAttemptForEdit } from "./errorEditRecovery";
 import { renderTodos, todoMark } from "./panels";
 import { configureThinkingRenderer, endThinkingStream } from "./thinking";
 export { renderThinkBlock, streamThinkingDelta } from "./thinking";
@@ -61,7 +62,13 @@ export function renderError(message, historical, retryable) {
         const edit = document.createElement("button"); edit.className = "retryBtn errBtn";
         edit.appendChild(svgIcon("edit"));
         edit.appendChild(document.createTextNode(" Edit"));
-        edit.addEventListener("click", () => beginEdit(lastUser.idx, lastUser.text));
+        edit.addEventListener("click", () => {
+            // Editing a failed turn is a local recovery action: restore the
+            // preceding user message in place and remove all visual evidence of
+            // the failed attempt before the user changes or resends it.
+            clearFailedAttemptForEdit(el);
+            beginEdit(lastUser.idx, lastUser.text);
+        });
 
         bar.appendChild(edit); el.appendChild(bar);
     }

@@ -1,4 +1,5 @@
 import { ApiUsage, ToolCall } from "./types";
+import { ThinkingContentFilter } from "./thinkingContentFilter";
 
 export interface StreamTiming {
     requestStartedAt: number;
@@ -36,6 +37,8 @@ export async function consumeStream(
     const decoder = new TextDecoder();
     let buf = "";
     let assistant = "";
+    const contentFilter = new ThinkingContentFilter();
+    let contentFinished = false;
     let reasoning = "";  // reasoning-channel text (thinking); kept separate from content
     let usage: ApiUsage | undefined;  // final token counts, when the API reports them
     let effectiveModel = m;
@@ -71,7 +74,20 @@ export async function consumeStream(
     const markDelta = () => {
         firstDeltaMs ??= Date.now() - timing.requestStartedAt;
     };
-    const done = () => ({ text: assistant, reasoning, toolCalls: calls.filter((c) => c && c.function.name), aborted: false, usage: usage ? stampUsage(usage) : undefined });
+    const emitText = (delta: string) => {
+        const visible = contentFilter.push(delta);
+        if (visible) { assistant += visible; cb.onText(visible); }
+    };
+    const finishText = () => {
+        if (contentFinished) { return; }
+        contentFinished = true;
+        const visible = contentFilter.finish();
+        if (visible) { assistant += visible; cb.onText(visible); }
+    };
+    const done = () => {
+        finishText();
+        return { text: assistant, reasoning, toolCalls: calls.filter((c) => c && c.function.name), aborted: false, usage: usage ? stampUsage(usage) : undefined };
+    };
     try {
     for (; ;) {
         const r = await reader.read();
@@ -96,7 +112,7 @@ export async function consumeStream(
                     }
                     if (ty === "response.output_text.delta" && typeof json.delta === "string") {
                         markDelta();
-                        assistant += json.delta; cb.onText(json.delta);
+                        emitText(json.delta);
                     } else if ((ty === "response.reasoning_summary_text.delta" || ty === "response.reasoning_text.delta") && typeof json.delta === "string") {
                         markDelta();
                         reasoning += json.delta; cb.onReasoning?.(json.delta);
@@ -188,7 +204,7 @@ export async function consumeStream(
                 }
                 if (typeof delta?.content === "string" && delta.content) {
                     markDelta();
-                    assistant += delta.content; cb.onText(delta.content);
+                    emitText(delta.content);
                 }
                 // Accumulate tool_calls: name+id arrive first, arguments stream in chunks.
                 for (const tc of delta?.tool_calls ?? []) {
@@ -209,6 +225,7 @@ export async function consumeStream(
         // discard what we already received — return the partial accumulation
         // so the caller can persist the partial assistant turn and keep context.
         try { void reader.cancel(); } catch { /* ignore */ }
+        finishText();
         return { text: assistant, reasoning, toolCalls: calls.filter((c) => c && c.function.name), aborted: true };
     }
     return done();
