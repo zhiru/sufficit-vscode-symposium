@@ -1,6 +1,5 @@
 import * as http from "http";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { randomUUID } from "crypto";
 import * as vscode from "vscode";
@@ -10,6 +9,8 @@ import { SymposiumApi, SendMode } from "./symposiumApi";
 import { isBridgeAuthorized } from "./bridgeAuth";
 import { BridgePolicy, resolveBridgePolicy, isCwdAllowed, isHostAllowed, isLmToolAllowed } from "./bridgePolicy";
 import { renderPwaHtml } from "../ui/pwaHtml";
+import { decodeBridgePathSegment } from "./bridgeRoutes";
+import { removeBridgeAdvertisement, writeBridgeAdvertisement } from "./bridgeAdvertisement";
 
 const PWA_MIME: Record<string, string> = {
     ".js": "text/javascript", ".css": "text/css", ".map": "application/json",
@@ -89,7 +90,6 @@ export class RemoteBridge {
         return isBridgeAuthorized(req.headers.authorization, url, token, req.headers["x-symposium-token"]);
     }
 
-    /** Reads the current server-side policy from settings (fresh each request). */
     private policy(): BridgePolicy {
         const cfg = vscode.workspace.getConfiguration("symposium.bridge");
         const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
@@ -181,7 +181,6 @@ export class RemoteBridge {
                 const tools = (vscode.lm?.tools ?? []).map((t) => ({ name: t.name, description: t.description, tags: t.tags }));
                 return json(res, 200, tools);
             }
-            // GET /sessions
             if (method === "GET" && parts[0] === "sessions" && parts.length === 1) {
                 return json(res, 200, this.api.sessions.list());
             }
@@ -211,20 +210,35 @@ export class RemoteBridge {
                 return id ? json(res, 200, { id }) : json(res, 400, { error: "unknown backend" });
             }
             // POST /sessions/:id/send  {text, mode?}
-            if (method === "POST" && parts[0] === "sessions" && parts[2] === "send") {
+            if (method === "POST" && parts[0] === "sessions" && parts[2] === "send" && parts.length === 3) {
+                const sessionId = decodeBridgePathSegment(parts[1]);
+                if (!sessionId) { return json(res, 400, { error: "invalid session id" }); }
                 const body = await readBody(req);
                 if (typeof body.text !== "string") { return json(res, 400, { error: "text must be a string" }); }
-                const ok = this.api.sessions.send(parts[1], body.text, body.mode as SendMode);
-                return json(res, ok ? 200 : 404, { ok });
+                const mode = body.mode == null ? "send" : body.mode;
+                if (mode !== "send" && mode !== "queue" && mode !== "steer") {
+                    return json(res, 400, { error: "mode must be send, queue, or steer" });
+                }
+                const ok = this.api.sessions.send(sessionId, body.text, mode as SendMode);
+                return ok
+                    ? json(res, 200, { ok: true })
+                    : json(res, 404, {
+                        ok: false,
+                        error: "session is not live",
+                        message: "Refresh GET /sessions and use a sessionId returned by the Bridge.",
+                    });
             }
-            // POST /sessions/:id/interrupt
-            if (method === "POST" && parts[0] === "sessions" && parts[2] === "interrupt") {
-                const ok = this.api.sessions.interrupt(parts[1]);
+            if (method === "POST" && parts[0] === "sessions" && parts[2] === "interrupt" && parts.length === 3) {
+                const sessionId = decodeBridgePathSegment(parts[1]);
+                if (!sessionId) { return json(res, 400, { error: "invalid session id" }); }
+                const ok = this.api.sessions.interrupt(sessionId);
                 return json(res, ok ? 200 : 404, { ok });
             }
             // GET /sessions/:id/follow  (SSE)
-            if (method === "GET" && parts[0] === "sessions" && parts[2] === "follow") {
-                return this.follow(parts[1], res);
+            if (method === "GET" && parts[0] === "sessions" && parts[2] === "follow" && parts.length === 3) {
+                const sessionId = decodeBridgePathSegment(parts[1]);
+                if (!sessionId) { return json(res, 400, { error: "invalid session id" }); }
+                return this.follow(sessionId, res);
             }
             // GET /resources
             if (method === "GET" && parts[0] === "resources" && parts.length === 1) {
@@ -382,18 +396,4 @@ function readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function bridgeAdvertisementPath(): string {
-    return path.join(os.homedir(), ".symposium", "bridge.json");
-}
-
-function writeBridgeAdvertisement(url: string, token: string): void {
-    const filePath = bridgeAdvertisementPath();
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify({ url, token }), { mode: 0o600 });
-}
-
-function removeBridgeAdvertisement(): void {
-    try { fs.rmSync(bridgeAdvertisementPath(), { force: true }); } catch { /* ignore */ }
 }

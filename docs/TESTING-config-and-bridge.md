@@ -75,6 +75,13 @@ Endpoints: `GET /health` · `GET/POST /sessions` · `POST /sessions/:id/send` ·
 `GET/POST /resources` · `POST /resources/seed` · `DELETE /resources/:kind/:name` ·
 `GET /backends` · `GET /sync` · `GET /bridge/diagnostics`.
 
+`GET /sessions` lista somente sessões vivas e endereçáveis. Para responder em
+uma conversa existente, sempre atualize a lista e use exatamente o `sessionId`
+retornado. IDs de subagentes que contêm `/` devem ser codificados como um único
+segmento URL (`encodeURIComponent` / `jq @uri`). Um id obtido apenas de ledger,
+memória ou arquivo histórico pode ser lido offline, mas não representa um
+controlador vivo e o envio retorna `404 session is not live`.
+
 ## Segurança
 
 - Bridge **off** por padrão. Bind `127.0.0.1`. Token obrigatório (401 sem ele).

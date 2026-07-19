@@ -7,7 +7,14 @@ import * as fs from "fs";
  * titles and history.
  */
 export function looksInjected(text: string): boolean {
-    return text.startsWith("<") || text.startsWith("# ");
+    const value = text.trimStart();
+    // The host forwards operational directives as separate user messages in a
+    // Codex rollout. They are not a conversation task. Treating the first one
+    // as a title made unrelated parent/subagent sessions all look like
+    // "[Terminal execution] …", which in turn looked like duplicated work.
+    return value.startsWith("<")
+        || value.startsWith("# ")
+        || /^\[(?:terminal execution|role|operational rule|plan|session|rtk command policy)\b/i.test(value);
 }
 
 /** Reads the session_meta line (id, cwd) and first real user prompt (title). */

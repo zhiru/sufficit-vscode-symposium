@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { parseCodexModelCatalog } from "../adapters/codex/models";
 import { buildHttpMcpWrapperScript, codexWorkspaceArgs, mcpHttpWrapperPath } from "../adapters/codex/codexMcpConfig";
 import { codexModelArgs } from "../adapters/codex/session";
+import { looksInjected } from "../adapters/codex/transcript";
 
 test("HTTP MCP wrapper reads URL and headers from mcp.json at runtime", () => {
     const script = buildHttpMcpWrapperScript("/tmp/mcp.json", "sufficit'quoted");
@@ -54,4 +55,11 @@ test("Codex applies a model picker change to the next exec turn", () => {
     assert.deepEqual(codexModelArgs("gpt-5.6", "gpt-5.5-codex"), ["--model", "gpt-5.6"]);
     assert.deepEqual(codexModelArgs("default", "gpt-5.5-codex"), ["--model", "gpt-5.5-codex"]);
     assert.deepEqual(codexModelArgs(undefined, ""), []);
+});
+
+test("Codex transcript ignores injected operational messages as session titles", () => {
+    assert.equal(looksInjected("[Terminal execution] When a shell tool is available..."), true);
+    assert.equal(looksInjected("[PLAN — current step marked below]"), true);
+    assert.equal(looksInjected("[RTK command policy] Use rtk when available."), true);
+    assert.equal(looksInjected("Corrija a duplicação das sessões de subagentes."), false);
 });
