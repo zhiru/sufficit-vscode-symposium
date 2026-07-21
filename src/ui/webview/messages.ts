@@ -354,11 +354,11 @@ function flushStreamRender() {
     streamRaf = 0;
     if (streamBody) { streamBody.textContent = ""; renderMarkdown(streamBody, streamText); }
 }
-export function streamDelta(text) {
+export function streamDelta(text, model) {
     const stick = nearBottom();
     endThinkingStream(); // close any open thinking block before first text token
     if (!streamMsg) {
-        streamMsg = message("assistant", "", Date.now());
+        streamMsg = message("assistant", "", Date.now(), model || activeModel || "");
         streamBody = streamMsg.querySelector(".md");
         streamText = "";
     }

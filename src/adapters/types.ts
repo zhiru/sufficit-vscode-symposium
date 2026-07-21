@@ -188,6 +188,12 @@ export interface SessionStartOptions {
      */
     seedHistory?: string;
     /**
+     * Read-only parent conversation reference for a cross-backend handoff.
+     * The target receives this as a compact first-turn instruction and can use
+     * read_session to fetch only the portions of the source it needs.
+     */
+    handoff?: { sessionId?: string; backend: string; title: string };
+    /**
      * Extra environment for the spawned CLI process (e.g. tool secrets resolved
      * from the vault at spawn time). Merged after the adapter's static config env.
      */

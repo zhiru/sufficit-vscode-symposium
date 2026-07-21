@@ -96,6 +96,7 @@ export class CodexAdapter implements AgentAdapter {
                     backend: "codex",
                     sessionId: meta.id,
                     title: meta.title ?? path.basename(file),
+                    model: meta.model,
                     cwd: meta.cwd,
                     updatedAt: stat.mtime,
                     transcriptPath: file,
@@ -120,6 +121,7 @@ export class CodexAdapter implements AgentAdapter {
             return [];
         }
         const messages: HistoryMessage[] = [];
+        let activeModel = info.model;
         for (const line of content.split("\n")) {
             if (!line.trim()) {
                 continue;
@@ -129,6 +131,7 @@ export class CodexAdapter implements AgentAdapter {
                 payload?: {
                     type: string;
                     role?: string;
+                    model?: string;
                     content?: Array<{
                         type: string;
                         text?: string;
@@ -139,6 +142,10 @@ export class CodexAdapter implements AgentAdapter {
             try {
                 entry = JSON.parse(line);
             } catch {
+                continue;
+            }
+            if (entry.type === "turn_context" && typeof entry.payload?.model === "string") {
+                activeModel = entry.payload.model;
                 continue;
             }
             if (entry.type !== "response_item" || entry.payload?.type !== "message") {
@@ -155,7 +162,7 @@ export class CodexAdapter implements AgentAdapter {
                 .trim();
             // Skip the large injected scaffolding messages (instructions, skills, etc.).
             if (text && !looksInjected(text)) {
-                messages.push({ role: role === "user" ? "user" : "assistant", text });
+                messages.push({ role: role === "user" ? "user" : "assistant", text, model: role === "assistant" ? activeModel : undefined });
             }
         }
         return messages;

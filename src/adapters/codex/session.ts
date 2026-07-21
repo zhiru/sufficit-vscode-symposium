@@ -14,6 +14,11 @@ export function codexModelArgs(selected: string | undefined, configured: string)
     return model && model !== "default" ? ["--model", model] : [];
 }
 
+/** Keeps prompts out of argv so large backend handoffs cannot exceed OS spawn limits. */
+export function codexPromptArgs(sessionId: string | undefined): string[] {
+    return sessionId ? ["resume", sessionId, "-"] : ["-"];
+}
+
 /**
  * Drives the Codex CLI through `codex exec --json` (JSONL events), one
  * process per turn. Continuity uses `codex exec resume <session-id>`; the
@@ -29,6 +34,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
     private reportedError = false;
     private warnedUnenforcedMode = false; // emitted the manager/user "not yet enforced" notice once
     private turnSequence = 0;
+    private effectiveModel: string;
     private vscodeMcpServers: Record<string, { command: string; args: string[] }>;
 
     constructor(
@@ -38,12 +44,14 @@ export class CodexSession extends EventEmitter implements AgentSession {
         super();
         this.vscodeMcpServers = loadVscodeMcpServers();
         this.sessionId = options.resumeSessionId;
+        this.effectiveModel = options.model || config.model;
     }
 
     setModel(model: string): void {
         // `default` means remove this conversation's override and let the
         // configured Codex/default model take over on the next spawn.
         this.options.model = model === "default" ? undefined : model;
+        this.effectiveModel = this.options.model || this.config.model;
     }
 
     send(text: string): void {
@@ -57,7 +65,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
         const sequence = ++this.turnSequence;
         void this.spawnTurn(text, sequence).catch((error) => {
             if (!this.disposed && sequence === this.turnSequence) {
-                this.emit("event", { kind: "error", message: `Codex MCP sync failed: ${error instanceof Error ? error.message : String(error)}` });
+                this.emit("event", { kind: "error", message: `Codex turn failed: ${error instanceof Error ? error.message : String(error)}` });
                 this.emit("event", { kind: "turn-end" });
             }
         });
@@ -110,16 +118,16 @@ export class CodexSession extends EventEmitter implements AgentSession {
             if (s.command) { base.push("-c", `mcp_servers.${name}.command=${JSON.stringify(s.command)}`); }
             if (s.args) { base.push("-c", `mcp_servers.${name}.args=${JSON.stringify(s.args)}`); }
         }
-        // `resume <id>` must precede the prompt; a fresh turn just passes the prompt.
-        const args = this.sessionId
-            ? [...base, "resume", this.sessionId, text]
-            : [...base, text];
+        // Read every prompt from stdin. Backend handoffs can contain a transcript
+        // larger than the operating system's argv limit (spawn E2BIG).
+        const args = [...base, ...codexPromptArgs(this.sessionId)];
 
         const child = spawn(resolveExecutable(this.config.executable), args, {
             cwd: this.options.cwd,
             env: { ...process.env, ...this.options.env },
-            stdio: ["ignore", "pipe", "pipe"],
+            stdio: ["pipe", "pipe", "pipe"],
         });
+        child.stdin.end(text);
         this.current = child;
         this.cancelled = false;
         this.reportedError = false;
@@ -175,7 +183,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
             case "thread.started":
                 if (typeof event.thread_id === "string" && !this.sessionId) {
                     this.sessionId = event.thread_id;
-                    this.emit("event", { kind: "session", sessionId: event.thread_id });
+                    this.emit("event", { kind: "session", sessionId: event.thread_id, model: this.effectiveModel || undefined });
                 }
                 break;
             case "item.started":
@@ -195,9 +203,9 @@ export class CodexSession extends EventEmitter implements AgentSession {
                     break;
                 }
                 if (itemType === "agent_message" && typeof item.text === "string") {
-                    this.emit("event", { kind: "text", text: item.text });
+                    this.emit("event", { kind: "text", text: item.text, model: this.effectiveModel || undefined });
                 } else if (itemType === "reasoning" && typeof item.text === "string") {
-                    this.emit("event", { kind: "text", text: item.text });
+                    this.emit("event", { kind: "text", text: item.text, model: this.effectiveModel || undefined });
                 } else if (itemType === "command_execution" && typeof item.command === "string") {
                     this.emit("event", { kind: "tool-end", toolName: "exec", detail: item.command });
                 } else if (itemType === "file_change" || itemType === "mcp_tool_call" || itemType === "web_search") {
@@ -211,6 +219,13 @@ export class CodexSession extends EventEmitter implements AgentSession {
                 // the Context Window meter fills before the turn even ends.
                 this.emitUsage(event);
                 break;
+            case "turn_context": {
+                const payload = typeof event.payload === "object" && event.payload !== null ? event.payload as Record<string, unknown> : {};
+                if (typeof payload.model === "string" && payload.model) {
+                    this.effectiveModel = payload.model;
+                }
+                break;
+            }
             case "turn.completed":
                 // turn.completed may carry { usage: {...} }. Emit usage (if any)
                 // BEFORE turn-end so the meter reflects the final totals.
@@ -258,6 +273,7 @@ export class CodexSession extends EventEmitter implements AgentSession {
             outputTokens: u.outputTokens,
             cacheRead: u.cacheRead,
             contextWindow: u.contextWindow ?? contextWindowFor(this.options.model || this.config.model),
+            model: this.effectiveModel || undefined,
         });
     }
 

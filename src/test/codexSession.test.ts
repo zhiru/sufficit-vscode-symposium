@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { parseCodexModelCatalog } from "../adapters/codex/models";
 import { buildHttpMcpWrapperScript, codexWorkspaceArgs, mcpHttpWrapperPath } from "../adapters/codex/codexMcpConfig";
-import { codexModelArgs } from "../adapters/codex/session";
+import { codexModelArgs, codexPromptArgs } from "../adapters/codex/session";
 import { looksInjected } from "../adapters/codex/transcript";
 
 test("HTTP MCP wrapper reads URL and headers from mcp.json at runtime", () => {
@@ -55,6 +55,14 @@ test("Codex applies a model picker change to the next exec turn", () => {
     assert.deepEqual(codexModelArgs("gpt-5.6", "gpt-5.5-codex"), ["--model", "gpt-5.6"]);
     assert.deepEqual(codexModelArgs("default", "gpt-5.5-codex"), ["--model", "gpt-5.5-codex"]);
     assert.deepEqual(codexModelArgs(undefined, ""), []);
+});
+
+test("Codex reads fresh and resumed prompts from stdin instead of argv", () => {
+    assert.deepEqual(codexPromptArgs(undefined), ["-"]);
+    assert.deepEqual(codexPromptArgs("session-123"), ["resume", "session-123", "-"]);
+
+    const oversizedHandoff = "x".repeat(2_000_000);
+    assert.ok(!codexPromptArgs(undefined).includes(oversizedHandoff));
 });
 
 test("Codex transcript ignores injected operational messages as session titles", () => {

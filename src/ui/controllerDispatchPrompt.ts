@@ -7,7 +7,7 @@ import { PendingMessage } from "./controllerQueue";
 export interface DispatchPromptContext {
     adapter: AgentAdapter;
     sessionId: string | undefined;
-    options: Pick<SessionStartOptions, "seedHistory" | "bootstrap">;
+    options: Pick<SessionStartOptions, "seedHistory" | "bootstrap" | "handoff">;
     hubState: { guardrails: string[] };
     aiToolsInfo(): { available: string[]; enabled: string[] } | undefined;
     pendingTasksSummary(): string | undefined;
@@ -62,6 +62,7 @@ export function buildDispatchOutbound(
         // tell the model to track the same plan two different ways.
         todoInjection: trackingMode === "fence" ? ctx.adapter.todoInjection?.() : undefined,
         seedHistory: ctx.options.seedHistory,
+        handoff: ctx.options.handoff,
         bootstrap: ctx.options.bootstrap,
         resumeCheckpoint: msg.resumeCheckpoint,
         interruptedBy: msg.interruptedBy,

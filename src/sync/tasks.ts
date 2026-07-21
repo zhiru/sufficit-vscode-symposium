@@ -30,22 +30,24 @@ const isTask = (type: unknown): boolean => String(type ?? "").startsWith("task")
 const hasTag = (tags: unknown, tag: string): boolean => String(tags ?? "").split(",").map((t) => t.trim()).includes(tag);
 
 /**
- * Short-lived recent-create cache, keyed by session: the hub's search index
+ * Recent-create cache, keyed by session: the hub's search index
  * (which fetchSessionTasks reads from) can lag well behind a save — a task
  * created moments ago may not be visible yet. Without this, task_complete's
  * "remaining" check reads a stale list missing that just-created sibling and
  * wrongly reports allTasksComplete while real work is still pending. Mirrors
  * surfaceSync.ts's ghost-task grace window, but protects the TOOL's own
  * signal to the model rather than just the task panel's display.
+ * Entries stay until the search index observes them or they are explicitly
+ * completed. A time limit is incorrect here: long-running plans can outlive it
+ * while the index is still stale, producing a false allTasksComplete result.
  */
-const RECENT_CREATE_GRACE_MS = 60_000;
-interface RecentTask { id: string; title: string; ts: number; done: boolean; }
+interface RecentTask { id: string; title: string; done: boolean; }
 const recentBySession = new Map<string, RecentTask[]>();
 
 /** Records a just-created task so it survives a search-index lag window. */
 export function rememberTaskCreated(sessionId: string, id: string, title: string): void {
     const list = recentBySession.get(sessionId) ?? [];
-    list.push({ id, title, ts: Date.now(), done: false });
+    list.push({ id, title, done: false });
     recentBySession.set(sessionId, list);
 }
 
@@ -86,15 +88,6 @@ export function priorInBatch(sessionId: string, id: string): string[] {
     return [];
 }
 
-/** Recently-created, still-pending tasks within the grace window (prunes stale entries as a side effect). */
-function recentPending(sessionId: string): RecentTask[] {
-    const list = recentBySession.get(sessionId);
-    if (!list) { return []; }
-    const fresh = list.filter((t) => Date.now() - t.ts < RECENT_CREATE_GRACE_MS);
-    recentBySession.set(sessionId, fresh);
-    return fresh.filter((t) => !t.done);
-}
-
 /** Lists the task observations bound to a Symposium session (newest first). */
 export async function fetchSessionTasks(hub: HubClient, sessionId: string): Promise<TaskItem[]> {
     if (!hub.configured() || !sessionId) { return []; }
@@ -107,9 +100,17 @@ export async function fetchSessionTasks(hub: HubClient, sessionId: string): Prom
         .slice(0, 30)
         .map((r) => ({ id: String(r.id), type: r.type, title: r.title ?? "", summary: r.summary ?? "", ts: String(r.createdAtUtc || ""), tags: Array.isArray(r.tags) ? r.tags.join(",") : r.tags ?? "", done: hasTag(r.tags, DONE_TAG) }));
     const knownIds = new Set(fromSearch.map((t) => t.id));
-    const ghosts = recentPending(sessionId)
+    const recent = recentBySession.get(sessionId) ?? [];
+    const ghosts = recent
         .filter((t) => !knownIds.has(t.id))
+        .filter((t) => !t.done)
         .map((t): TaskItem => ({ id: t.id, type: "task-anchor", title: t.title, summary: t.title, done: false }));
+    // Once search observes an id, it is authoritative. Keep only unresolved
+    // pending creates; completed entries and indexed entries no longer need the
+    // local protection. This prevents stale ghosts without a time-based race.
+    const unresolved = recent.filter((t) => !t.done && !knownIds.has(t.id));
+    if (unresolved.length) { recentBySession.set(sessionId, unresolved); }
+    else { recentBySession.delete(sessionId); }
     return [...fromSearch, ...ghosts];
 }
 

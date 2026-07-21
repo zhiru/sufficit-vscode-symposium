@@ -18,7 +18,7 @@ export function looksInjected(text: string): boolean {
 }
 
 /** Reads the session_meta line (id, cwd) and first real user prompt (title). */
-export async function readCodexMeta(file: string): Promise<{ id?: string; cwd?: string; title?: string }> {
+export async function readCodexMeta(file: string): Promise<{ id?: string; cwd?: string; title?: string; model?: string }> {
     let content: string;
     try {
         content = await fs.promises.readFile(file, "utf8");
@@ -28,7 +28,8 @@ export async function readCodexMeta(file: string): Promise<{ id?: string; cwd?: 
     let id: string | undefined;
     let cwd: string | undefined;
     let title: string | undefined;
-    for (const line of content.split("\n").slice(0, 60)) {
+    let model: string | undefined;
+    for (const [index, line] of content.split("\n").entries()) {
         if (!line.trim()) {
             continue;
         }
@@ -40,6 +41,7 @@ export async function readCodexMeta(file: string): Promise<{ id?: string; cwd?: 
                 cwd?: string;
                 role?: string;
                 content?: Array<{ type: string; text?: string }>;
+                model?: string;
             };
         }
         let entry: CodexEntry;
@@ -51,7 +53,9 @@ export async function readCodexMeta(file: string): Promise<{ id?: string; cwd?: 
         if (entry.type === "session_meta") {
             id = entry.payload?.id;
             cwd = entry.payload?.cwd;
-        } else if (!title && entry.type === "response_item" && entry.payload?.type === "message" && entry.payload.role === "user") {
+        } else if (entry.type === "turn_context" && typeof entry.payload?.model === "string") {
+            model = entry.payload.model;
+        } else if (!title && index < 60 && entry.type === "response_item" && entry.payload?.type === "message" && entry.payload.role === "user") {
             const text = (entry.payload.content ?? [])
                 .filter((c: { type: string }) => c.type === "input_text" || c.type === "text")
                 .map((c: { text?: string }) => c.text)
@@ -61,9 +65,6 @@ export async function readCodexMeta(file: string): Promise<{ id?: string; cwd?: 
                 title = text.slice(0, 80);
             }
         }
-        if (id && title) {
-            break;
-        }
     }
-    return { id, cwd, title };
+    return { id, cwd, title, model };
 }

@@ -4,6 +4,7 @@ export interface OutboundPromptState {
     policyInjected: boolean;
     todoInjected: boolean;
     seedInjected: boolean;
+    handoffInjected?: boolean;
     autonomyInjected: boolean;
     rtkInjected?: boolean;
     sessionIdInjected?: boolean;
@@ -18,6 +19,7 @@ export interface BuildOutboundPromptOptions extends OutboundPromptState {
     fileAttachments: string[];
     todoInjection?: string;
     seedHistory?: string;
+    handoff?: { sessionId?: string; backend: string; title: string };
     /** Per-workspace bootstrap context, injected once before the first message. */
     bootstrap?: string;
     /**
@@ -97,6 +99,14 @@ export function sessionIdNote(id: string): string {
         `Call the read_session tool (with no arguments, or this id) at any time to re-read this conversation's full transcript and recover context. You will never lose track of which session you are in.`;
 }
 
+/** Compact, actionable context for a conversation continued on another backend. */
+export function handoffReferenceNote(handoff: NonNullable<BuildOutboundPromptOptions["handoff"]>): string {
+    const source = handoff.sessionId
+        ? `Parent session id: ${handoff.sessionId}. Before acting, call read_session with this id; start with a recent tail and request more only when needed.`
+        : "The parent session id was not available; use the user's current request as the source of truth.";
+    return `[Backend handoff] You are continuing the conversation titled ${JSON.stringify(handoff.title || "Untitled")} from ${handoff.backend}. ${source} Do not reuse goals or tasks from unrelated conversations. Follow the latest user request from the parent conversation.`;
+}
+
 // Injected once when the user marks themselves "away": full autonomy, no prompts.
 
 export const RTK_PREAMBLE =
@@ -165,6 +175,7 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
         policyInjected: options.policyInjected,
         todoInjected: options.todoInjected,
         seedInjected: options.seedInjected,
+        handoffInjected: options.handoffInjected ?? false,
         autonomyInjected: options.autonomyInjected,
         rtkInjected: options.rtkInjected ?? false,
         sessionIdInjected: options.sessionIdInjected ?? false,
@@ -247,6 +258,10 @@ export function buildOutboundPrompt(options: BuildOutboundPromptOptions): { text
     if (!state.seedInjected && options.seedHistory) {
         prefixes.push(options.seedHistory);
         state.seedInjected = true;
+    }
+    if (!state.handoffInjected && options.handoff) {
+        prefixes.push(handoffReferenceNote(options.handoff));
+        state.handoffInjected = true;
     }
 
     // Role-aware backends carry the preambles as separate developer messages;

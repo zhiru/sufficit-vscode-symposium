@@ -4,6 +4,7 @@ import {
     AUTONOMY_PREAMBLE,
     buildOutboundPrompt,
     CANCELED_RETRY_PREAMBLE,
+    handoffReferenceNote,
     SHELL_EXECUTION_PREAMBLE,
     planTrackingPreamble,
 } from "../ui/outboundPrompt";
@@ -179,6 +180,33 @@ test("buildOutboundPrompt classifies autonomy and attachments", () => {
     assert.equal(out.state.autonomyInjected, true);
     assert.equal(out.state.todoInjected, true);
     assert.equal(out.state.seedInjected, true);
+});
+
+test("backend handoff injects only a parent reference, not the full transcript", () => {
+    const handoff = { sessionId: "claude-parent-123", backend: "Claude Code", title: "Fix bridge routing" };
+    const out = buildOutboundPrompt({
+        text: "Continue the parent conversation.",
+        fileAttachments: [],
+        policyInjected: true,
+        todoInjected: true,
+        seedInjected: false,
+        autonomyInjected: false,
+        handoff,
+    });
+    assert.ok(out.text.includes("claude-parent-123"));
+    assert.ok(out.text.includes("read_session"));
+    assert.ok(out.text.includes("Fix bridge routing"));
+    assert.equal(out.text.includes("[user] full historic transcript"), false);
+    assert.equal(out.state.handoffInjected, true);
+
+    const second = buildOutboundPrompt({ text: "next turn", fileAttachments: [], ...out.state, handoff });
+    assert.equal(second.text.includes("claude-parent-123"), false);
+});
+
+test("backend handoff degrades safely when the source id is unavailable", () => {
+    const note = handoffReferenceNote({ backend: "Claude Code", title: "Untitled" });
+    assert.ok(note.includes("not available"));
+    assert.equal(note.includes("read_session with this id"), false);
 });
 
 test("buildOutboundPrompt asRoles returns preambles separately, not glued to text", () => {
