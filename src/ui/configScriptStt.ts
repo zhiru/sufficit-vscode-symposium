@@ -70,6 +70,18 @@ export const configScriptStt = `
             }
             return true;
         }
+        if (d.type === "stt-sufficit-recover-result") {
+            const out = document.getElementById("stt-sufficit-recover-result");
+            const btn = document.getElementById("stt-sufficit-recover");
+            if (btn) { btn.disabled = false; }
+            if (out) {
+                const key = d.ok
+                    ? "config.voice.sufficitRecover.started"
+                    : (d.reason === "no-winner" ? "config.voice.sufficitRecover.noWinner" : "config.voice.sufficitRecover.failed");
+                out.innerHTML = '<div class="desc" style="color:var(--sym-' + (d.ok ? "ok" : "bad") + ')">' + esc(t(key)) + '</div>';
+            }
+            return true;
+        }
         return false;
     }
 `;

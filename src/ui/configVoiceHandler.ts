@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import type { ConfigHandlerCtx, ConfigMessage } from "./configPanel";
-import { getSttState } from "../voice/sttService";
+import { getSttState, readSettings } from "../voice/sttService";
 import { buildSttDiagnostic, SttDiagnosticSnapshot } from "../voice/sttDiagnostic";
+import { buildSttRecoveryPrompt, getSttRecoveryTarget } from "../voice/sttRecovery";
 import { defaultCwd } from "../extension/config";
 
 export type { DiagnoseResult, DiagnoseStep } from "../voice/sttDiagnostic";
@@ -13,6 +14,7 @@ export type { DiagnoseResult, DiagnoseStep } from "../voice/sttDiagnostic";
 export async function handleVoiceMessage(_message: ConfigMessage, ctx: ConfigHandlerCtx): Promise<boolean> {
     if (_message.type === "stt-diagnose") { return handleManualDiagnose(_message, ctx); }
     if (_message.type === "stt-sufficit-diagnose") { return handleSufficitDiagnose(ctx); }
+    if (_message.type === "stt-sufficit-recover") { return handleSufficitRecover(ctx); }
     return false;
 }
 
@@ -63,6 +65,34 @@ async function handleSufficitDiagnose(ctx: ConfigHandlerCtx): Promise<boolean> {
     ctx.api.sessions.send(key, SUFFICIT_VOICE_BENCHMARK_PROMPT, "send");
     void ctx.chatView.openDialogue("openai", { cwd, resumeSessionId: key }, "Voice engine benchmark");
     ctx.post({ type: "stt-sufficit-diagnose-result", ok: true });
+    return true;
+}
+
+/** Restores only the already-selected local winner; never benchmarks again. */
+async function handleSufficitRecover(ctx: ConfigHandlerCtx): Promise<boolean> {
+    const settings = readSettings();
+    const target = getSttRecoveryTarget(settings);
+    const prompt = buildSttRecoveryPrompt(settings);
+    if (!target || !prompt) {
+        ctx.post({ type: "stt-sufficit-recover-result", ok: false, reason: "no-winner" });
+        return true;
+    }
+    const loggedIn = (await ctx.auth?.isLoggedIn().catch(() => false)) === true;
+    const backends = await ctx.api.backends.list().catch(() => []);
+    const openaiAvailable = backends.some((b) => b.backend === "openai" && b.available);
+    if (!loggedIn || !openaiAvailable || !ctx.chatView) {
+        ctx.post({ type: "stt-sufficit-recover-result", ok: false, reason: "unavailable" });
+        return true;
+    }
+    const cwd = defaultCwd();
+    const key = await ctx.api.sessions.create("openai", { cwd });
+    if (!key) {
+        ctx.post({ type: "stt-sufficit-recover-result", ok: false, reason: "unavailable" });
+        return true;
+    }
+    ctx.api.sessions.send(key, prompt, "send");
+    void ctx.chatView.openDialogue("openai", { cwd, resumeSessionId: key }, `Voice engine recovery: ${target.engine}`);
+    ctx.post({ type: "stt-sufficit-recover-result", ok: true, engine: target.engine, model: target.model });
     return true;
 }
 

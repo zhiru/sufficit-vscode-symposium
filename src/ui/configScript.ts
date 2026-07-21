@@ -180,6 +180,15 @@ export function renderConfigScript(dict: Record<string, string>): string {
                     vscode.postMessage({ type: "stt-sufficit-diagnose" });
                 };
             }
+            const sufficitRecoverBtn = document.getElementById("stt-sufficit-recover");
+            if (sufficitRecoverBtn) {
+                sufficitRecoverBtn.onclick = () => {
+                    const out = document.getElementById("stt-sufficit-recover-result");
+                    if (out) { out.innerHTML = '<div class="desc">' + esc(t("config.voice.sufficitRecover.starting")) + '</div>'; }
+                    sufficitRecoverBtn.disabled = true;
+                    vscode.postMessage({ type: "stt-sufficit-recover" });
+                };
+            }
             return;
         }
         if (active === "vscode") {

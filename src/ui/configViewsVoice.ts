@@ -46,22 +46,25 @@ export const configViewsVoice = `
             '</div>'
         );
 
-        // Automated counterpart: instead of a checklist, hands the whole
-        // "install everything, benchmark, decide" problem to a real Sufficit
-        // AI agent session — only offered when signed in and that backend is
-        // usable, since it needs both to actually run a turn.
+        // Automated counterparts: the fast path restores only the selected
+        // winner; the full benchmark remains available for first-time setup.
         const profile = state && state.profile;
         const backends = (state && state.backends) || [];
         const sufficitReady = !!(profile && (profile.name || profile.email)) &&
             backends.some(b => b.backend === "openai" && b.available);
         const sufficitBody = sufficitReady
-            ? '<div class="desc" style="margin-bottom:8px">' + esc(t("config.voice.sufficitDiagnose.hint")) + '</div>' +
+            ? '<div class="desc" style="margin-bottom:8px">' + esc(t("config.voice.sufficitRecover.hint")) + '</div>' +
+              '<div class="pref-block" style="margin-bottom:16px">' +
+                  '<button class="primary" id="stt-sufficit-recover">' + esc(t("config.voice.sufficitRecover.btn")) + '</button>' +
+                  '<div id="stt-sufficit-recover-result"></div>' +
+              '</div>' +
+              '<div class="desc" style="margin-bottom:8px">' + esc(t("config.voice.sufficitDiagnose.hint")) + '</div>' +
               '<div class="pref-block">' +
                   '<button class="primary" id="stt-sufficit-diagnose">' + esc(t("config.voice.sufficitDiagnose.btn")) + '</button>' +
                   '<div id="stt-sufficit-diag-result"></div>' +
               '</div>'
             : '<div class="desc">' + esc(t("config.voice.sufficitDiagnose.needsLogin")) + '</div>';
-        const sufficitSection = section(t("config.voice.sufficitDiagnose.section"), sufficitBody);
+        const sufficitSection = section(t("config.voice.sufficitAutomation.section"), sufficitBody);
 
         // Engine + global capture settings.
         const engineOpts = (stt.engines || []).map(e => ({ v: e.id, l: e.label }));
