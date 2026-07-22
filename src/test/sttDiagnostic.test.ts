@@ -36,6 +36,16 @@ test("stt diagnostic: webspeech reports browser check instead of local whisper c
     assert.equal(result.steps[0].label, "config.voice.diagnose.webspeech");
 });
 
+test("stt diagnostic: VS Code Speech uses provider availability only", () => {
+    const state = snapshot("vscode-speech");
+    state.availability["vscode-speech"] = true;
+    const result = buildSttDiagnostic(state, tr, false, false);
+
+    assert.equal(result.ready, true);
+    assert.deepEqual(result.steps.map((s) => s.id), ["vscode-speech"]);
+    assert.equal(result.steps[0].status, "ok");
+});
+
 test("stt diagnostic: unsupported webspeech returns actionable failure", () => {
     const result = buildSttDiagnostic(snapshot("webspeech"), tr, false, true);
 

@@ -414,6 +414,7 @@
           "enum": [
             "auto",
             "webspeech",
+            "vscode-speech",
             "whisper-cpp",
             "faster-whisper",
             "vosk"
@@ -421,6 +422,7 @@
           "enumDescriptions": [
             "Web Speech in the browser (code-server); local whisper.cpp on desktop.",
             "Browser Web Speech API only (works in code-server, not VS Code desktop).",
+            "Uses the installed Microsoft VS Code Speech provider through VS Code editor dictation. Available only when that provider is installed in the desktop UI.",
             "whisper.cpp via the whisper-cli binary (offline, CPU, multilingual).",
             "faster-whisper via whisper-ctranslate2 (the tool downloads its own models).",
             "Vosk via vosk-transcriber (pip install vosk; lightweight, streaming)."

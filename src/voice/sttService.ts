@@ -20,6 +20,7 @@ import {
 import {
     toWav16k, transcribeWhisperCpp, transcribeFasterWhisper, transcribeVosk, commandAvailable,
 } from "./sttEngines";
+import { isVscodeSpeechAvailable } from "./vscodeSpeechBridge";
 
 export interface SttSettings {
     engine: SttEngineId;
@@ -72,7 +73,7 @@ function resolvedRoot(s: SttSettings): string {
 
 /** Picks the concrete local engine to run. "auto"/"webspeech" fall back to whisper.cpp on the host. */
 export function resolveLocalEngine(s: SttSettings): SttEngineId {
-    if (s.engine === "whisper-cpp" || s.engine === "faster-whisper" || s.engine === "vosk") { return s.engine; }
+    if (s.engine === "vscode-speech" || s.engine === "whisper-cpp" || s.engine === "faster-whisper" || s.engine === "vosk") { return s.engine; }
     return "whisper-cpp";
 }
 
@@ -91,6 +92,16 @@ export async function isLocalSttReady(): Promise<boolean> {
     const s = readSettings();
     const root = resolvedRoot(s);
     const engine = resolveLocalEngine(s);
+    // This path executes the built-in editor dictation command in the UI
+    // process, so it owns microphone capture and needs neither ffmpeg nor a
+    // Symposium-managed model.
+    if (engine === "vscode-speech") {
+        // The workbench context key `hasSpeechProvider` is not exposed to
+        // extensions. Availability is therefore validated by the actual
+        // dictation command when the user starts recording; command failure
+        // produces no transcript and the UI returns to its idle state.
+        return isVscodeSpeechAvailable();
+    }
     // ffmpeg is required for every local path (capture → 16 kHz mono WAV).
     const cmd = (fallback: string, override: string) => (override && override.trim() ? override.trim() : fallback);
     const probes: Promise<boolean>[] = [
@@ -123,6 +134,7 @@ export async function getSttState(): Promise<Record<string, unknown>> {
         commandAvailable(cmd("whisper-ctranslate2", s.fasterWhisper.binaryPath)),
         commandAvailable(cmd("vosk-transcriber", s.vosk.binaryPath)),
     ]);
+    const vscodeSpeechOk = isVscodeSpeechAvailable();
     const models = ALL_MODELS.map((m) => ({
         id: m.id, engine: m.engine, label: m.label, size: m.size, languages: m.languages,
         installed: isInstalled(m, root),
@@ -132,7 +144,7 @@ export async function getSttState(): Promise<Record<string, unknown>> {
         modelsDir: root,
         engines: STT_ENGINES,
         models,
-        availability: { ffmpeg: ffmpegOk, "whisper-cpp": whisperOk, "faster-whisper": fasterOk, vosk: voskOk },
+        availability: { ffmpeg: ffmpegOk, "vscode-speech": vscodeSpeechOk, "whisper-cpp": whisperOk, "faster-whisper": fasterOk, vosk: voskOk },
     };
 }
 
@@ -158,6 +170,9 @@ function specPath(spec: SttModelSpec, s: SttSettings): string {
 export async function transcribeWav(wav: string): Promise<string> {
     const s = readSettings();
     const engine = resolveLocalEngine(s);
+    if (engine === "vscode-speech") {
+        throw new Error("VS Code Speech captures audio through the VS Code UI; it cannot transcribe an external WAV file.");
+    }
     const lang = toShortLang(s.language);
     try {
         if (engine === "whisper-cpp") {

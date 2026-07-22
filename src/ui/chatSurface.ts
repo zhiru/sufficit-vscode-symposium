@@ -13,7 +13,7 @@ import { SurfaceDialogues } from "./surfaceDialogues";
 import { SurfaceMessages } from "./surfaceMessages";
 import { HubClient } from "../sync/hubClient";
 import { activeEditorContext, isSimpleBrowserOpen } from "./chatSurfaceContext";
-import { canUseLocalStt } from "../voice/sttRouting";
+import { canUseLocalStt, usesVscodeSpeechBridge } from "../voice/sttRouting";
 import { isLocalSttReady } from "../voice/sttService";
 
 export interface ChatSurfaceDeps {
@@ -193,7 +193,9 @@ export class ChatSurface {
             localStt: false,
             // Desktop: the host records the mic natively (ffmpeg) — webview
             // getUserMedia is unreliable in VS Code (permission lost on reload).
-            hostCapture: vscode.env.uiKind !== vscode.UIKind.Web,
+            // The VS Code provider captures directly in the workbench instead.
+            hostCapture: vscode.env.uiKind !== vscode.UIKind.Web && !usesVscodeSpeechBridge(voiceEngine),
+            vscodeSpeechBridge: usesVscodeSpeechBridge(voiceEngine),
         };
         this.post({ type: "setVoicePreferences", preferences: voicePreferences });
 

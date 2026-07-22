@@ -14,7 +14,7 @@
  */
 
 /** Local STT engine ids. "webspeech" lives in the webview, listed for the picker only. */
-export type SttEngineId = "auto" | "webspeech" | "whisper-cpp" | "faster-whisper" | "vosk";
+export type SttEngineId = "auto" | "webspeech" | "vscode-speech" | "whisper-cpp" | "faster-whisper" | "vosk";
 
 /** How a downloaded model is materialised on disk. */
 export type ModelArtifactKind = "file" | "zip";
@@ -59,6 +59,13 @@ export const STT_ENGINES: SttEngineSpec[] = [
         id: "webspeech",
         label: "Web Speech API (browser only)",
         description: "Built-in browser recognition. Works in code-server, not in VS Code desktop.",
+        defaultCommand: "",
+        managesModels: false,
+    },
+    {
+        id: "vscode-speech",
+        label: "VS Code Speech (installed provider)",
+        description: "Uses the Microsoft VS Code Speech provider already installed in the desktop UI. No model download by Symposium.",
         defaultCommand: "",
         managesModels: false,
     },

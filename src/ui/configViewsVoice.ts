@@ -70,7 +70,7 @@ export const configViewsVoice = `
         const engineOpts = (stt.engines || []).map(e => ({ v: e.id, l: e.label }));
         let html = '<div class="diag-columns">' + diagSection + sufficitSection + '</div>' +
             section("Engine",
-                item("Speech-to-text engine", "Web Speech works only in the browser (code-server). Local engines work in VS Code desktop too.",
+                item("Speech-to-text engine", "VS Code Speech reuses the installed Microsoft provider through editor dictation. Web Speech works only in the browser; other local engines work in VS Code desktop too.",
                     sel("symposium.voice.engine", s.engine, engineOpts)) +
                 item("Recognition language", "BCP-47 tag (pt-BR, en-US). Local engines use the language part.",
                     sel("symposium.voice.language", s.language || "pt-BR",

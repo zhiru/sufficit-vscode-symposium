@@ -55,6 +55,18 @@ export function buildSttDiagnostic(
 
     const avail = stt.availability || {};
     const settings = stt.settings;
+    if (settings.engine === "vscode-speech") {
+        const available = avail["vscode-speech"] === true;
+        return {
+            ready: available,
+            steps: [{
+                id: "vscode-speech",
+                status: available ? "ok" : "fail",
+                label: available ? "VS Code Speech provider available" : "VS Code Speech provider unavailable",
+                fix: available ? undefined : "VS Code Speech is unavailable in this UI; start dictation to validate the installed provider.",
+            }],
+        };
+    }
     const models = stt.models || [];
     const engine = resolveDiagnosticLocalEngine(settings.engine);
 
