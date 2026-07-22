@@ -420,7 +420,10 @@ if (micBtn) {
         }
         if (isRecording) {
             stopVoiceRecording();
-        } else if (prefs.hostCapture) {
+        } else if (prefs.hostCapture || prefs.vscodeSpeechBridge) {
+            // VS Code Speech captures in the workbench. It uses the host
+            // protocol, but does not set hostCapture because it never uses
+            // the webview microphone.
             dictationActive = prefs.continuous;
             dictationUseHost = true;
             startHostCapture();
