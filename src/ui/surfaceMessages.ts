@@ -31,6 +31,7 @@ export interface SurfaceMessagesDeps {
     /** Marks the webview ready: flips ready, sends the host boot, flushes the queue. */
     markReady: () => void;
     refreshSessions: () => Promise<void>;
+    refreshQuotas: (force?: boolean) => Promise<void>;
     openSession: (info: SessionInfo) => void;
     getController: () => ChatController | undefined;
     getTerminalSession: () => TerminalSession | undefined;
@@ -108,6 +109,10 @@ export class SurfaceMessages {
                 }
                 case "refresh-tasks": {
                     void this.d.sync.refreshTasks();
+                    return;
+                }
+                case "refresh-quotas": {
+                    await this.d.refreshQuotas(true);
                     return;
                 }
                 case "task-set-done": {

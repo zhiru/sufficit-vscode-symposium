@@ -8,6 +8,7 @@ import {
     SessionInfo,
     SessionStartOptions,
     SlashCommand,
+    AdapterUsageProvider,
 } from "../types";
 import { TODO_INJECTION } from "../todos";
 import { diffCounts, editDiff, prettyJson } from "../parse";
@@ -28,8 +29,10 @@ import { resolveAuthToken } from "./httpAuth";
 import { OpenAISession } from "./session";
 import { PERMISSION_MODES } from "../aiTools";
 import { DEFAULT_REASONING_EFFORT } from "../reasoning";
+import { EmptyAdapterUsage } from "../quotaCache";
 
 export class OpenAIAdapter implements AgentAdapter {
+    readonly usage: AdapterUsageProvider;
     /**
      * @param backend  unique id for this adapter instance (built-in "openai" or
      *                 a custom adapter id).
@@ -39,7 +42,11 @@ export class OpenAIAdapter implements AgentAdapter {
         readonly backend: string,
         readonly displayName: string,
         private readonly getConfig: () => OpenAIAdapterConfig,
-    ) { }
+    ) {
+        // One usage service per OpenAI-compatible adapter instance. It stays
+        // isolated from Codex/Claude CLI quota even when model names overlap.
+        this.usage = new EmptyAdapterUsage(this.backend, this.displayName);
+    }
 
     async available(): Promise<{ ok: boolean; version?: string; error?: string }> {
         const cfg = this.getConfig();

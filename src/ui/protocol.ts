@@ -74,6 +74,7 @@ export type WebviewToHost =
     | { type: "drop-files"; files: DroppedFilePayload[] }
     | { type: "drop-uris"; uris: string[] }
     | { type: "refresh-tasks" }
+    | { type: "refresh-quotas" }
     | { type: "refresh-models" }
     | { type: "set-model"; model: string }
     | { type: "refresh-sessions" }

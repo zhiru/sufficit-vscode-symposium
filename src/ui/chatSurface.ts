@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AgentAdapter, FollowHandle, SessionInfo, SessionStartOptions } from "../adapters/types";
+import { AdapterUsageProvider, AgentAdapter, FollowHandle, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatController } from "./chatController";
 import { WebviewToHost, AgentPickerEntry } from "./protocol";
 import { renderHtml } from "./chatHtml";
@@ -57,6 +57,9 @@ export class ChatSurface {
     private ready = false;
     private loggedIn = false;   // cached Sufficit login state (for system hints)
     private queue: unknown[] = [];
+    private activeUsage: AdapterUsageProvider | undefined;
+    private quotaGeneration = 0;
+    private quotaRefreshTimer: ReturnType<typeof setInterval> | undefined;
     private readonly hub = new HubClient();
 
     private readonly disposables: vscode.Disposable[] = [];
@@ -87,6 +90,7 @@ export class ChatSurface {
             setTerminalSession: (t) => { this.terminalSession = t; },
             setFollowHandle: (h) => { this.followHandle = h; },
             setFollowedSessionId: (id) => { this.followedSessionId = id; },
+            activateUsage: (adapter) => this.activateUsage(adapter),
             detachActive: () => this.detachActive(),
             buildLangHint: () => this.buildLangHint(),
             onTitleChange: this.onTitleChange,
@@ -99,6 +103,7 @@ export class ChatSurface {
             post: (m) => this.post(m),
             markReady: () => this.markReady(),
             refreshSessions: () => this.refreshSessions(),
+            refreshQuotas: (force) => this.refreshQuotas(force),
             openSession: (info) => this.openSession(info),
             getController: () => this.controller,
             getTerminalSession: () => this.terminalSession,
@@ -167,6 +172,30 @@ export class ChatSurface {
             void this.webview.postMessage(queued);
         }
         this.queue = [];
+        this.quotaRefreshTimer ??= setInterval(() => void this.refreshQuotas(), 60_000);
+    }
+
+    private activateUsage(adapter: AgentAdapter): void {
+        this.activeUsage = adapter.usage;
+        this.quotaGeneration++;
+        void this.refreshQuotas();
+    }
+
+    private async refreshQuotas(force = false): Promise<void> {
+        const usage = this.activeUsage;
+        if (!usage) { return; }
+        const generation = this.quotaGeneration;
+        this.post({ type: "quota-loading", loading: true });
+        try {
+            const snapshot = await usage.read(force);
+            if (generation !== this.quotaGeneration || usage !== this.activeUsage) { return; }
+            this.post({ type: "event", event: { kind: "quota", ...snapshot } });
+            this.post({ type: "quota-loading", loading: false, backend: usage.backend });
+        } catch (error) {
+            if (generation !== this.quotaGeneration || usage !== this.activeUsage) { return; }
+            symposiumLog(`[quota] Failed to read local adapter usage: ${error instanceof Error ? error.message : String(error)}`);
+            this.post({ type: "quota-loading", loading: false, backend: usage.backend, error: true });
+        }
     }
 
     /**
@@ -360,6 +389,10 @@ export class ChatSurface {
         // Detach only — the runtime owns controller lifetimes so sessions
         // survive the view/panel being closed.
         this.detachActive();
+        if (this.quotaRefreshTimer) {
+            clearInterval(this.quotaRefreshTimer);
+            this.quotaRefreshTimer = undefined;
+        }
         this.disposables.forEach((d) => d.dispose());
         this.disposables.length = 0;
     }

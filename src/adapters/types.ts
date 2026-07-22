@@ -16,6 +16,39 @@ export interface TodoItem {
 /** Visual importance for a system-authored notice in the conversation. */
 export type SystemNoticeSeverity = "info" | "warning" | "error";
 
+/** One rolling account-usage window reported by an adapter CLI. */
+export interface UsageQuotaWindow {
+    /** Stable provider-supplied key (for example primary or five_hour). */
+    id: string;
+    /** Optional provider-supplied display label. */
+    label?: string;
+    /** Percentage consumed, normalized to the inclusive 0..100 range. */
+    usedPercent: number;
+    /** Rolling-window duration when the provider reports it. */
+    windowMinutes?: number;
+    /** Absolute reset time as Unix milliseconds. */
+    resetsAt?: number;
+    /** Provider status such as allowed, warning, or rejected. */
+    status?: string;
+}
+
+export type AdapterQuotaSnapshot = {
+    backend: AgentBackend;
+    displayName?: string;
+    plan?: string;
+    limitName?: string;
+    windows: UsageQuotaWindow[];
+    updatedAt: number;
+    state?: "ready" | "unavailable";
+    message?: string;
+};
+
+export interface AdapterUsageProvider {
+    readonly backend: AgentBackend;
+    readonly displayName: string;
+    read(force?: boolean): Promise<AdapterQuotaSnapshot>;
+}
+
 /** A normalized event emitted by any adapter while a turn is running. */
 export type AgentEvent =
     | { kind: "session"; sessionId: string; model?: string }
@@ -32,6 +65,7 @@ export type AgentEvent =
     | { kind: "approval-request"; toolId: string; toolName: string; detail?: string; tier: "write" | "destructive" }
     | { kind: "approval-resolved"; toolId: string; approved: boolean }
     | { kind: "turn-end"; costUsd?: number; durationMs?: number }
+    | ({ kind: "quota" } & AdapterQuotaSnapshot)
     | {
         kind: "usage";
         /** Prompt/input tokens in the current live context. */
@@ -293,6 +327,7 @@ export interface AgentSession extends EventEmitter {
 /** Factory + discovery surface for one backend CLI. */
 export interface AgentAdapter {
     readonly backend: AgentBackend;
+    readonly usage: AdapterUsageProvider;
     /**
      * Friendly name shown in pickers and the chat header. Optional: CLI
      * adapters fall back to `backend`; the HTTP adapters set a display name

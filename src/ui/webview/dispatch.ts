@@ -11,7 +11,7 @@ import { renderChangedFiles, renderGuardrails, renderQueued, renderTasks, render
 import { renderAccount, renderSessions } from "./sessions";
 import { setLang, t } from "./i18n";
 import { applyStaticI18n } from "./staticI18n";
-import { openUsagePopover, setLastUsage, setLastTurn, setSessionCostUsd } from "./statusbar";
+import { openUsagePopover, renderStatusbar, setLastUsage, setLastTurn, setQuotaLoading, setSessionCostUsd } from "./statusbar";
 import { setLoading, setStatus, updateSendTitle } from "./status";
 import { hideCtx, openChoiceMenu, showToast } from "./menus";
 import { modelLabels, modelValue, modelList, modelDefault, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, buildModelMenuOpts } from "./models";
@@ -35,6 +35,11 @@ window.addEventListener("message", ({ data }) => {
         case "meta": { applyMeta(data); break; }
         case "browser-state": {
             setBrowserOpen(!!data.open);
+            break;
+        }
+        case "quota-loading": {
+            setQuotaLoading(!!data.loading);
+            renderStatusbar();
             break;
         }
         case "active-file": {

@@ -3,6 +3,7 @@ import { EventEmitter } from "events";
 import * as readline from "readline";
 import { resolveExecutable } from "../exec";
 import { contextWindowFor, parseCodexUsage } from "../parse";
+import { parseAdapterQuota } from "../quota";
 import { parseNativeTodos } from "../todos";
 import { AgentSession, SessionStartOptions } from "../types";
 import { CodexAdapterConfig, codexWorkspaceArgs, loadVscodeMcpServers, mapUnifiedToCodexFlags } from "./codexMcpConfig";
@@ -179,6 +180,8 @@ export class CodexSession extends EventEmitter implements AgentSession {
         } catch {
             return; // non-JSON log lines (codex prints some ERROR lines plainly)
         }
+        const quota = parseAdapterQuota(event, this.backend);
+        if (quota) { this.emit("event", { kind: "quota", ...quota }); }
         switch (event.type) {
             case "thread.started":
                 if (typeof event.thread_id === "string" && !this.sessionId) {

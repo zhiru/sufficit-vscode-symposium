@@ -1497,7 +1497,12 @@
         color: inherit; font: inherit; padding: 2px 4px; border-radius: 4px; opacity: 0.85;
     }
     .tokenMeter:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
+    .tokenMeter:focus-visible { opacity: 1; outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
     .tokenMeter .tmRing { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; -webkit-mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); mask: radial-gradient(circle 3px at center, transparent 98%, #000 100%); }
+    .quotaMeter { opacity: 0.95; }
+    .quotaMeter .tmRing { box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent); }
+    .quotaMeter.quotaEmpty .tmRing { opacity: 0.55; outline: 1px dashed currentColor; outline-offset: -1px; }
+    .quotaMeter[aria-busy="true"] .tmRing { animation: quotaPulse 1.2s ease-in-out infinite; }
     .usagePop { min-width: 268px; max-width: 320px; padding: 13px 15px 12px; }
     .usagePop .uHeadRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
     .usagePop .uHeadTxt { min-width: 0; }
@@ -1526,6 +1531,29 @@
         border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3)); transition: background 150ms ease;
     }
     .usagePop .uInspectBtn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); }
+    .quotaPop { min-width: 292px; max-width: 348px; }
+    .quotaPop .qProvider { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.22)); }
+    .quotaPop .qProviderHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    .quotaPop .qProviderName { font-size: 0.9em; font-weight: 650; }
+    .quotaPop .qProviderMeta { font-size: 0.72em; opacity: 0.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .quotaPop .qWindow { padding: 5px 0 7px; }
+    .quotaPop .qWindowTop { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+    .quotaPop .qWindowLabel { font-size: 0.84em; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .quotaPop .qWindowValue { font-size: 0.8em; font-weight: 600; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+    .quotaPop .qBar { height: 6px; overflow: hidden; border-radius: 999px; background: var(--vscode-input-background, rgba(128,128,128,0.25)); box-shadow: inset 0 0 0 1px rgba(128,128,128,0.12); }
+    .quotaPop .qFill { height: 100%; border-radius: inherit; transition: width 220ms ease; }
+    .quotaPop .qWindowDetail { margin-top: 4px; font-size: 0.72em; opacity: 0.55; font-variant-numeric: tabular-nums; }
+    .quotaPop .qEmptyState { padding: 6px 0 3px; font-size: 0.78em; line-height: 1.4; color: var(--vscode-descriptionForeground, currentColor); }
+    .quotaPop .qFoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.22)); font-size: 0.7em; color: var(--vscode-descriptionForeground, currentColor); }
+    .quotaPop .qRefresh { border: none; border-radius: 4px; padding: 3px 7px; cursor: pointer; color: var(--vscode-button-secondaryForeground, inherit); background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2)); font: inherit; }
+    .quotaPop .qRefresh:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.3)); }
+    .quotaPop .qRefresh:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+    .quotaPop .qRefresh:disabled { cursor: default; opacity: 0.55; }
+    @keyframes quotaPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+        .usagePop .uFill, .quotaPop .qFill { transition: none; }
+        .quotaMeter[aria-busy="true"] .tmRing { animation: none; }
+    }
 
     /* ---- sessions pane resizer ---- */
     #resizer {

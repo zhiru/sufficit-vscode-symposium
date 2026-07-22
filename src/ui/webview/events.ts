@@ -2,7 +2,7 @@
 import { fillToolResult, renderTool, renderApprovalRequest } from "./tools";
 import { append, endStream, renderError, renderStatusNotice, resolvePendingRetry, streamDelta, streamThinkingDelta } from "./messages";
 import { bindWorkingSet } from "./panels";
-import { renderStatusbar, setLastTurn, setLastUsage, setSessionCostUsd, sessionCostUsd } from "./statusbar";
+import { renderStatusbar, setLastQuota, setLastTurn, setLastUsage, setSessionCostUsd, sessionCostUsd } from "./statusbar";
 import { setStatus } from "./status";
 import { modelLabel, modelList, setModelLabel, setModelValue } from "./models";
 import { sendBtn } from "./dom";
@@ -37,6 +37,7 @@ export function applyEvent(ev: any): void {
     else if (ev.kind === "tool-end") fillToolResult(ev.toolId, ev.result, true);
     else if (ev.kind === "approval-request") renderApprovalRequest(ev.toolId, ev.toolName, ev.detail, ev.tier);
     else if (ev.kind === "usage") { setLastUsage(ev); renderStatusbar(); }
+    else if (ev.kind === "quota") { setLastQuota(ev); renderStatusbar(); }
     else if (ev.kind === "error") {
         // The composer's send/stop button reflects ONLY the agent's
         // turn lifecycle. A non-fatal error (ev.fatal === false) is a

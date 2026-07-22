@@ -24,9 +24,11 @@ import {
     deleteImportedCopilotSession,
     transcriptHistory,
 } from "./transcripts";
+import { copilotUsage } from "./usage";
 
 export class CopilotAdapter implements AgentAdapter {
     readonly backend = "copilot" as const;
+    readonly usage = copilotUsage;
 
     constructor(private readonly getConfig: () => CopilotAdapterConfig) { }
 

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { FollowHandle, HistoryMessage, SessionInfo, SessionStartOptions } from "../adapters/types";
+import { AgentAdapter, FollowHandle, HistoryMessage, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatController } from "./chatController";
 import { TerminalSession } from "./terminalSession";
 import type { ChatSurfaceDeps } from "./chatSurface";
@@ -31,6 +31,8 @@ export interface SurfaceDialoguesDeps {
     setTerminalSession: (t: TerminalSession | undefined) => void;
     setFollowHandle: (h: FollowHandle | undefined) => void;
     setFollowedSessionId: (id: string | undefined) => void;
+    /** Selects the one adapter-owned usage singleton for this conversation. */
+    activateUsage: (adapter: AgentAdapter) => void;
     /** Detaches (not stops) the current dialogue/terminal/follow before binding a new one. */
     detachActive: () => void;
     buildLangHint: () => string;
@@ -157,6 +159,7 @@ export class SurfaceDialogues {
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
+        this.d.activateUsage(adapter);
         if (adapter.history) {
             let messages: HistoryMessage[] | undefined;
             try {
@@ -228,6 +231,7 @@ export class SurfaceDialogues {
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
+        this.d.activateUsage(adapter);
         const terminal = new TerminalSession(
             adapter,
             { cwd: options.cwd, resumeSessionId: options.resumeSessionId, model: options.model, reasoning: options.reasoning, env: options.env, tmuxName: options.tmuxName },
@@ -341,6 +345,7 @@ export class SurfaceDialogues {
             whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
+        this.d.activateUsage(adapter);
         controller.attach((message) => handleControllerEvent(this.d, backend, message));
         if (!existing && info && !seededVisual) {
             void controller.loadHistory(info).finally(() => {

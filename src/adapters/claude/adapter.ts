@@ -22,9 +22,11 @@ import { ClaudeAdapterConfig, ClaudeSession } from "./session";
 import { claudeOAuthToken } from "./credentials";
 import { parseTranscriptLine, readSessionMeta } from "./transcript";
 import { followClaudeSession } from "./claudeFollow";
+import { claudeUsage } from "./usage";
 
 export class ClaudeAdapter implements AgentAdapter {
     readonly backend = "claude" as const;
+    readonly usage = claudeUsage;
 
     constructor(private readonly getConfig: () => ClaudeAdapterConfig) { }
 

@@ -21,6 +21,7 @@ import { CodexSession } from "./session";
 import { CodexAdapterConfig } from "./codexMcpConfig";
 import { looksInjected, readCodexMeta } from "./transcript";
 import { parseCodexModelCatalog } from "./models";
+import { codexUsage } from "./usage";
 
 function runCodexDebugModels(executable: string): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -46,6 +47,7 @@ function runCodexDebugModels(executable: string): Promise<unknown> {
 
 export class CodexAdapter implements AgentAdapter {
     readonly backend = "codex" as const;
+    readonly usage = codexUsage;
 
     constructor(private readonly getConfig: () => CodexAdapterConfig) { }
 

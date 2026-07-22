@@ -6,13 +6,13 @@ import * as path from "path";
 import * as readline from "readline";
 import { resolveExecutable } from "../exec";
 import { snapshots } from "../../snapshots";
+import { parseClaudeQuota } from "./usage";
 import {
     contextWindowFor, diffCounts, editDiff, extractTodos,
     prettyJson, summarizeToolInput, toolFilePath, toolResultText,
 } from "../parse";
 import { AgentSession, SessionStartOptions } from "../types";
 import { claudeResumeSessionId } from "./resume";
-
 export interface ClaudeAdapterConfig {
     executable: string;
     /** Optional diagnostics sink (the Symposium output channel). */
@@ -25,7 +25,6 @@ export interface ClaudeAdapterConfig {
     /** Extra MCP servers to expose, merged into the generated --mcp-config. */
     mcpServers?: Record<string, unknown>;
 }
-
 /**
  * Maps the unified permission mode to Claude Code CLI's own native
  * --permission-mode flag. admin/plan reuse a real native mode 1:1 (safe:
@@ -227,6 +226,8 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
         } catch {
             return;
         }
+        const quota = parseClaudeQuota(event, this.backend);
+        if (quota) { this.emit("event", { kind: "quota", ...quota }); }
         switch (event.type) {
             case "stream_event": {
                 // Token-level deltas (--include-partial-messages).

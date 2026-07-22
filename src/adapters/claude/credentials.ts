@@ -40,6 +40,11 @@ interface StoredCredentials {
     organizationUuid?: string;
 }
 
+export interface ClaudeOAuthMetadata {
+    subscriptionType?: string;
+    rateLimitTier?: string;
+}
+
 /** Slack (s): treat a token as expired slightly before its real expiry. */
 const EXPIRY_SKEW_MS = 60_000;
 
@@ -139,4 +144,13 @@ export async function claudeOAuthToken(): Promise<string> {
     if (isFresh(oauth)) { return oauth.accessToken; }
     const refreshed = await refresh(oauth);
     return refreshed ?? "";
+}
+
+/** Non-secret account labels stored alongside the Claude OAuth token. */
+export function claudeOAuthMetadata(): ClaudeOAuthMetadata {
+    const oauth = readCredentials()?.claudeAiOauth;
+    return {
+        ...(oauth?.subscriptionType ? { subscriptionType: oauth.subscriptionType } : {}),
+        ...(oauth?.rateLimitTier ? { rateLimitTier: oauth.rateLimitTier } : {}),
+    };
 }

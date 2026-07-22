@@ -1,5 +1,5 @@
 // Footer status bar + context-usage popover.
-import { vscode } from "./vscode";
+import { vscode, saved, saveState } from "./vscode";
 import { statusbar, ctxMenu, input } from "./dom";
 import { activeModel, commands } from "./state";
 import { fmtTokens, usageColor } from "./format";
@@ -9,11 +9,75 @@ import { hideCtx } from "./menus";
 import { send } from "./composer";
 
 let lastUsage = null, lastStatusData = {};
+let quotaLoading = false;
 let lastTurn = {};            // { costUsd, durationMs } from the last turn-end
+const quotaByBackend = new Map();
+for (const quota of Array.isArray(saved.adapterQuotas) ? saved.adapterQuotas : []) {
+    if (quota && typeof quota.backend === "string" && Array.isArray(quota.windows)) {
+        quotaByBackend.set(quota.backend, quota);
+    }
+}
 export let sessionCostUsd = 0;       // accumulated cost across the session (when reported)
+
+function activeQuotaWindows(quota) {
+    const now = Date.now();
+    return (quota?.windows || []).filter((window) =>
+        Number.isFinite(window.usedPercent) && (!window.resetsAt || window.resetsAt > now),
+    );
+}
+
+function currentQuotaSnapshot() {
+    const current = String(lastStatusData.backend || "");
+    const quota = quotaByBackend.get(current);
+    return quota
+        ? { ...quota, windows: activeQuotaWindows(quota) }
+        : {
+            backend: current,
+            displayName: lastStatusData.backendName || current,
+            windows: [],
+            state: "unavailable",
+            message: "This adapter has not reported usage limits yet.",
+        };
+}
+
+function primaryQuota() {
+    const current = currentQuotaSnapshot();
+    if (!current.windows.length) { return null; }
+    const indexed = current.windows.map((window, index) => ({ window, index }));
+    indexed.sort((a, b) => {
+        const am = Number.isFinite(a.window.windowMinutes) ? a.window.windowMinutes : Number.POSITIVE_INFINITY;
+        const bm = Number.isFinite(b.window.windowMinutes) ? b.window.windowMinutes : Number.POSITIVE_INFINITY;
+        return am - bm || a.index - b.index;
+    });
+    return { quota: current, window: indexed[0].window };
+}
+
+function meter(percent, label, onOpen, className = "") {
+    const hasValue = Number.isFinite(percent);
+    const pct = hasValue ? Math.max(0, Math.min(100, Math.round(percent))) : 0;
+    const col = hasValue ? usageColor(pct) : "var(--vscode-descriptionForeground, currentColor)";
+    const button = document.createElement("button");
+    button.className = "tokenMeter" + (className ? " " + className : "");
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-haspopup", "dialog");
+    const ring = document.createElement("span");
+    ring.className = "tmRing";
+    ring.style.background = hasValue
+        ? "conic-gradient(" + col + " " + pct + "%, var(--vscode-input-background, rgba(128,128,128,0.3)) 0)"
+        : "var(--vscode-input-background, rgba(128,128,128,0.3))";
+    button.appendChild(ring);
+    button.appendChild(document.createTextNode(hasValue ? pct + "%" : "—"));
+    button.classList.toggle("quotaEmpty", !hasValue);
+    button.addEventListener("click", (event) => { event.stopPropagation(); onOpen(button); });
+    button.addEventListener("mouseenter", () => onOpen(button));
+    button.addEventListener("focus", () => onOpen(button));
+    return button;
+}
+
 export function renderStatusbar(data) {
     lastStatusData = data || lastStatusData;
     data = lastStatusData;
+    const quotaPopoverOpen = ctxMenu.style.display === "block" && !!ctxMenu.querySelector(".quotaPop");
     statusbar.textContent = "";
     const seg = (iconName, text, title) => {
         const s = document.createElement("span"); s.className = "seg"; if (title) s.title = title;
@@ -27,19 +91,123 @@ export function renderStatusbar(data) {
     }
     statusbar.appendChild(seg(null, data.backend + (data.permission && data.permission !== "default" ? " · " + data.permission : "")));
     if (data.reasoning && data.reasoning !== "default") statusbar.appendChild(seg(null, "effort: " + data.reasoning));
-    if (lastUsage && lastUsage.contextWindow) {
+    const quota = primaryQuota();
+    const hasContext = !!(lastUsage && lastUsage.contextWindow);
+    const sp = document.createElement("span"); sp.className = "grow"; statusbar.appendChild(sp);
+    const pct = quota?.window.usedPercent;
+    const label = quota
+        ? "Adapter usage " + Math.round(pct) + "% used — hover, focus, or click for limits"
+        : quotaLoading ? "Loading adapter usage limits" : "Adapter usage unavailable — click for details";
+    const quotaMeter = meter(pct, label, openQuotaPopover, "quotaMeter");
+    quotaMeter.setAttribute("aria-busy", String(quotaLoading));
+    statusbar.appendChild(quotaMeter);
+    if (hasContext) {
         const pct = Math.min(100, Math.round((lastUsage.inputTokens || 0) / lastUsage.contextWindow * 100));
-        const col = usageColor(pct);
-        const m = document.createElement("button"); m.className = "tokenMeter"; m.title = "Context window — click for details";
-        m.setAttribute("aria-label", "Context window " + pct + "% used — click for details");
-        const ring = document.createElement("span"); ring.className = "tmRing"; ring.style.background =
-            "conic-gradient(" + col + " " + pct + "%, var(--vscode-input-background, rgba(128,128,128,0.3)) 0)";
-        m.appendChild(ring);
-        m.appendChild(document.createTextNode(pct + "%"));
-        m.addEventListener("click", (e) => { e.stopPropagation(); openUsagePopover(m); });
-        const sp = document.createElement("span"); sp.className = "grow"; statusbar.appendChild(sp);
-        statusbar.appendChild(m);
+        statusbar.appendChild(meter(pct, "Context window " + pct + "% used — click for details", openUsagePopover));
     }
+    if (quotaPopoverOpen) { openQuotaPopover(quotaMeter); }
+}
+
+function positionPopover(anchor) {
+    const r = anchor.getBoundingClientRect(); const w = ctxMenu.offsetWidth, ht = ctxMenu.offsetHeight;
+    ctxMenu.style.left = Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4)) + "px";
+    ctxMenu.style.top = Math.max(4, r.top - ht - 6) + "px";
+}
+
+function humanize(value) {
+    return String(value || "usage")
+        .replace(/[:_-]+/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function durationLabel(minutes) {
+    if (!Number.isFinite(minutes) || minutes <= 0) { return ""; }
+    if (minutes % 10080 === 0) { const value = minutes / 10080; return value + " week" + (value === 1 ? "" : "s"); }
+    if (minutes % 1440 === 0) { const value = minutes / 1440; return value + " day" + (value === 1 ? "" : "s"); }
+    if (minutes % 60 === 0) { const value = minutes / 60; return value + " hour" + (value === 1 ? "" : "s"); }
+    return Math.round(minutes) + " minutes";
+}
+
+function windowLabel(window) {
+    return window.label || durationLabel(window.windowMinutes) || humanize(window.id);
+}
+
+function resetLabel(resetsAt) {
+    if (!resetsAt) { return "Reset time unavailable"; }
+    const remaining = resetsAt - Date.now();
+    if (remaining <= 0) { return "Reset due"; }
+    const minutes = Math.max(1, Math.round(remaining / 60000));
+    if (minutes < 60) { return "Resets in " + minutes + "m"; }
+    const hours = Math.floor(minutes / 60), restMinutes = minutes % 60;
+    if (hours < 24) { return "Resets in " + hours + "h" + (restMinutes ? " " + restMinutes + "m" : ""); }
+    const days = Math.floor(hours / 24), restHours = hours % 24;
+    return "Resets in " + days + "d" + (restHours ? " " + restHours + "h" : "");
+}
+
+function backendLabel(backend) {
+    return humanize(backend);
+}
+
+export function openQuotaPopover(anchor) {
+    const quota = currentQuotaSnapshot();
+    const featured = primaryQuota();
+    ctxMenu.textContent = "";
+    ctxMenu.classList.remove("sessionFiltersMenu");
+    const box = document.createElement("div"); box.className = "usagePop quotaPop";
+    box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Adapter usage limits");
+
+    const headRow = document.createElement("div"); headRow.className = "uHeadRow";
+    const htx = document.createElement("div"); htx.className = "uHeadTxt";
+    const h = document.createElement("div"); h.className = "uHead"; h.textContent = "Usage limits"; htx.appendChild(h);
+    const sub = document.createElement("div"); sub.className = "uModel"; sub.textContent = quota.displayName || backendLabel(quota.backend); htx.appendChild(sub);
+    const big = document.createElement("div"); big.className = "uPct";
+    big.textContent = featured ? Math.round(featured.window.usedPercent) + "%" : "—";
+    if (featured) { big.style.color = usageColor(featured.window.usedPercent); }
+    headRow.appendChild(htx); headRow.appendChild(big); box.appendChild(headRow);
+
+    const provider = document.createElement("section"); provider.className = "qProvider";
+    const providerHead = document.createElement("div"); providerHead.className = "qProviderHead";
+    const name = document.createElement("span"); name.className = "qProviderName"; name.textContent = quota.displayName || backendLabel(quota.backend);
+    const meta = document.createElement("span"); meta.className = "qProviderMeta";
+    meta.textContent = [quota.plan, quota.limitName].filter(Boolean).join(" · ") || (quota.windows.length ? "" : "No data yet");
+    providerHead.appendChild(name); if (meta.textContent) { providerHead.appendChild(meta); }
+    provider.appendChild(providerHead);
+
+    if (!quota.windows.length) {
+        const empty = document.createElement("div"); empty.className = "qEmptyState";
+        empty.textContent = quotaLoading ? "Reading this adapter's usage…" : (quota.message || "This adapter has not reported usage limits yet.");
+        provider.appendChild(empty);
+    }
+    for (const window of quota.windows) {
+            const pct = Math.max(0, Math.min(100, Number(window.usedPercent) || 0));
+            const color = usageColor(pct);
+            const row = document.createElement("div"); row.className = "qWindow";
+            const top = document.createElement("div"); top.className = "qWindowTop";
+            const label = document.createElement("span"); label.className = "qWindowLabel"; label.textContent = windowLabel(window);
+            const value = document.createElement("span"); value.className = "qWindowValue"; value.textContent = Math.round(pct) + "% used";
+            top.appendChild(label); top.appendChild(value); row.appendChild(top);
+            const bar = document.createElement("div"); bar.className = "qBar";
+            bar.setAttribute("role", "progressbar"); bar.setAttribute("aria-label", (quota.displayName || backendLabel(quota.backend)) + " " + windowLabel(window));
+            bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100"); bar.setAttribute("aria-valuenow", String(Math.round(pct)));
+            const fill = document.createElement("div"); fill.className = "qFill"; fill.style.width = pct + "%"; fill.style.background = color;
+            bar.appendChild(fill); row.appendChild(bar);
+            const detail = document.createElement("div"); detail.className = "qWindowDetail";
+            detail.textContent = [resetLabel(window.resetsAt), window.status ? humanize(window.status) : ""].filter(Boolean).join(" · ");
+            row.appendChild(detail); provider.appendChild(row);
+    }
+    box.appendChild(provider);
+    const foot = document.createElement("div"); foot.className = "qFoot";
+    const footText = document.createElement("span"); footText.textContent = quotaLoading ? "Refreshing this adapter…" : "Adapter-owned usage data.";
+    const refresh = document.createElement("button"); refresh.className = "qRefresh"; refresh.type = "button"; refresh.textContent = quotaLoading ? "Refreshing…" : "Refresh"; refresh.disabled = quotaLoading;
+    refresh.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setQuotaLoading(true); openQuotaPopover(anchor);
+        vscode.postMessage({ type: "refresh-quotas" });
+    });
+    foot.appendChild(footText); foot.appendChild(refresh); box.appendChild(foot);
+    ctxMenu.appendChild(box);
+    ctxMenu.style.display = "block";
+    positionPopover(anchor);
 }
 export function openUsagePopover(anchor) {
     const u = lastUsage; if (!u) { return; }
@@ -52,6 +220,7 @@ export function openUsagePopover(anchor) {
     const cachePct = used ? Math.round(cache / used * 100) : 0;
     const col = usageColor(pct);
     ctxMenu.textContent = "";
+    ctxMenu.classList.remove("sessionFiltersMenu");
     const box = document.createElement("div"); box.className = "usagePop";
     // One key/value line. opts: { sub, dot, note } — dot draws a legend swatch,
     // note is a dim suffix (e.g. a percentage), sub indents a breakdown row.
@@ -156,11 +325,24 @@ export function openUsagePopover(anchor) {
     }
     ctxMenu.appendChild(box);
     ctxMenu.style.display = "block";
-    const r = anchor.getBoundingClientRect(); const w = ctxMenu.offsetWidth, ht = ctxMenu.offsetHeight;
-    ctxMenu.style.left = Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4)) + "px";
-    ctxMenu.style.top = Math.max(4, r.top - ht - 6) + "px";
+    positionPopover(anchor);
 }
 
 export function setLastUsage(v) { lastUsage = v; }
+export function setLastQuota(v) {
+    if (!v || typeof v.backend !== "string" || !Array.isArray(v.windows)) { return; }
+    const previous = quotaByBackend.get(v.backend);
+    const previousWindows = v.state === "unavailable" ? [] : (previous?.windows || []);
+    const merged = new Map(previousWindows.map((window) => [window.id, window]));
+    for (const window of v.windows) { if (window?.id) { merged.set(window.id, window); } }
+    quotaByBackend.set(v.backend, {
+        ...previous,
+        ...v,
+        windows: [...merged.values()],
+        updatedAt: v.updatedAt || Date.now(),
+    });
+    saveState({ adapterQuotas: [...quotaByBackend.values()] });
+}
+export function setQuotaLoading(value) { quotaLoading = !!value; }
 export function setLastTurn(v) { lastTurn = v; }
 export function setSessionCostUsd(v) { sessionCostUsd = v; }
