@@ -112,8 +112,10 @@ export class SurfaceMessages {
                 }
                 case "task-set-done": {
                     if (typeof message.id === "string" && this.d.hub.configured()) {
-                        await setTaskDone(this.d.hub, message.id, message.done === true);
-                        void this.d.sync.refreshTasks();
+                        const done = message.done === true;
+                        const ok = await setTaskDone(this.d.hub, message.id, done);
+                        if (ok) { this.d.sync.setTasksDoneByIds([message.id], done); }
+                        else { void this.d.sync.refreshTasks(); }
                     }
                     return;
                 }
@@ -233,7 +235,7 @@ export class SurfaceMessages {
                         // A terminal session has no ChatController transcript, so
                         // its handoff reads the CLI transcript instead.
                         if (this.d.getTerminalSession() && !this.d.getController()) {
-                            await this.d.handoff.fromTerminal(message.backend);
+                            this.d.handoff.fromTerminal(message.backend);
                         } else {
                             this.d.handoff.switch(message.backend);
                         }

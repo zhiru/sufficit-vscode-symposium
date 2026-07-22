@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ClaudeSession } from "../adapters/claude/session";
+import { claudeResumeSessionId } from "../adapters/claude/resume";
 import type { AgentEvent } from "../adapters/types";
 
 function waitForTurnEnd(session: ClaudeSession): Promise<AgentEvent[]> {
@@ -43,4 +44,20 @@ test("Claude retries spawn after ENOENT instead of reusing the dead child", asyn
     } finally {
         session.dispose();
     }
+});
+
+test("Claude resumes a listed subagent through its parent conversation UUID", () => {
+    assert.equal(
+        claudeResumeSessionId("33cce505-8848-4f48-88a5-da7faedcd4f2/subagents/agent-a1bb4e66e2be943da"),
+        "33cce505-8848-4f48-88a5-da7faedcd4f2",
+    );
+});
+
+test("Claude keeps normal session ids and titles unchanged", () => {
+    assert.equal(
+        claudeResumeSessionId("33cce505-8848-4f48-88a5-da7faedcd4f2"),
+        "33cce505-8848-4f48-88a5-da7faedcd4f2",
+    );
+    assert.equal(claudeResumeSessionId("my named session"), "my named session");
+    assert.equal(claudeResumeSessionId("not-a-uuid/subagents/agent-123"), "not-a-uuid/subagents/agent-123");
 });

@@ -525,12 +525,38 @@
     #logBody { min-height: 0; }
     .msg { margin: 0 0 18px 0; word-break: break-word; line-height: 1.65; user-select: text; -webkit-user-select: text; }
     .msg.plain { white-space: pre-wrap; }
-    /* Transient status annotation (e.g. "image transcribed"): quiet, non-content. */
+    /* System-authored event: visually separate from user/assistant turns. */
     .msg.statusNotice {
-        font-size: 0.85em; opacity: 0.7; font-style: italic;
-        margin: 6px 0; padding: 4px 10px;
-        border-left: 2px solid var(--vscode-descriptionForeground, rgba(128,128,128,0.4));
-        color: var(--vscode-descriptionForeground);
+        display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px;
+        font-size: 0.88em; margin: 8px 0; padding: 7px 10px;
+        border-left: 2px solid var(--vscode-focusBorder, #007fd4);
+        border-radius: 0 4px 4px 0;
+        background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 8%, transparent);
+        color: var(--vscode-foreground);
+    }
+    .statusNoticeIcon { display: inline-flex; margin-top: 2px; color: var(--vscode-focusBorder, #007fd4); }
+    .statusNoticeIcon svg { width: 14px; height: 14px; }
+    .statusNoticeContent { min-width: 0; }
+    .statusNoticeLabel {
+        color: var(--vscode-descriptionForeground); font-size: 0.78em;
+        font-weight: 700; line-height: 1.25; letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .statusNoticeBody { margin-top: 2px; line-height: 1.45; }
+    .msg.statusNotice.warning {
+        border-left-color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #cca700));
+        background: color-mix(in srgb, var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #cca700)) 10%, transparent);
+    }
+    .msg.statusNotice.warning .statusNoticeIcon,
+    .msg.statusNotice.warning .statusNoticeLabel {
+        color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #cca700));
+    }
+    .msg.statusNotice.error {
+        border-left-color: var(--vscode-errorForeground, var(--vscode-charts-red, #f14c4c));
+        background: color-mix(in srgb, var(--vscode-errorForeground, var(--vscode-charts-red, #f14c4c)) 10%, transparent);
+    }
+    .msg.statusNotice.error .statusNoticeIcon,
+    .msg.statusNotice.error .statusNoticeLabel {
+        color: var(--vscode-errorForeground, var(--vscode-charts-red, #f14c4c));
     }
     .statusNoticeLink {
         border: 0;

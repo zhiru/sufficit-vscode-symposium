@@ -1,4 +1,5 @@
 import { SurfaceDialoguesDeps } from "./surfaceDialogues";
+import { completedTaskIds } from "../sync/taskUi";
 
 /**
  * The controller-attach callback for a live dialogue: filters the raw
@@ -33,7 +34,7 @@ export function handleControllerEvent(d: SurfaceDialoguesDeps, backend: string, 
         // Tools return "" on success to save tokens; a JSON body signals a
         // result we can mine for ids (add_task returns ids[]; add_guardrail
         // returns "" on hub success or {id,_memory_source} on local fallback).
-        let parsed: { ids?: string[]; id?: string; _memory_source?: string } | null = null;
+        let parsed: { ids?: string[]; completed?: string[]; id?: string; _memory_source?: string } | null = null;
         if (typeof ev.result === "string" && ev.result.trim().startsWith("{")) {
             try { parsed = JSON.parse(ev.result); } catch { parsed = null; }
         }
@@ -61,7 +62,12 @@ export function handleControllerEvent(d: SurfaceDialoguesDeps, backend: string, 
                 void d.sync.refreshTasks();
             }
             setTimeout(() => void d.sync.refreshTasks(), 700);
-        } else if (n === "task_complete" || n === "TaskUpdate" || n === "memory_save") {
+        } else if (n === "task_complete" || n === "TaskUpdate") {
+            const completed = completedTaskIds(parsed);
+            if (completed.length) { d.sync.setTasksDoneByIds(completed, true); }
+            else { void d.sync.refreshTasks(); }
+            setTimeout(() => void d.sync.refreshTasks(), 700);
+        } else if (n === "memory_save") {
             void d.sync.refreshTasks(); setTimeout(() => void d.sync.refreshTasks(), 700);
         }
     }

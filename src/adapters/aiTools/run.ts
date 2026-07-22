@@ -247,16 +247,19 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 // next step handed back immediately, with no separate list_tasks
                 // round-trip, so it can't lose track of the plan mid-execution.
                 if (!ctx.sessionId) { return JSON.stringify({ ok: true }); }
-                const remaining = (await fetchSessionTasks(hub, ctx.sessionId)).filter((t) => !t.done && t.id !== id);
+                const completed = [id, ...cascaded];
+                const completedSet = new Set(completed);
+                const remaining = (await fetchSessionTasks(hub, ctx.sessionId)).filter((t) => !t.done && !completedSet.has(t.id));
                 const cascadeNote = cascaded.length
                     ? `Also auto-completed ${cascaded.length} earlier step(s) from the same numbered plan (they precede this one in the same add_task call).`
                     : undefined;
                 if (!remaining.length) {
-                    return JSON.stringify({ ok: true, pending: [], message: "all tasks complete", allTasksComplete: true, cascaded, note: cascadeNote });
+                    return JSON.stringify({ ok: true, completed, pending: [], message: "all tasks complete", allTasksComplete: true, cascaded, note: cascadeNote });
                 }
                 const [current, ...rest] = remaining;
                 return JSON.stringify({
                     ok: true,
+                    completed,
                     current: { id: current.id, title: current.title },
                     pending: rest.map((t) => ({ id: t.id, title: t.title })),
                     cascaded,

@@ -6,6 +6,7 @@ import { lmToolInvocationOptions } from "../adapters/lmToolInvocation";
 import { AgentAdapter, SlashCommand } from "../adapters/types";
 import { HubClient, Observation } from "../sync/hubClient";
 import { fetchSessionTasks, TaskItem } from "../sync/tasks";
+import { applyTaskState, reconcileTaskStateOverrides, TaskStateOverride } from "../sync/taskUi";
 import { fetchSessionGuardrails } from "../sync/guardrails";
 import { ledgerDir } from "../ledger";
 
@@ -42,6 +43,10 @@ export class SurfaceSync {
     // (list_tasks reads the hub fresh and correctly shows it gone; the panel
     // must eventually agree, not just optimistically diverge).
     private taskFirstSeenAtMs = new Map<string, number>();
+    // Completion/reopen writes are immediately known by exact id, while the
+    // search index can briefly return the previous state. Keep that exact state
+    // authoritative until search catches up (same anti-lag principle as creates).
+    private taskStateOverrides = new Map<string, TaskStateOverride>();
     // 5s was too short in practice: the hub's search index can lag well past
     // that under load, so a just-created task dropped out of the grace window
     // before search ever caught up — it never reappeared. A missed task is far
@@ -65,12 +70,16 @@ export class SurfaceSync {
             this.lastTasks = [];
             this.lastGuardrails = [];
             this.taskFirstSeenAtMs.clear();
+            this.taskStateOverrides.clear();
         }
         const mirror = this.taskMirrorFile();
         let items: TaskItem[] = [];
         try {
             if (!this.hub.configured() || !sessionId) { throw new Error("no hub/session"); }
             items = await fetchSessionTasks(this.hub, sessionId);
+            items = reconcileTaskStateOverrides(
+                items, this.taskStateOverrides, Date.now(), SurfaceSync.TASK_GHOST_GRACE_MS,
+            );
             if (mirror) {
                 try {
                     fs.mkdirSync(path.dirname(mirror), { recursive: true });
@@ -107,6 +116,18 @@ export class SurfaceSync {
         }
         this.lastTasks = merged;
         this.d.post({ type: "tasks", items: merged, project: sessionId });
+    }
+
+    /** Updates a completed/reopened task immediately, then reconciles via search. */
+    setTasksDoneByIds(ids: string[], done: boolean): void {
+        const exact = [...new Set(ids.filter(Boolean))];
+        if (!exact.length) { void this.refreshTasks(); return; }
+        const now = Date.now();
+        for (const id of exact) { this.taskStateOverrides.set(id, { done, at: now }); }
+        this.lastTasks = applyTaskState(this.lastTasks, exact, done);
+        const sessionId = this.d.getController()?.sessionId ?? "";
+        this.d.post({ type: "tasks", items: this.lastTasks, project: sessionId });
+        void this.refreshTasks();
     }
 
     /**

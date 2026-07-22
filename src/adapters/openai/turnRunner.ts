@@ -20,6 +20,7 @@ import { stripSourcePrefix } from "./toolMerge";
 import { findToolHistoryIssues, materializeToolSafeHistory } from "./toolHistory";
 import { buildTurnTools, executeTurnTool } from "./turnTools";
 import { emitTurnUsage } from "./turnUsage";
+import { guardrailStopNotice } from "./turnNotices";
 
 /**
  * One conversation turn for an OpenAISession: the streaming tool-call loop that
@@ -251,7 +252,9 @@ export class TurnRunner {
                         messages.push({ role: nudgeRole, content: "[Convergence] You have run several tools in a row without replying. If you already have enough information, STOP calling tools and answer now; otherwise take only the single next necessary step." });
                     }
                     if (noTextHops >= noProgressStop) {
-                        this.d.emit({ kind: "text", text: `\n\n_(stopped after ${noTextHops} tool steps with no reply — send "continue" to resume)_` });
+                        this.d.emit(guardrailStopNotice(
+                            `Stopped after ${noTextHops} tool steps without a reply. Send "continue" to resume.`,
+                        ));
                         hitCap = false;
                         break;
                     }
@@ -264,7 +267,9 @@ export class TurnRunner {
                 recentCalls.push(sig);
                 if (recentCalls.length > REPEAT_LIMIT) { recentCalls.shift(); }
                 if (recentCalls.length === REPEAT_LIMIT && recentCalls.every((c) => c === sig)) {
-                    this.d.emit({ kind: "text", text: `\n\n_(stopped: the model repeated the same tool call ${REPEAT_LIMIT}x without progress)_` });
+                    this.d.emit(guardrailStopNotice(
+                        `Stopped because the model repeated the same tool call ${REPEAT_LIMIT} times without progress.`,
+                    ));
                     hitCap = false;
                     break;
                 }

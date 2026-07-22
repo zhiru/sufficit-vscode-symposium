@@ -11,6 +11,7 @@ import {
     prettyJson, summarizeToolInput, toolFilePath, toolResultText,
 } from "../parse";
 import { AgentSession, SessionStartOptions } from "../types";
+import { claudeResumeSessionId } from "./resume";
 
 export interface ClaudeAdapterConfig {
     executable: string;
@@ -79,7 +80,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
         private readonly options: SessionStartOptions,
     ) {
         super();
-        if (this.options.resumeSessionId) { this.sessionId = this.options.resumeSessionId; }
+        if (this.options.resumeSessionId) { this.sessionId = claudeResumeSessionId(this.options.resumeSessionId); }
     }
 
     /**
@@ -159,7 +160,7 @@ export class ClaudeSession extends EventEmitter implements AgentSession {
         // Resume the LIVE session id when respawning (e.g. after a steer/cancel
         // killed the process) so the conversation continues instead of starting
         // fresh; falls back to the explicit resume id.
-        const resume = this.options.resumeSessionId || this.sessionId;
+        const resume = claudeResumeSessionId(this.options.resumeSessionId || this.sessionId);
         if (resume) {
             args.push("--resume", resume);
         }

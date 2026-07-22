@@ -13,12 +13,16 @@ export interface TodoItem {
     order?: number;
 }
 
+/** Visual importance for a system-authored notice in the conversation. */
+export type SystemNoticeSeverity = "info" | "warning" | "error";
+
 /** A normalized event emitted by any adapter while a turn is running. */
 export type AgentEvent =
     | { kind: "session"; sessionId: string; model?: string }
     | { kind: "text"; text: string; model?: string; modelLabel?: string }
-    /** anchorIndex: conversation-row index to scroll to/highlight when clicked. */
-    | { kind: "status-notice"; text: string; anchorIndex?: number }
+    /** System-authored annotation, never assistant output.
+     *  anchorIndex: conversation-row index to scroll to/highlight when clicked. */
+    | { kind: "status-notice"; text: string; severity?: SystemNoticeSeverity; anchorIndex?: number }
     | { kind: "thinking"; text: string }
     | { kind: "tool-start"; toolName: string; detail?: string; toolId?: string; input?: string; added?: number; removed?: number; todos?: TodoItem[]; path?: string; diff?: { old: string; new: string }[]; terminalName?: string }
     | { kind: "tool-output"; toolName?: string; toolId?: string; text: string }

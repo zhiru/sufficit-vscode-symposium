@@ -7,6 +7,7 @@ import { setStatus } from "./status";
 import { modelLabel, modelList, setModelLabel, setModelValue } from "./models";
 import { sendBtn } from "./dom";
 import { activeSessionId, agentLabels, currentBackend, currentBackendName, setActiveModel, setActiveSessionId, setAgentLabels, setBusy } from "./state";
+import { legacyGuardrailStopNotice } from "../../adapters/openai/turnNotices";
 
 /** Apply an `event` message payload (streaming turn events). */
 export function applyEvent(ev: any): void {
@@ -22,8 +23,15 @@ export function applyEvent(ev: any): void {
     // deltas should stay in one block; text/tools/status events close it via
     // endStream(), so distinct phases still separate naturally.
     if (ev.kind === "thinking") { streamThinkingDelta(ev.text); }
-    else if (ev.kind === "text") streamDelta(ev.text, ev.model);
-    else if (ev.kind === "status-notice") renderStatusNotice(ev.text, ev.anchorIndex);
+    else if (ev.kind === "text") {
+        const legacyNotice = legacyGuardrailStopNotice(ev.text);
+        if (legacyNotice?.kind === "status-notice") {
+            renderStatusNotice(legacyNotice.text, legacyNotice.anchorIndex, legacyNotice.severity);
+        } else {
+            streamDelta(ev.text, ev.model);
+        }
+    }
+    else if (ev.kind === "status-notice") renderStatusNotice(ev.text, ev.anchorIndex, ev.severity);
     else if (ev.kind === "tool-start") { endStream(); renderTool(ev.toolName, ev.detail || "", { toolId: ev.toolId, input: ev.input, added: ev.added, removed: ev.removed, todos: ev.todos, path: ev.path }); }
     else if (ev.kind === "tool-output") fillToolResult(ev.toolId, ev.text);
     else if (ev.kind === "tool-end") fillToolResult(ev.toolId, ev.result, true);

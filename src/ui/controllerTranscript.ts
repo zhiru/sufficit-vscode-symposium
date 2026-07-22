@@ -1,3 +1,5 @@
+import { legacyGuardrailStopNotice } from "../adapters/openai/turnNotices";
+
 /**
  * Reconstructs the visible conversation (user prompts + assistant replies) from
  * a ChatController render log. Tool calls and internal scaffolding are omitted —
@@ -46,7 +48,11 @@ export function transcriptMessages(log: unknown[]): TranscriptRow[] {
                 rows.push({ role: "user", text: message.text });
             }
         } else if (message?.type === "event" && message.event?.kind === "text") {
-            assistantBuf += message.event.text || "";
+            if (legacyGuardrailStopNotice(message.event.text || "")) {
+                flushAssistant();
+            } else {
+                assistantBuf += message.event.text || "";
+            }
         } else if (message?.type === "event" && message.event?.kind === "thinking") {
             thinkingBuf += message.event.text || "";
         } else if (message?.type === "event" && message.event?.kind === "turn-end") {

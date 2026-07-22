@@ -61,7 +61,7 @@ export class BackendHandoff {
     }
 
     /** Hand a live TERMINAL session off (history read from the CLI transcript). */
-    async switchTerminal(backend: string): Promise<void> {
+    switchTerminal(backend: string): void {
         const term = this.d.getTerminalSession();
         if (!term) { return; }
         if (!this.d.getAdapter(backend)) { return; }
@@ -108,8 +108,8 @@ export class BackendHandoff {
     }
 
     /** Alias for switchTerminal (used by surfaceMessages). */
-    fromTerminal(backend: string): Promise<void> {
-        return this.switchTerminal(backend);
+    fromTerminal(backend: string): void {
+        this.switchTerminal(backend);
     }
 
     /** Alias for switchFromSession (used by surfaceMessages). */

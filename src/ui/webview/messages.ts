@@ -13,6 +13,7 @@ import { beginEdit, lastUserRow } from "./composer";
 import { clearFailedAttemptForEdit } from "./errorEditRecovery";
 import { renderTodos, todoMark } from "./panels";
 import { configureThinkingRenderer, endThinkingStream } from "./thinking";
+import { createSystemNotice } from "./systemNotice";
 export { renderThinkBlock, streamThinkingDelta } from "./thinking";
 
 // Tracks the Retry bar for the most recent retry click, so it can be
@@ -118,27 +119,16 @@ export function confirmOptimisticMessage(clientMessageId) {
     delete el.dataset.clientMessageId;
     return el;
 }
-// Transient status notice (e.g. vision transcription annotation).
-// Rendered as a quiet system annotation, NOT model output — never persisted.
-export function renderStatusNotice(text, anchorIndex) {
+// System status notice (e.g. a guardrail stop or compaction annotation).
+// It may be replayed with the visual log, but never becomes assistant output or
+// a conversation row used as model context.
+export function renderStatusNotice(text, anchorIndex, severity) {
     const stick = nearBottom();
     // Close any open tool-action group too: a notice fired mid tool-loop
     // (auth retry, mid-turn compaction) must not let the next tool-start
     // silently re-attach to the group that was open before this notice.
     endToolGroup(); endStream();
-    const el = document.createElement("div");
-    el.className = "msg statusNotice";
-    renderStatusNoticeText(el, text);
-    if (typeof anchorIndex === "number") {
-        el.appendChild(document.createTextNode(" "));
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "statusNoticeLink";
-        btn.textContent = "view original message";
-        btn.title = "Scroll to the message this is continuing";
-        btn.addEventListener("click", () => scrollToMessageRow(anchorIndex));
-        el.appendChild(btn);
-    }
+    const el = createSystemNotice(text, severity, anchorIndex, scrollToMessageRow);
     log.appendChild(el);
     autoScroll(stick);
     return el;
@@ -153,41 +143,6 @@ function scrollToMessageRow(index) {
     setTimeout(() => row.classList.remove("anchorFlash"), 1600);
 }
 
-const STATUS_MANUAL_TOKENS = new Map([
-    ["folded_orphan_tools", "openai-history"],
-    ["folded_missing_tool_calls", "openai-history"],
-    ["orphan_tools", "openai-history"],
-    ["missing_tool_results", "openai-history"],
-]);
-
-function renderStatusNoticeText(el, text) {
-    const value = String(text ?? "");
-    const tokenPattern = /\b(folded_orphan_tools|folded_missing_tool_calls|orphan_tools|missing_tool_results)(?==)/g;
-    let last = 0;
-    let match;
-    while ((match = tokenPattern.exec(value)) !== null) {
-        if (match.index > last) {
-            el.appendChild(document.createTextNode(value.slice(last, match.index)));
-        }
-        const token = match[1];
-        const manualId = STATUS_MANUAL_TOKENS.get(token);
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "statusNoticeLink";
-        btn.textContent = token;
-        btn.title = "Open manual";
-        btn.addEventListener("click", () => {
-            if (manualId) {
-                vscode.postMessage({ type: "show-manual", manualId });
-            }
-        });
-        el.appendChild(btn);
-        last = match.index + token.length;
-    }
-    if (last < value.length) {
-        el.appendChild(document.createTextNode(value.slice(last)));
-    }
-}
 export function branchBanner(title, detail) {
     const stick = nearBottom();
     endToolGroup(); endStream();

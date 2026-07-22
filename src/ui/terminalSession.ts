@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AgentAdapter, FollowHandle, HistoryMessage, SessionInfo } from "../adapters/types";
+import { claudeResumeSessionId } from "../adapters/claude/resume";
 
 export interface TerminalSessionOptions {
     cwd: string;
@@ -72,12 +73,15 @@ export class TerminalSession {
             }
         }
         let cliArgs = args;
-        if (this.options.resumeSessionId && this.adapter.backend === "codex") {
-            cliArgs = ["resume", ...args, this.options.resumeSessionId];
-            this.sessionId = this.options.resumeSessionId;
-        } else if (this.options.resumeSessionId) {
-            args.push("--resume", this.options.resumeSessionId);
-            this.sessionId = this.options.resumeSessionId;
+        const resumeSessionId = this.adapter.backend === "claude"
+            ? claudeResumeSessionId(this.options.resumeSessionId)
+            : this.options.resumeSessionId;
+        if (resumeSessionId && this.adapter.backend === "codex") {
+            cliArgs = ["resume", ...args, resumeSessionId];
+            this.sessionId = resumeSessionId;
+        } else if (resumeSessionId) {
+            args.push("--resume", resumeSessionId);
+            this.sessionId = resumeSessionId;
         }
         const cli = `${this.adapter.backend === "claude" ? "claude" : this.adapter.backend} ${cliArgs.join(" ")}`.trim();
         // Persistent mode: run the CLI inside a detached tmux session that
