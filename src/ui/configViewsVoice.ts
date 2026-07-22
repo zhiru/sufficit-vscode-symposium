@@ -33,6 +33,7 @@ export const configViewsVoice = `
         }
         const s = stt.settings;
         const avail = stt.availability || {};
+        const speechProvider = stt.vscodeSpeechStatus || { supported: false, installed: false, extensionId: "ms-vscode.vscode-speech" };
         const badge = (ok) => '<span class="badge ' + (ok ? "badge-default" : "danger") + '">' + (ok ? t("config.voice.badge.available") : t("config.voice.badge.notFound")) + '</span>';
 
         // Setup wizard / diagnostic: runs the static checks (ffmpeg + engine
@@ -68,10 +69,16 @@ export const configViewsVoice = `
 
         // Engine + global capture settings.
         const engineOpts = (stt.engines || []).map(e => ({ v: e.id, l: e.label }));
+        const speechProviderControl = speechProvider.installed
+            ? '<span class="desc">' + esc(speechProvider.extensionId) + '</span>'
+            : speechProvider.supported
+                ? '<button class="secondary stt-install-vscode-speech">' + esc(t("config.voice.vscodeSpeech.install")) + '</button>'
+                : '<span class="desc">' + esc(t("config.voice.diagnose.fixVscodeSpeechWeb")) + '</span>';
         let html = '<div class="diag-columns">' + diagSection + sufficitSection + '</div>' +
             section("Engine",
-                item("Speech-to-text engine", "Web Speech works only in the browser (code-server). Local engines work in VS Code desktop too.",
+                item("Speech-to-text engine", "VS Code Speech reuses the installed Microsoft provider through editor dictation. Web Speech works only in the browser; other local engines work in VS Code desktop too.",
                     sel("symposium.voice.engine", s.engine, engineOpts)) +
+                item("VS Code Speech " + badge(avail["vscode-speech"]), "Desktop provider used through native editor dictation; final validation requires one real microphone recording.", speechProviderControl) +
                 item("Recognition language", "BCP-47 tag (pt-BR, en-US). Local engines use the language part.",
                     sel("symposium.voice.language", s.language || "pt-BR",
                         [{ v: "pt-BR", l: "Português (BR)" }, { v: "en-US", l: "English (US)" }, { v: "es-ES", l: "Español (ES)" }, { v: "fr-FR", l: "Français (FR)" }, { v: "de-DE", l: "Deutsch (DE)" }, { v: "it-IT", l: "Italiano (IT)" }, { v: "ja-JP", l: "日本語 (JP)" }, { v: "zh-CN", l: "中文 (CN)" }])) +
@@ -84,7 +91,7 @@ export const configViewsVoice = `
         // Applies to every path (Web Speech's own continuous/interim flags,
         // AND local-engine silence auto-segmentation — see "Continuous" below).
         html += section("Listening behaviour",
-            item("Continuous", "Keep listening across pauses. Web Speech: its own native behavior. Local engines (whisper.cpp/faster-whisper/vosk): auto-segments on silence — transcribes what you said so far, then keeps listening, instead of waiting for a manual stop.", sel("symposium.voice.continuous", s.engine && false ? "true" : (state.prefs && state.prefs.voiceContinuous === false ? "false" : "true"), onoff)) +
+            item("Continuous", "Keep listening across pauses. Web Speech uses native continuous mode; whisper.cpp/faster-whisper/vosk auto-segment on silence. VS Code Speech keeps one native dictation open until you stop it manually.", sel("symposium.voice.continuous", s.engine && false ? "true" : (state.prefs && state.prefs.voiceContinuous === false ? "false" : "true"), onoff)) +
             item("Interim results", "Show partial text while speaking (Web Speech only — local engines have no partial results, see Continuous above).", sel("symposium.voice.interimResults", (state.prefs && state.prefs.voiceInterimResults === false) ? "false" : "true", onoff)) +
             item("Dots animation", "Animated indicator while recording.", sel("symposium.voice.dotsAnimation", (state.prefs && state.prefs.voiceDotsAnimation === false) ? "false" : "true", onoff)) +
             item("Sound feedback", "Start/stop tones.", sel("symposium.voice.soundFeedback", (state.prefs && state.prefs.voiceSoundFeedback === false) ? "false" : "true", onoff))

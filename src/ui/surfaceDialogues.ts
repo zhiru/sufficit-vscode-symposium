@@ -31,6 +31,7 @@ export interface SurfaceDialoguesDeps {
     setTerminalSession: (t: TerminalSession | undefined) => void;
     setFollowHandle: (h: FollowHandle | undefined) => void;
     setFollowedSessionId: (id: string | undefined) => void;
+    setSendBlockedReason: (reason: SessionInfo["continuationBlockedReason"] | "live-follow" | undefined) => void;
     /** Selects the one adapter-owned usage singleton for this conversation. */
     activateUsage: (adapter: AgentAdapter) => void;
     /** Detaches (not stops) the current dialogue/terminal/follow before binding a new one. */
@@ -116,9 +117,13 @@ export class SurfaceDialogues {
 
     /** Opens a stored session (resume) in this surface. */
     openSession(info: SessionInfo): void {
+        if (info.continuationBlockedReason) {
+            void this.followSession(info, info.continuationBlockedReason);
+            return;
+        }
         this.openDialogue(
             info.backend,
-            { cwd: this.d.deps.cwdFor(info), resumeSessionId: info.sessionId },
+            { cwd: this.d.deps.cwdFor(info), resumeSessionId: info.sessionId, lineageId: info.lineageId },
             info.title,
             info,
         );
@@ -130,14 +135,16 @@ export class SurfaceDialogues {
      * transcript so new turns appear as they happen. The composer is
      * disabled — sending would fork the session, not drive the original.
      */
-    async followSession(info: SessionInfo): Promise<void> {
+    async followSession(info: SessionInfo, readOnlyReason?: SessionInfo["continuationBlockedReason"]): Promise<void> {
         const adapter = this.d.deps.adapterByBackend.get(info.backend);
-        if (!adapter?.follow) {
+        if (!adapter) { return; }
+        if (!adapter.follow && !readOnlyReason) {
             // No live mirror for this backend — fall back to resume.
             this.openSession(info);
             return;
         }
         const generation = ++this.generation;
+        this.d.setSendBlockedReason(readOnlyReason ?? "live-follow");
         this.d.detachActive();
         this.d.post({ type: "clear" });
         this.d.post({ type: "history-start" });
@@ -150,6 +157,7 @@ export class SurfaceDialogues {
             resumed: true,
             historyPending: true,
             readOnly: true,
+            readOnlyReason,
             busy: false,
             models: [],
             sessionId: info.sessionId,
@@ -178,6 +186,11 @@ export class SurfaceDialogues {
             return;
         }
         this.d.post({ type: "history-end" });
+        if (!adapter.follow) {
+            this.d.deps.lastActive.set({ backend: info.backend, sessionId: info.sessionId });
+            this.d.onTitleChange?.(`${info.title} · ${adapter.backend} · read only`);
+            return;
+        }
         const handle = adapter.follow(info, (message) => {
             this.d.post({ type: "append", message });
         });
@@ -205,6 +218,7 @@ export class SurfaceDialogues {
             return;
         }
         this.generation++;
+        this.d.setSendBlockedReason(undefined);
         this.d.detachActive();
         this.d.post({ type: "clear" });
         const sessionsSide = vscode.workspace.getConfiguration("symposium.chat").get<string>("sessionsSide", "auto");
@@ -260,6 +274,7 @@ export class SurfaceDialogues {
             return;
         }
         const generation = ++this.generation;
+        this.d.setSendBlockedReason(undefined);
         this.d.detachActive();
         this.d.post({ type: "clear" });
         const historyPending = !!options.resumeSessionId;

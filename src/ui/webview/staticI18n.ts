@@ -7,6 +7,7 @@ import {
     copySessionBtn, chatTitle, addContext, addBrowserPage, configBtn, modelPicker, reasoningPicker,
     presencePicker, sendMode, sendBtn, stopBtn, sendCaret, input,
 } from "./dom";
+import { composerBlockedReason } from "./state";
 
 /** Applies localized title/aria/placeholder text to the static chat-surface controls. */
 export function applyStaticI18n(): void {
@@ -47,7 +48,11 @@ export function applyStaticI18n(): void {
     const ap = document.querySelector(".apHead");
     if (ap) { ap.textContent = t("chat.panel.attached"); }
 
-    if (input) { input.placeholder = t("chat.composer.placeholder"); }
+    if (input) {
+        input.placeholder = composerBlockedReason
+            ? t("chat.composer.codexSubagent.placeholder")
+            : t("chat.composer.placeholder");
+    }
     setT(addContext, "chat.icon.attachFiles");
     setT(addBrowserPage, "chat.icon.attachBrowser");
     setT(configBtn, "chat.icon.config");

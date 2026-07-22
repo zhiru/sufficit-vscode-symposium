@@ -65,3 +65,60 @@ test("editResend branches Claude when edited text changed", () => {
     assert.equal(oldHandled, 0);
     assert.equal(newHandled, 1);
 });
+
+test("editResend keeps a Codex branch in its parent conversation lineage", () => {
+    const parentId = "019f86c6-755f-7df2-8fa7-85d55d2b248d";
+    let openedOptions: { lineageId?: string; seedHistory?: string } | undefined;
+    const oldController = {
+        backend: "codex",
+        sessionId: parentId,
+        lineageId: undefined,
+        cwd: "/repo",
+        title: "Parent conversation",
+        transcriptMessages: () => [
+            { role: "user", text: "first question" },
+            { role: "assistant", text: "first answer" },
+            { role: "user", text: "original text" },
+        ],
+        transcriptMessagesUpTo: () => [
+            { role: "user", text: "first question" },
+            { role: "assistant", text: "first answer" },
+        ],
+        transcriptUpTo: () => "user: first question\n\nassistant: first answer",
+        handleMessage: () => undefined,
+    };
+    const newController = { handleMessage: () => undefined };
+    let current: Record<string, unknown> = oldController;
+
+    editResend(depsFor(() => current), (_backend, options) => {
+        openedOptions = options;
+        current = newController;
+    }, 2, { type: "send", text: "edited text", editFrom: 2 });
+
+    assert.equal(openedOptions?.lineageId, parentId);
+    assert.match(openedOptions?.seedHistory ?? "", new RegExp(`Parent session: ${parentId}`));
+    assert.match(openedOptions?.seedHistory ?? "", new RegExp(`lineage: ${parentId}`));
+    assert.match(openedOptions?.seedHistory ?? "", /user: first question/);
+});
+
+test("editResend preserves the root lineage when branching an existing branch", () => {
+    const rootId = "019f86c6-755f-7df2-8fa7-85d55d2b248d";
+    let lineageId: string | undefined;
+    const controller = {
+        backend: "codex",
+        sessionId: "019f8ae6-6ce1-7752-b2b5-023c94d63fbc",
+        lineageId: rootId,
+        cwd: "/repo",
+        title: "Branch",
+        transcriptMessages: () => [{ role: "user", text: "old" }],
+        transcriptMessagesUpTo: () => [],
+        transcriptUpTo: () => undefined,
+        handleMessage: () => undefined,
+    };
+
+    editResend(depsFor(() => controller), (_backend, options) => { lineageId = options.lineageId; }, 0, {
+        type: "send", text: "new", editFrom: 0,
+    });
+
+    assert.equal(lineageId, rootId);
+});

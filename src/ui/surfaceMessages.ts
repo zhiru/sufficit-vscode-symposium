@@ -36,6 +36,7 @@ export interface SurfaceMessagesDeps {
     getController: () => ChatController | undefined;
     getTerminalSession: () => TerminalSession | undefined;
     getFollowHandle: () => FollowHandle | undefined;
+    getSendBlockedReason: () => SessionInfo["continuationBlockedReason"] | "live-follow" | undefined;
     sync: SurfaceSync;
     dialogues: SurfaceDialogues;
     handoff: BackendHandoff;
@@ -331,6 +332,12 @@ export class SurfaceMessages {
                     return;
                 }
                 default: {
+                    // The webview disables the composer for stored read-only
+                    // sessions, but enforce the same policy host-side so a
+                    // stale UI event cannot start a new dialogue or reach Codex.
+                    if (message?.type === "send" && this.d.getSendBlockedReason()) {
+                        return;
+                    }
                     const term = this.d.getTerminalSession();
                     if (term && message?.type === "send") {
                         term.send(message.text);

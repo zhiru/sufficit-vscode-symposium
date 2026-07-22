@@ -8,6 +8,8 @@ export interface DiagnoseStep {
     label: string;
     fix?: string;
     downloadable?: string[];
+    action?: "install-vscode-speech";
+    actionLabel?: string;
 }
 
 export interface DiagnoseResult {
@@ -55,6 +57,23 @@ export function buildSttDiagnostic(
 
     const avail = stt.availability || {};
     const settings = stt.settings;
+    if (settings.engine === "vscode-speech") {
+        const available = avail["vscode-speech"] === true;
+        const supported = isWebUi !== true;
+        return {
+            ready: available,
+            steps: [{
+                id: "vscode-speech",
+                status: available ? "ok" : "fail",
+                label: tr("config.voice.diagnose.vscodeSpeech"),
+                fix: available ? tr("config.voice.diagnose.vscodeSpeechReady") : tr(supported
+                    ? "config.voice.diagnose.fixVscodeSpeech"
+                    : "config.voice.diagnose.fixVscodeSpeechWeb"),
+                action: !available && supported ? "install-vscode-speech" : undefined,
+                actionLabel: !available && supported ? tr("config.voice.vscodeSpeech.install") : undefined,
+            }],
+        };
+    }
     const models = stt.models || [];
     const engine = resolveDiagnosticLocalEngine(settings.engine);
 

@@ -32,7 +32,10 @@ export function buildChatSurfaceDeps(args: SurfaceDepsArgs): ChatSurfaceDeps {
             // Persist the subagent→parent link while it's live, so the session
             // stays nested under its main conversation after it's stored to disk
             // (disk rows otherwise lose the in-memory parentId).
-            for (const l of liveInfos) { if (l.parentId) { store.setParent(l.sessionId, l.parentId); } }
+            for (const l of liveInfos) {
+                if (l.parentId) { store.setParent(l.sessionId, l.parentId); }
+                if (l.lineageId) { store.setLineage(l.sessionId, l.lineageId); }
+            }
             const disk = store.decorate(await rawSessions(), true)
                 .map((s) => {
                     const status = runtime.statusFor(s.sessionId);
@@ -83,6 +86,7 @@ export function buildChatSurfaceDeps(args: SurfaceDepsArgs): ChatSurfaceDeps {
         },
         store: {
             setParent: (sessionId: string, parentId: string | undefined) => store.setParent(sessionId, parentId),
+            setLineage: (sessionId: string, lineageId: string | undefined) => store.setLineage(sessionId, lineageId),
         },
     };
 }

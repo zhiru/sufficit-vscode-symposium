@@ -19,7 +19,7 @@ import {
 import { getCached, setCached, ModelCacheEntry } from "../modelCache";
 import { CodexSession } from "./session";
 import { CodexAdapterConfig } from "./codexMcpConfig";
-import { looksInjected, readCodexMeta } from "./transcript";
+import { inferCodexLineage, looksInjected, readCodexMeta } from "./transcript";
 import { parseCodexModelCatalog } from "./models";
 import { codexUsage } from "./usage";
 
@@ -86,7 +86,7 @@ export class CodexAdapter implements AgentAdapter {
         };
         await walk(root, 0);
 
-        const sessions: SessionInfo[] = [];
+        const records: { info: SessionInfo; seedHistory?: string }[] = [];
         for (const file of files) {
             try {
                 const meta = await readCodexMeta(file);
@@ -94,20 +94,45 @@ export class CodexAdapter implements AgentAdapter {
                     continue;
                 }
                 const stat = await fs.promises.stat(file);
-                sessions.push({
+                records.push({ info: {
                     backend: "codex",
                     sessionId: meta.id,
                     title: meta.title ?? path.basename(file),
                     model: meta.model,
+                    lineageId: meta.lineageId,
+                    parentId: meta.parentId,
+                    continuationBlockedReason: meta.continuationBlockedReason,
                     cwd: meta.cwd,
                     updatedAt: stat.mtime,
                     transcriptPath: file,
-                });
+                }, seedHistory: meta.seedHistory });
             } catch {
                 // skip unreadable rollout files
             }
         }
+        const sessions = records.map((record) => record.info);
         sessions.sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0));
+        const lineageCandidates = [...sessions]
+            .sort((a, b) => (a.updatedAt?.getTime() ?? 0) - (b.updatedAt?.getTime() ?? 0));
+        const historyCache = new Map<string, string>();
+        for (const record of records.filter((item) => !item.info.lineageId && item.seedHistory)) {
+            const candidates = lineageCandidates
+                .filter((candidate) => candidate.sessionId !== record.info.sessionId
+                    && candidate.cwd === record.info.cwd)
+                .map(async (candidate) => {
+                    let historyText = historyCache.get(candidate.sessionId);
+                    if (historyText === undefined) {
+                        const history = await this.history(candidate);
+                        historyText = history
+                            .filter((message) => message.role === "user" || message.role === "assistant")
+                            .map((message) => `${message.role}: ${message.text}`)
+                            .join("\n\n");
+                        historyCache.set(candidate.sessionId, historyText);
+                    }
+                    return { sessionId: candidate.sessionId, lineageId: candidate.lineageId, historyText };
+                });
+            record.info.lineageId = inferCodexLineage(record.seedHistory!, await Promise.all(candidates));
+        }
         return sessions.slice(0, 50);
     }
 

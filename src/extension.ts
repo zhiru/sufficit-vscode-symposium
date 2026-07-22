@@ -21,6 +21,7 @@ import { claudeConfig, codexConfig, copilotConfig, openaiConfig, normalizeAdapte
 import { buildChatSurfaceDeps } from "./extension/surfaceDeps";
 import { registerCommands } from "./extension/commands";
 import { initSttStorage } from "./voice/sttService";
+import { initVscodeSpeechBridge } from "./voice/vscodeSpeechBridge";
 import { setCodexSufficitTokenProvider, syncCodexSufficitMcp } from "./adapters/codex/sufficitMcp";
 
 // Re-exported so consumers (e.g. ui/chatSurface) can keep importing from here.
@@ -33,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
 
     // Local speech-to-text model storage (downloaded on demand under global storage).
     initSttStorage(context);
+    initVscodeSpeechBridge(context.globalStorageUri.fsPath);
 
     const sufficitAdapter = new OpenAIAdapter("openai", "Sufficit AI", () => openaiConfig(context));
     const adapters: AgentAdapter[] = [

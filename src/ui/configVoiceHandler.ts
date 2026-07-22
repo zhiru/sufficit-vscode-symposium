@@ -4,6 +4,8 @@ import { getSttState, readSettings } from "../voice/sttService";
 import { buildSttDiagnostic, SttDiagnosticSnapshot } from "../voice/sttDiagnostic";
 import { buildSttRecoveryPrompt, getSttRecoveryTarget } from "../voice/sttRecovery";
 import { defaultCwd } from "../extension/config";
+import { installVscodeSpeechProvider } from "../voice/vscodeSpeechBridge";
+import { SUFFICIT_VOICE_BENCHMARK_PROMPT } from "../voice/sttBenchmark";
 
 export type { DiagnoseResult, DiagnoseStep } from "../voice/sttDiagnostic";
 
@@ -15,7 +17,28 @@ export async function handleVoiceMessage(_message: ConfigMessage, ctx: ConfigHan
     if (_message.type === "stt-diagnose") { return handleManualDiagnose(_message, ctx); }
     if (_message.type === "stt-sufficit-diagnose") { return handleSufficitDiagnose(ctx); }
     if (_message.type === "stt-sufficit-recover") { return handleSufficitRecover(ctx); }
+    if (_message.type === "stt-install-vscode-speech") { return handleVscodeSpeechInstall(ctx); }
     return false;
+}
+
+async function handleVscodeSpeechInstall(ctx: ConfigHandlerCtx): Promise<boolean> {
+    try {
+        await installVscodeSpeechProvider();
+        await ctx.pushState();
+        ctx.post({ type: "stt-vscode-speech-install-result", ok: true });
+        const stt = await getSttState();
+        ctx.post({
+            type: "stt-diagnose-result",
+            result: buildSttDiagnostic(stt as unknown as SttDiagnosticSnapshot, ctx.tr, false, false),
+        });
+    } catch (error) {
+        ctx.post({
+            type: "stt-vscode-speech-install-result",
+            ok: false,
+            error: String((error && (error as Error).message) || error),
+        });
+    }
+    return true;
 }
 
 /**
@@ -95,28 +118,3 @@ async function handleSufficitRecover(ctx: ConfigHandlerCtx): Promise<boolean> {
     ctx.post({ type: "stt-sufficit-recover-result", ok: true, engine: target.engine, model: target.model });
     return true;
 }
-
-const SUFFICIT_VOICE_BENCHMARK_PROMPT =
-    "Você está numa sessão autônoma, sem ninguém observando — não espere confirmação nem pergunte nada, decida e execute até o fim, depois pare.\n\n" +
-    "TAREFA: neste projeto (extensão VS Code \"Symposium\"), decida qual dos 3 engines locais de reconhecimento de voz (speech-to-text) instalar e configurar como padrão.\n\n" +
-    "Contexto: Symposium suporta 3 engines locais além do Web Speech (que só funciona em navegador de verdade, não no VS Code desktop): " +
-    "whisper.cpp (binário whisper-cli), faster-whisper (binário whisper-ctranslate2) e vosk (binário vosk-transcriber). " +
-    "As configurações ficam em symposium.voice.* no settings.json do VS Code. O código-fonte relevante está em src/voice/ deste repo " +
-    "(sttCatalog.ts tem os IDs/URLs dos modelos, sttEngines.ts mostra como cada engine é invocado por linha de comando, sttService.ts lê as configurações).\n\n" +
-    "Passos:\n" +
-    "1. Garanta os 3 binários instalados: whisper.cpp via apt (sudo apt-get install -y whisper.cpp), faster-whisper e vosk via pipx " +
-    "(pipx install whisper-ctranslate2 / pipx install vosk — NÃO use pip direto, este sistema tem PEP 668 externally-managed-environment; instale pipx via apt se preciso).\n" +
-    "2. Baixe um modelo pequeno/rápido em português (ou multilíngue) para cada engine (veja sttCatalog.ts para os IDs e URLs exatos).\n" +
-    "3. Sintetize uma frase de teste de exatamente ~10 palavras em português como áudio: instale espeak-ng (ou festival) via apt se necessário, " +
-    "gere um WAV de 16kHz mono (formato que os 3 engines esperam).\n" +
-    "4. Para cada engine, rode a transcrição dessa mesma frase 3 vezes e meça o tempo de parede (wall-clock) de cada execução; use a média.\n" +
-    "5. Alvo: transcrever uma frase de 10 palavras em no máximo 4 segundos. Decida qual engine tem o melhor custo/benefício " +
-    "(velocidade vs. corretude da transcrição vs. tamanho do modelo baixado) — não precisa ser o mais rápido se a transcrição sair claramente errada.\n" +
-    "6. Aplique sua decisão: edite diretamente o settings.json do usuário do VS Code " +
-    "(normalmente ~/.config/Code/User/settings.json no Linux) definindo symposium.voice.engine para o engine escolhido " +
-    "e o campo de modelo correspondente (symposium.voice.whisper.model / symposium.voice.fasterWhisper.model / symposium.voice.vosk.model). " +
-    "Preserve todo o resto do arquivo — leia antes de escrever, edite só essas chaves.\n" +
-    "7. Termine com um resumo claro em português: tabela com engine, tempo médio, tamanho do modelo, resultado (ok/errado) e a decisão final com o motivo.\n\n" +
-    "Rastreamento: use add_task para registrar os 7 passos acima como tarefas (no Tasks panel), e chame task_complete(id) em cada uma " +
-    "IMEDIATAMENTE ao terminá-la — não deixe pra marcar só a última no final. Um memory_save de checkpoint documentando o progresso é " +
-    "ÚTIL mas NÃO substitui o task_complete: são coisas diferentes, faça as duas (checkpoint pra contexto, task_complete pra fechar a tarefa).";

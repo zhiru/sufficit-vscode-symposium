@@ -11,6 +11,7 @@ export interface VoicePreferences {
     engine: string;
     localStt: boolean;
     hostCapture: boolean;
+    vscodeSpeechBridge: boolean;
 }
 
 let voicePreferences: VoicePreferences = {
@@ -25,6 +26,7 @@ let voicePreferences: VoicePreferences = {
     // when diagnostics will shortly report the voice configuration invalid.
     localStt: false,
     hostCapture: false,
+    vscodeSpeechBridge: false,
 };
 
 export function getVoicePreferences(): VoicePreferences {
@@ -39,6 +41,7 @@ export function getVoicePreferences(): VoicePreferences {
             engine: prefs.engine || "auto",
             localStt: prefs.localStt !== false,
             hostCapture: prefs.hostCapture === true,
+            vscodeSpeechBridge: prefs.vscodeSpeechBridge === true,
         };
     }
     return voicePreferences;

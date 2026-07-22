@@ -23,6 +23,7 @@ export function handleControllerEvent(d: SurfaceDialoguesDeps, backend: string, 
     const ev = msg?.event as { kind?: string; sessionId?: string; toolName?: string; result?: string } | undefined;
     if (ev?.kind === "session" && ev.sessionId) {
         d.deps.lastActive.set({ backend, sessionId: ev.sessionId });
+        d.deps.store.setLineage(ev.sessionId, d.getController()?.lineageId);
     }
     // Repaint the affected panel the moment a session-mutating tool finishes,
     // so an agent-added guardrail / task shows immediately instead of only at

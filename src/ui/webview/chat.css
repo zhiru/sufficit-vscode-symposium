@@ -1286,6 +1286,25 @@
         display: flex; flex-direction: column;
     }
     #composer:focus-within { border-color: var(--vscode-focusBorder); }
+    #composerBlockedNotice {
+        display: none; align-items: flex-start; gap: 7px;
+        padding: 9px 11px 2px; color: var(--vscode-foreground);
+        font-size: 0.86em; line-height: 1.45;
+    }
+    #composerBlockedNotice svg {
+        width: 15px; height: 15px; margin-top: 2px; flex: 0 0 auto;
+        color: var(--vscode-editorWarning-foreground, var(--vscode-descriptionForeground));
+    }
+    #composer.blocked {
+        border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-widget-border, #6b5d32));
+        background: var(--vscode-inputValidation-warningBackground, var(--vscode-input-background));
+    }
+    #composer.blocked #composerBlockedNotice { display: flex; }
+    #composer.blocked #input { cursor: not-allowed; opacity: 0.82; }
+    #composer.blocked #input::placeholder {
+        color: var(--vscode-descriptionForeground); opacity: 1;
+    }
+    #composer.blocked #toolbar { opacity: 0.72; }
     /* Scroll-to-bottom button: floats just above the composer, only when scrolled up. */
     #scrollBottom {
         position: absolute; bottom: 10px; right: 28px; z-index: 5;

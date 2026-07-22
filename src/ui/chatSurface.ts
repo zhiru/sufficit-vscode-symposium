@@ -13,8 +13,7 @@ import { SurfaceDialogues } from "./surfaceDialogues";
 import { SurfaceMessages } from "./surfaceMessages";
 import { HubClient } from "../sync/hubClient";
 import { activeEditorContext, isSimpleBrowserOpen } from "./chatSurfaceContext";
-import { canUseLocalStt } from "../voice/sttRouting";
-import { isLocalSttReady } from "../voice/sttService";
+import { pushVoicePreferences } from "./voicePreferences";
 
 export interface ChatSurfaceDeps {
     adapterByBackend: Map<string, AgentAdapter>;
@@ -40,6 +39,7 @@ export interface ChatSurfaceDeps {
     /** Session metadata store (titles, archive, pin, parent relationships). */
     store: {
         setParent(sessionId: string, parentId: string | undefined): void;
+        setLineage(sessionId: string, lineageId: string | undefined): void;
     };
 }
 
@@ -54,6 +54,7 @@ export class ChatSurface {
     private terminalSession: TerminalSession | undefined;
     private followHandle: FollowHandle | undefined;
     private followedSessionId: string | undefined;
+    private sendBlockedReason: SessionInfo["continuationBlockedReason"] | "live-follow" | undefined;
     private ready = false;
     private loggedIn = false;   // cached Sufficit login state (for system hints)
     private queue: unknown[] = [];
@@ -90,6 +91,7 @@ export class ChatSurface {
             setTerminalSession: (t) => { this.terminalSession = t; },
             setFollowHandle: (h) => { this.followHandle = h; },
             setFollowedSessionId: (id) => { this.followedSessionId = id; },
+            setSendBlockedReason: (reason) => { this.sendBlockedReason = reason; },
             activateUsage: (adapter) => this.activateUsage(adapter),
             detachActive: () => this.detachActive(),
             buildLangHint: () => this.buildLangHint(),
@@ -108,6 +110,7 @@ export class ChatSurface {
             getController: () => this.controller,
             getTerminalSession: () => this.terminalSession,
             getFollowHandle: () => this.followHandle,
+            getSendBlockedReason: () => this.sendBlockedReason,
             sync: this.sync,
             dialogues: this.dialogues,
             handoff: this.handoff,
@@ -139,6 +142,9 @@ export class ChatSurface {
             if (e.affectsConfiguration("symposium.voice") && this.ready) {
                 this.pushVoicePreferences();
             }
+        }));
+        this.disposables.push(vscode.extensions.onDidChange(() => {
+            if (this.ready) { this.pushVoicePreferences(); }
         }));
     }
 
@@ -208,36 +214,7 @@ export class ChatSurface {
      * constructor) so a setting changed in Config takes effect immediately.
      */
     private pushVoicePreferences(): void {
-        const voiceCfg = vscode.workspace.getConfiguration("symposium");
-        const voiceEngine = voiceCfg.get<string>("voice.engine", "auto");
-        const localSttRequested = canUseLocalStt(voiceEngine, vscode.env.uiKind === vscode.UIKind.Web);
-        const voicePreferences = {
-            language: voiceCfg.get<string>("voice.language", "pt-BR"),
-            continuous: voiceCfg.get<boolean>("voice.continuous", true),
-            interimResults: voiceCfg.get<boolean>("voice.interimResults", true),
-            dotsAnimation: voiceCfg.get<boolean>("voice.dotsAnimation", true),
-            soundFeedback: voiceCfg.get<boolean>("voice.soundFeedback", true),
-            engine: voiceEngine,
-            // Fail closed while the host checks the configured local engine.
-            localStt: false,
-            // Desktop: the host records the mic natively (ffmpeg) — webview
-            // getUserMedia is unreliable in VS Code (permission lost on reload).
-            hostCapture: vscode.env.uiKind !== vscode.UIKind.Web,
-        };
-        this.post({ type: "setVoicePreferences", preferences: voicePreferences });
-
-        if (!localSttRequested) { return; }
-
-        // Validate against the real world (binary on PATH + compatible model)
-        // before exposing the microphone. A failed check deliberately leaves
-        // the initial disabled preference in place.
-        void isLocalSttReady().then((ready) => {
-            if (!ready) { return; }
-            this.post({
-                type: "setVoicePreferences",
-                preferences: { ...voicePreferences, localStt: true },
-            });
-        });
+        pushVoicePreferences((message) => this.post(message));
     }
 
     // Dialogue lifecycle (open / resume / follow / terminal / branch) lives in

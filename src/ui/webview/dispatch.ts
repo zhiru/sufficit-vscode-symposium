@@ -12,7 +12,7 @@ import { renderAccount, renderSessions } from "./sessions";
 import { setLang, t } from "./i18n";
 import { applyStaticI18n } from "./staticI18n";
 import { openUsagePopover, renderStatusbar, setLastUsage, setLastTurn, setQuotaLoading, setSessionCostUsd } from "./statusbar";
-import { setLoading, setStatus, updateSendTitle } from "./status";
+import { setComposerBlocked, setLoading, setStatus, updateSendTitle } from "./status";
 import { hideCtx, openChoiceMenu, showToast } from "./menus";
 import { modelLabels, modelValue, modelList, modelDefault, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, buildModelMenuOpts } from "./models";
 import { armStickyUserMessage, layout, refreshEmpty, scrollToBottom, nearBottom, autoScroll } from "./scroll";
@@ -74,6 +74,7 @@ window.addEventListener("message", ({ data }) => {
             resetWorkingState();
             resetToolRows();
             refreshEmpty();
+            setComposerBlocked("", t("chat.composer.placeholder"), t("chat.composer.placeholder"));
             sendBtn.disabled = false;
             document.getElementById("composer").style.display = "flex";
             setStatus();

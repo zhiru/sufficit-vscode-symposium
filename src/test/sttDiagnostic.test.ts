@@ -36,6 +36,39 @@ test("stt diagnostic: webspeech reports browser check instead of local whisper c
     assert.equal(result.steps[0].label, "config.voice.diagnose.webspeech");
 });
 
+test("stt diagnostic: VS Code Speech uses provider availability only", () => {
+    const state = snapshot("vscode-speech");
+    state.availability["vscode-speech"] = true;
+    const result = buildSttDiagnostic(state, tr, false, false);
+
+    assert.equal(result.ready, true);
+    assert.deepEqual(result.steps.map((s) => s.id), ["vscode-speech"]);
+    assert.equal(result.steps[0].status, "ok");
+    assert.equal(result.steps[0].action, undefined);
+    assert.equal(result.steps[0].fix, "config.voice.diagnose.vscodeSpeechReady");
+});
+
+test("stt diagnostic: missing VS Code Speech offers the desktop install action", () => {
+    const state = snapshot("vscode-speech");
+    state.availability["vscode-speech"] = false;
+    const result = buildSttDiagnostic(state, tr, false, false);
+
+    assert.equal(result.ready, false);
+    assert.equal(result.steps[0].action, "install-vscode-speech");
+    assert.equal(result.steps[0].actionLabel, "config.voice.vscodeSpeech.install");
+    assert.equal(result.steps[0].fix, "config.voice.diagnose.fixVscodeSpeech");
+});
+
+test("stt diagnostic: code-server explains VS Code Speech incompatibility without install", () => {
+    const state = snapshot("vscode-speech");
+    state.availability["vscode-speech"] = false;
+    const result = buildSttDiagnostic(state, tr, false, true);
+
+    assert.equal(result.ready, false);
+    assert.equal(result.steps[0].action, undefined);
+    assert.equal(result.steps[0].fix, "config.voice.diagnose.fixVscodeSpeechWeb");
+});
+
 test("stt diagnostic: unsupported webspeech returns actionable failure", () => {
     const result = buildSttDiagnostic(snapshot("webspeech"), tr, false, true);
 

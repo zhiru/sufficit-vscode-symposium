@@ -75,6 +75,10 @@ export const chatBodyMarkup = /* html */ `<div id="root">
         </div>
         <div id="composer">
             <div id="slash"></div>
+            <div id="composerBlockedNotice" role="status" aria-live="polite">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.25 13 3v3.75c0 3.35-2.02 6.4-5 7.75-2.98-1.35-5-4.4-5-7.75V3l5-1.75Zm0 1.6L4.5 4.07v2.68c0 2.55 1.42 4.96 3.5 6.12 2.08-1.16 3.5-3.57 3.5-6.12V4.07L8 2.85ZM7.25 5h1.5v4h-1.5V5Zm0 5h1.5v1.5h-1.5V10Z"/></svg>
+                <span></span>
+            </div>
             <textarea id="input" placeholder="Ask the agent…  (Enter sends · Shift+Enter newline)"></textarea>
             <div id="toolbar">
                 <div id="toolbarControls">

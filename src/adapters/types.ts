@@ -148,8 +148,8 @@ export interface SessionInfo {
     status?: "working" | "idle";
     /** True while a permanent delete / scrub is in progress in the background. */
     deleting?: boolean;
-    /** Parent session id when this is a spawned subagent (renders nested in the list). */
-    parentId?: string;
+    parentId?: string; // spawned subagent parent (renders nested in the list)
+    continuationBlockedReason?: "codex-subagent"; // direct composer continuation is unsupported
     /** ID do preset de compressão configurado para esta seção (vazio usa padrão global). */
     compressionPresetId?: string;
 }

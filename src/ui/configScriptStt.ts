@@ -8,6 +8,16 @@
  * and shares esc()/t()/vscode.
  */
 export const configScriptStt = `
+    function bindVscodeSpeechInstall(root) {
+        (root || document).querySelectorAll("button.stt-install-vscode-speech").forEach((button) => {
+            button.onclick = () => {
+                button.disabled = true;
+                button.textContent = t("config.voice.vscodeSpeech.installing");
+                vscode.postMessage({ type: "stt-install-vscode-speech" });
+            };
+        });
+    }
+
     // Returns true when the host message was an STT one (so the caller can stop).
     function applySttHostMessage(d) {
         if (d.type === "stt-progress") {
@@ -39,6 +49,11 @@ export const configScriptStt = `
                                     st.downloadable.map((id) => '<button class="secondary stt-download" data-model="' + esc(id) + '">' + esc(t("config.voice.diagnose.download") + " " + id) + '</button>').join("") +
                                     '</div>';
                             }
+                            if (st.action === "install-vscode-speech") {
+                                body += '<div style="margin:0 0 8px 22px" class="preset-actions">' +
+                                    '<button class="secondary stt-install-vscode-speech">' + esc(st.actionLabel || t("config.voice.vscodeSpeech.install")) + '</button>' +
+                                    '</div>';
+                            }
                         }
                         return body;
                     };
@@ -55,6 +70,21 @@ export const configScriptStt = `
                             vscode.postMessage({ type: "stt-download-model", modelId: id });
                         };
                     });
+                    bindVscodeSpeechInstall(out);
+                }
+            }
+            return true;
+        }
+        if (d.type === "stt-vscode-speech-install-result") {
+            const out = document.getElementById("stt-diag-result");
+            if (out) {
+                if (d.ok) {
+                    out.innerHTML = '<div class="desc" style="color:var(--sym-ok)">' + esc(t("config.voice.vscodeSpeech.installed")) + '</div>';
+                } else {
+                    out.innerHTML = '<div class="desc" style="color:var(--sym-bad);margin-bottom:8px">' +
+                        esc(t("config.voice.vscodeSpeech.installFailed", { error: d.error || "unknown error" })) + '</div>' +
+                        '<button class="secondary stt-install-vscode-speech">' + esc(t("config.voice.vscodeSpeech.install")) + '</button>';
+                    bindVscodeSpeechInstall(out);
                 }
             }
             return true;

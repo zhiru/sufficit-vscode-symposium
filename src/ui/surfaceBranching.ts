@@ -12,18 +12,17 @@ import type { WebviewToHost } from "./protocol";
  * openDialogue callback.
  */
 
-/** CLI backends keep their own lineage via the CLI transcript; API backends share it. */
+/** CLI backends can retry unchanged text in their native session. */
 const CLI_BACKENDS = new Set(["claude", "codex", "copilot"]);
 
 /**
  * Lineage the branched session should inherit so it groups under the same
- * conversation as its predecessor. For API/stateless backends (Sufficit AI and
- * custom OpenAI-compatible endpoints) we carry the current session's lineage
- * (falling back to its id) so edit&retry/restart stay in one conversation in
- * the sidebar. CLI backends manage lineage themselves, so they get none here.
+ * conversation as its predecessor. Every backend receives this application-
+ * level link: native CLI rollouts do not reliably set parent_thread_id for a
+ * fresh seeded session (Codex exec is one example), so excluding CLI backends
+ * creates an orphan conversation after Edit & resend.
  */
-function inheritedLineage(backend: string, current: { lineageId?: string; sessionId?: string }): string | undefined {
-    if (CLI_BACKENDS.has(backend)) { return undefined; }
+function inheritedLineage(current: { lineageId?: string; sessionId?: string }): string | undefined {
     return current.lineageId || current.sessionId;
 }
 /** Signature of SurfaceDialogues.openDialogue (the new/resumed-dialogue entry point). */
@@ -39,11 +38,18 @@ type OpenDialogue = (
  * branched session treats the carried history as the complete context so far.
  * Returns undefined when there is nothing to seed (first-message branch).
  */
-function buildSeedHistory(transcript: string | undefined): string | undefined {
-    return transcript
-        ? `[Conversation continued from an earlier point] Treat the conversation below as the complete history so far.\n\n` +
-          `=== Conversation so far ===\n${transcript}\n=== End of conversation so far ===`
-        : undefined;
+function buildSeedHistory(
+    transcript: string | undefined,
+    relation: { parentId?: string; lineageId?: string },
+): string | undefined {
+    const reference = relation.parentId
+        ? ` Parent session: ${relation.parentId}; lineage: ${relation.lineageId || relation.parentId}.`
+        : "";
+    if (!transcript) {
+        return reference ? `[Conversation restarted from its first message.]${reference}` : undefined;
+    }
+    return `[Conversation continued from an earlier point.]${reference} Treat the conversation below as the complete history so far.\n\n` +
+        `=== Conversation so far ===\n${transcript}\n=== End of conversation so far ===`;
 }
 
 function sameTextRetry(backend: string, original: string | undefined, edited: string): boolean {
@@ -124,12 +130,13 @@ export function restartFromMessage(
     // Seed history up to but NOT INCLUDING the restarted message
     const keepTo = adjustedIndex - 1;
     const transcript = keepTo >= 0 ? from.transcriptUpTo(keepTo) : undefined;
-    const seedHistory = buildSeedHistory(transcript);
+    const lineageId = inheritedLineage(from);
+    const seedHistory = buildSeedHistory(transcript, { parentId: from.sessionId, lineageId });
     const backend = from.backend;
     const title = from.title;
     const cwd = from.cwd;
 
-    openDialogue(backend, { cwd, seedHistory, lineageId: inheritedLineage(backend, from) }, title);
+    openDialogue(backend, { cwd, seedHistory, lineageId }, title);
     // Carry the history BEFORE the restarted message into the new branch — the
     // restarted user message itself is re-sent just below, so including it here
     // would render the user's bubble twice (once carried, once on resend).
@@ -191,8 +198,9 @@ export function editResend(
     const keepTo = adjustedIndex - 1;   // exclude the message being edited
     const messages = from.transcriptMessagesUpTo(keepTo);
     const transcript = from.transcriptUpTo(keepTo);
-    const seedHistory = buildSeedHistory(transcript);
-    openDialogue(from.backend, { cwd: from.cwd, seedHistory, lineageId: inheritedLineage(from.backend, from) }, from.title);
+    const lineageId = inheritedLineage(from);
+    const seedHistory = buildSeedHistory(transcript, { parentId: from.sessionId, lineageId });
+    openDialogue(from.backend, { cwd: from.cwd, seedHistory, lineageId }, from.title);
     if (messages.length) {
         d.post({ type: "history", messages, carried: true });
     }

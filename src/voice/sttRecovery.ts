@@ -1,9 +1,10 @@
 import type { SttSettings } from "./sttService";
 
-export type RecoverableSttEngine = "whisper-cpp" | "faster-whisper" | "vosk";
+export type RecoverableSttEngine = "vscode-speech" | "whisper-cpp" | "faster-whisper" | "vosk";
 
 export interface SttRecoveryTarget {
     engine: RecoverableSttEngine;
+    kind: "workbench-provider" | "cli";
     model: string;
     binary: string;
     binaryPath: string;
@@ -25,9 +26,23 @@ export function getSttRecoveryTarget(settings: SttSettings): SttRecoveryTarget |
         ffmpegPath: settings.ffmpegPath,
         modelsDir: settings.modelsDir,
     };
+    if (settings.engine === "vscode-speech") {
+        return {
+            engine: settings.engine,
+            kind: "workbench-provider",
+            model: "managed-by-vscode",
+            binary: "ms-vscode.vscode-speech",
+            binaryPath: "",
+            binarySetting: "",
+            modelSetting: "accessibility.voice.speechLanguage",
+            installHint: "code --install-extension ms-vscode.vscode-speech",
+            settings: common,
+        };
+    }
     if (settings.engine === "whisper-cpp") {
         return {
             engine: settings.engine,
+            kind: "cli",
             model: settings.whisper.model,
             binary: "whisper-cli",
             binaryPath: settings.whisper.binaryPath,
@@ -40,6 +55,7 @@ export function getSttRecoveryTarget(settings: SttSettings): SttRecoveryTarget |
     if (settings.engine === "faster-whisper") {
         return {
             engine: settings.engine,
+            kind: "cli",
             model: settings.fasterWhisper.model,
             binary: "whisper-ctranslate2",
             binaryPath: settings.fasterWhisper.binaryPath,
@@ -52,6 +68,7 @@ export function getSttRecoveryTarget(settings: SttSettings): SttRecoveryTarget |
     if (settings.engine === "vosk") {
         return {
             engine: settings.engine,
+            kind: "cli",
             model: settings.vosk.model,
             binary: "vosk-transcriber",
             binaryPath: settings.vosk.binaryPath,
@@ -76,6 +93,26 @@ export function buildSttRecoveryPrompt(settings: SttSettings): string | undefine
         binaryPath: target.binaryPath,
         settings: target.settings,
     }, null, 2);
+
+    if (target.kind === "workbench-provider") {
+        return (
+            "Você está numa sessão autônoma de RECUPERAÇÃO, sem ninguém observando. Não espere confirmação nem pergunte nada: diagnostique e repare até o limite verificável sem inventar resultados.\n\n" +
+            "OBJETIVO: restaurar o reconhecimento de voz do Symposium usando EXATAMENTE o provider VS Code Speech já escolhido.\n\n" +
+            "RESTRIÇÕES OBRIGATÓRIAS:\n" +
+            "- NÃO rode benchmark, NÃO compare engines e NÃO instale os engines CLI.\n" +
+            "- NÃO tente fornecer WAV ao VS Code Speech: o provider captura o microfone dentro do workbench e não expõe uma API de transcrição de arquivo.\n" +
+            "- NÃO declare o áudio funcional sem uma gravação real pelo microfone.\n" +
+            "- Preserve todas as configurações não relacionadas.\n\n" +
+            "SNAPSHOT DA CONFIGURAÇÃO ATUAL:\n```json\n" + snapshot + "\n```\n\n" +
+            "PASSOS DE RECUPERAÇÃO:\n" +
+            "1. Verifique se a execução é VS Code desktop; code-server/web não suporta este provider.\n" +
+            "2. Verifique se ms-vscode.vscode-speech está instalado e habilitado na interface local do VS Code; se faltar, instale-o pelo workbench ou com `code --install-extension ms-vscode.vscode-speech`.\n" +
+            `3. Preserve symposium.voice.engine=vscode-speech e sincronize accessibility.voice.speechLanguage com ${settings.language}.\n` +
+            "4. Verifique se os comandos workbench.action.editorDictation.start/stop existem. Isso valida a integração estática, não o microfone.\n" +
+            "5. Execute o diagnóstico de voz do Symposium novamente e informe claramente que a validação funcional final exige uma gravação real pelo botão de microfone.\n" +
+            "6. Termine com um resumo em português do que foi reparado e do que ainda depende do teste interativo. Pare nesse ponto."
+        );
+    }
 
     return (
         "Você está numa sessão autônoma de RECUPERAÇÃO, sem ninguém observando. Não espere confirmação nem pergunte nada: diagnostique, repare e valide até o fim.\n\n" +

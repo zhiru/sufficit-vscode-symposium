@@ -48,6 +48,21 @@ test("STT recovery refuses modes that do not identify a local winner", () => {
     assert.equal(buildSttRecoveryPrompt(settings("auto")), undefined);
 });
 
+test("STT recovery handles VS Code Speech as a workbench provider", () => {
+    const configured = settings("vscode-speech");
+    const target = getSttRecoveryTarget(configured);
+    const prompt = buildSttRecoveryPrompt(configured);
+
+    assert.equal(target?.kind, "workbench-provider");
+    assert.equal(target?.binary, "ms-vscode.vscode-speech");
+    assert.equal(target?.modelSetting, "accessibility.voice.speechLanguage");
+    assert.ok(prompt);
+    assert.match(prompt, /NÃO tente fornecer WAV/);
+    assert.match(prompt, /NÃO declare o áudio funcional sem uma gravação real/);
+    assert.match(prompt, /symposium\.voice\.engine=vscode-speech/);
+    assert.doesNotMatch(prompt, /Confirme ffmpeg/);
+});
+
 test("STT recovery prompt preserves the winner and forbids a new benchmark", () => {
     const prompt = buildSttRecoveryPrompt(settings());
 

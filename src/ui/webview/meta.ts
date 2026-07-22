@@ -5,7 +5,7 @@ import { startWorkingSet } from "./panels";
 import { t } from "./i18n";
 import { renderSessions } from "./sessions";
 import { renderStatusbar } from "./statusbar";
-import { setLoading } from "./status";
+import { setComposerBlocked, setLoading } from "./status";
 import { modelLabel, modelList, modelDefault, modelValue, reasoningList, reasoningValue, setModelDefault, setModelLabel, setModelLabels, setModelList, setModelValue, setPinnedModels, setReasoningDefault, setReasoningLabel, setReasoningList, setReasoningValue } from "./models";
 import { scheduleLayout, scrollToBottom } from "./scroll";
 import { saved } from "./vscode";
@@ -91,8 +91,17 @@ export function applyMeta(data: any): void {
     // sessions (whose transcript is read back from the CLI). Only
     // read-only live mirrors can't be handed off.
     switchAgentBtn.style.display = data.readOnly ? "none" : "";
-    document.getElementById("composer").style.display = data.readOnly ? "none" : "flex";
-    if (data.readOnly) {
+    const codexSubagentBlocked = data.readOnlyReason === "codex-subagent";
+    const blockedNotice = codexSubagentBlocked ? t("chat.composer.codexSubagent.notice") : "";
+    setComposerBlocked(
+        blockedNotice,
+        codexSubagentBlocked ? t("chat.composer.codexSubagent.placeholder") : t("chat.composer.placeholder"),
+        t("chat.composer.placeholder"),
+    );
+    document.getElementById("composer").style.display = data.readOnly && !codexSubagentBlocked ? "none" : "flex";
+    if (codexSubagentBlocked) {
+        append("meta", blockedNotice);
+    } else if (data.readOnly) {
         append("meta", "👁 watching live — read only (this session runs elsewhere)");
     } else if (data.terminal) {
         append("meta", "▷ terminal session — drive it here or type in the terminal panel" + (data.resumed ? " (resumed)" : ""));

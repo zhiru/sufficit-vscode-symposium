@@ -1,10 +1,11 @@
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import { SessionInfo } from "../adapters/types";
 
 const TITLES_KEY = "symposium.sessionTitles";
 const ARCHIVED_KEY = "symposium.archivedSessions";
 const PINNED_KEY = "symposium.pinnedSessions";
 const PARENTS_KEY = "symposium.sessionParents";
+const LINEAGES_KEY = "symposium.sessionLineages";
 const COMPRESSION_KEY = "symposium.sessionCompression";
 
 /** Old keys were `backend:guid`; strip the backend prefix to the bare GUID. */
@@ -42,6 +43,9 @@ export class SessionStore {
     // under their parent even after the live session ends (parentId is only
     // known in-memory while running; this persists it across restarts).
     private parents: Record<string, string>;
+    // sessionId → root conversation id for edit/restart branches. Unlike
+    // parents, lineage members are peers, not a subagent tree.
+    private lineages: Record<string, string>;
 
     private compressionPresets: Record<string, string>;
 
@@ -52,6 +56,7 @@ export class SessionStore {
         this.archived = new Set(migrateList(rawArchived));
         this.pinned = migrateList(memento.get<string[]>(PINNED_KEY, []));
         this.parents = migrateKeys(memento.get<Record<string, string>>(PARENTS_KEY, {}));
+        this.lineages = migrateKeys(memento.get<Record<string, string>>(LINEAGES_KEY, {}));
         this.compressionPresets = memento.get<Record<string, string>>(COMPRESSION_KEY, {}) || {};
         // Consolidate legacy `backend:guid` keys to the bare GUID on disk.
         if (Object.keys(rawTitles).some((k) => k.includes(":"))) {
@@ -136,17 +141,28 @@ export class SessionStore {
         void this.memento.update(PARENTS_KEY, this.parents);
     }
 
+    /** Persists edit/restart branch membership across extension reloads. */
+    setLineage(sessionId: string, lineageId: string | undefined): void {
+        const id = toGuid(sessionId);
+        if (!lineageId) { return; }
+        if (this.lineages[id] === lineageId) { return; }
+        this.lineages[id] = lineageId;
+        void this.memento.update(LINEAGES_KEY, this.lineages);
+    }
+
     /** Drops all stored metadata for a session (used after permanent delete). */
     async forget(info: SessionInfo): Promise<void> {
         delete this.titles[this.key(info)];
         this.archived.delete(this.key(info));
         this.pinned = this.pinned.filter((p) => p !== this.key(info));
         delete this.parents[this.key(info)];
+        delete this.lineages[this.key(info)];
         delete this.compressionPresets[this.key(info)];
         await this.memento.update(TITLES_KEY, this.titles);
         await this.memento.update(ARCHIVED_KEY, [...this.archived]);
         await this.memento.update(PINNED_KEY, this.pinned);
         await this.memento.update(PARENTS_KEY, this.parents);
+        await this.memento.update(LINEAGES_KEY, this.lineages);
         await this.memento.update(COMPRESSION_KEY, this.compressionPresets);
     }
 
@@ -164,6 +180,7 @@ export class SessionStore {
                     // Restore the persisted parent link so stored subagent
                     // sessions stay nested (live sessions already carry parentId).
                     parentId: this.parents[this.key(s)] ?? s.parentId,
+                    lineageId: this.lineages[this.key(s)] ?? s.lineageId,
                     compressionPresetId: this.compressionPresets[this.key(s)],
                 };
             })

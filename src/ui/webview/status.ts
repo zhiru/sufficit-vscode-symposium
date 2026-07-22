@@ -1,7 +1,7 @@
 // Status text, composer "working" indicator, loading state, the send-button
 // title, and the send-mode constants (shared with the composer's send-mode menu).
-import { sendMode, sendGroup, sendIcon, sendBtn, sendCaret, stopBtn, status, modelPicker, reasoningPicker, progress, composerEl, root, input } from "./dom";
-import { attachments, activeFile, activeFileDismissed, activeFilePinned, activeFilePreview, busy, queued, activeModel, loading, setLoadingFlag } from "./state";
+import { sendMode, sendGroup, sendIcon, sendBtn, sendCaret, stopBtn, status, modelPicker, reasoningPicker, progress, composerEl, composerBlockedNotice, root, input, addContext, addBrowserPage, micBtn, presencePicker } from "./dom";
+import { attachments, activeFile, activeFileDismissed, activeFilePinned, activeFilePreview, busy, queued, activeModel, loading, composerBlockedReason, setComposerBlockedReason, setLoadingFlag } from "./state";
 import { modelLabel, modelList, reasoningList } from "./models";
 
 export const isMac = navigator.platform.indexOf("Mac") === 0;
@@ -24,6 +24,26 @@ export const MODE_DESC: any = {
 };
 export const STOP_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg>';
 
+export function setComposerBlocked(reason: string, placeholder: string, defaultPlaceholder: string): void {
+    const blocked = !!reason;
+    setComposerBlockedReason(reason);
+    composerEl.classList.toggle("blocked", blocked);
+    input.disabled = blocked;
+    input.value = "";
+    input.placeholder = blocked ? placeholder : defaultPlaceholder;
+    input.setAttribute("aria-label", blocked ? reason : defaultPlaceholder);
+    if (blocked) { input.setAttribute("aria-describedby", "composerBlockedNotice"); }
+    else { input.removeAttribute("aria-describedby"); }
+    const noticeText = composerBlockedNotice.querySelector("span");
+    if (noticeText) { noticeText.textContent = reason; }
+    for (const control of [addContext, addBrowserPage, micBtn, modelPicker, reasoningPicker, presencePicker]) {
+        control.disabled = blocked;
+    }
+    const execPicker = document.getElementById("execPicker") as HTMLButtonElement | null;
+    if (execPicker) { execPicker.disabled = blocked; }
+    setStatus();
+}
+
 export function hasSendableInput() {
     const hasText = !!input.value.trim();
     const hasAttachments = attachments.length > 0;
@@ -32,6 +52,15 @@ export function hasSendableInput() {
 }
 
 export function updateSendTitle() {
+    if (composerBlockedReason) {
+        sendGroup.classList.remove("busy", "steer", "stopping");
+        sendIcon.innerHTML = MODE_ICONS.send;
+        sendBtn.disabled = true;
+        sendBtn.title = composerBlockedReason;
+        sendCaret.style.display = "none";
+        stopBtn.style.display = "none";
+        return;
+    }
     // Idle: plain Send (paper plane). While a turn runs, the button reflects what
     // the NEXT message will do — queue (clock) or steer (lightning) — per the
     // selected mode. Clicking sends in that mode; Stop the running turn with Esc.
@@ -61,12 +90,12 @@ export function updateSendTitle() {
 
 export function setStatus() {
     const q = queued > 0 ? " · " + queued + " queued" : "";
-    status.textContent = busy ? ("thinking..." + q) : (activeModel ? "model: " + modelLabel(activeModel) : "");
+    status.textContent = composerBlockedReason ? "" : (busy ? ("thinking..." + q) : (activeModel ? "model: " + modelLabel(activeModel) : ""));
     // The model menu remains useful with an empty catalog: it exposes Refresh
     // models and manual entry, which is how a new Sufficit installation recovers
     // after presets/login become available. Reasoning has no such fallback.
-    (modelPicker as HTMLButtonElement).disabled = false;
-    (reasoningPicker as HTMLButtonElement).disabled = !reasoningList.length;
+    (modelPicker as HTMLButtonElement).disabled = !!composerBlockedReason;
+    (reasoningPicker as HTMLButtonElement).disabled = !!composerBlockedReason || !reasoningList.length;
     updateSendTitle();   // mode caret/icon depends on busy state
     syncProgress();
 }

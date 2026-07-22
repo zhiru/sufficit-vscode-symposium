@@ -159,6 +159,7 @@ export function renderConfigScript(dict: Record<string, string>): string {
             main.querySelectorAll("button.stt-delete").forEach(el => {
                 el.onclick = () => vscode.postMessage({ type: "stt-delete-model", modelId: el.getAttribute("data-model") });
             });
+            bindVscodeSpeechInstall(main);
             const diagnoseBtn = document.getElementById("stt-diagnose");
             if (diagnoseBtn) {
                 diagnoseBtn.onclick = () => {

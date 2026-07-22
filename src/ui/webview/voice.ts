@@ -14,7 +14,7 @@ let recordingTextBase = '';
 let recordingInterimText = '';
 let recordingDotsText = '';
 let webSpeechStartWatchdog: any = null;
-let activeVoicePath: 'webspeech' | 'host' | 'local' | null = null;
+let activeVoicePath: 'webspeech' | 'host' | 'local' | 'vscode-speech' | null = null;
 
 let dictationActive = false;
 let dictationUseHost = false;
@@ -184,7 +184,7 @@ function startHostCapture(isContinuation = false) {
     vscode.postMessage({ type: 'voice-start', vad: dictationActive });
     hostRecording = true;
     isRecording = true;
-    activeVoicePath = 'host';
+    activeVoicePath = prefs.vscodeSpeechBridge ? 'vscode-speech' : 'host';
     currentCaptureIsContinuation = isContinuation;
     hadSpeechThisSegment = false;
     micBtn.classList.add('recording');
@@ -330,7 +330,7 @@ function stopVadMonitor(): void {
 
 function onSilenceDetected(): void {
     if (!dictationActive || !isRecording) { return; }
-    if (activeVoicePath === 'host') { stopHostCapture(false); }
+    if (activeVoicePath === 'host' || activeVoicePath === 'vscode-speech') { stopHostCapture(false); }
     else if (activeVoicePath === 'local') { stopLocalCapture(); }
 }
 
@@ -420,7 +420,10 @@ if (micBtn) {
         }
         if (isRecording) {
             stopVoiceRecording();
-        } else if (prefs.hostCapture) {
+        } else if (prefs.hostCapture || prefs.vscodeSpeechBridge) {
+            // VS Code Speech captures in the workbench. It uses the host
+            // protocol, but does not set hostCapture because it never uses
+            // the webview microphone.
             dictationActive = prefs.continuous;
             dictationUseHost = true;
             startHostCapture();
@@ -460,7 +463,7 @@ export function stopVoiceRecording(): void {
         const prefs = getVoicePreferences();
         if (prefs.soundFeedback) playStopSound();
         recognition.stop();
-    } else if (activeVoicePath === 'host') {
+    } else if (activeVoicePath === 'host' || activeVoicePath === 'vscode-speech') {
         stopHostCapture(true);
     } else if (activeVoicePath === 'local') {
         stopLocalCapture();

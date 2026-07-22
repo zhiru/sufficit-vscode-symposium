@@ -41,6 +41,7 @@ export let autonomyValue = (saved && (saved as any).autonomy) || "present"; // p
 export let permissionModes: any[] = [], permissionValue = "default", permissionDefault = "default";
 export let aiToolsAvailable: any[] = [], aiToolsEnabled: any[] = [];
 export let pendingSwitchAnchor: any = null;
+export let composerBlockedReason = "";
 
 export function setAttachments(v: any[]) { attachments = v; }
 export function setActiveFile(v: any) { activeFile = v; }
@@ -76,3 +77,4 @@ export function setPermissionDefault(v:any){permissionDefault=v;}
 export function setAiToolsAvailable(v:any[]){aiToolsAvailable=v;}
 export function setAiToolsEnabled(v:any[]){aiToolsEnabled=v;}
 export function setPendingSwitchAnchor(v:any){pendingSwitchAnchor=v;}
+export function setComposerBlockedReason(v:string){composerBlockedReason=v;}
