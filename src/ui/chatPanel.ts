@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { SessionInfo, SessionStartOptions } from "../adapters/types";
 import { ChatSurface, ChatSurfaceDeps } from "./chatSurface";
+import { AgentPickerEntry } from "./protocol";
 
 /**
  * Editor surface: one reusable full-size panel with the sessions list
@@ -8,27 +9,56 @@ import { ChatSurface, ChatSurfaceDeps } from "./chatSurface";
  * built-in chat opens sessions as an editor.
  */
 export class ChatPanel {
-    private static current: ChatPanel | undefined;
+    private static readonly panels = new Set<ChatPanel>();
+    private static newChatPanel: ChatPanel | undefined;
     private readonly surface: ChatSurface;
     private readonly panel: vscode.WebviewPanel;
+    private sessionId: string | undefined;
 
+    /**
+     * Opens a reusable blank-chat panel. Once it receives a session, that
+     * panel becomes dedicated to it, so the next New Chat creates another
+     * editor tab just like Claude Code / the built-in VS Code Chat.
+     */
     static show(context: vscode.ExtensionContext, deps: ChatSurfaceDeps): ChatPanel {
-        if (ChatPanel.current) {
-            ChatPanel.current.panel.reveal();
-            return ChatPanel.current;
+        if (ChatPanel.newChatPanel) {
+            ChatPanel.newChatPanel.panel.reveal();
+            return ChatPanel.newChatPanel;
         }
-        ChatPanel.current = new ChatPanel(context, deps);
-        return ChatPanel.current;
+        const panel = new ChatPanel(context, deps);
+        ChatPanel.newChatPanel = panel;
+        return panel;
     }
 
-    /** Re-pushes the sessions list to the open panel, if any. */
+    /** Opens a new blank editor tab and shows its agent picker. */
+    static newSession(context: vscode.ExtensionContext, deps: ChatSurfaceDeps, agents: AgentPickerEntry[]): ChatPanel {
+        const panel = new ChatPanel(context, deps);
+        panel.showAgentPicker(agents);
+        return panel;
+    }
+
+    /** Opens one dedicated editor tab per existing conversation. */
+    static openSession(context: vscode.ExtensionContext, deps: ChatSurfaceDeps, info: SessionInfo): ChatPanel {
+        const existing = [...ChatPanel.panels].find((panel) => panel.sessionId === info.sessionId);
+        if (existing) {
+            existing.panel.reveal();
+            return existing;
+        }
+        const panel = new ChatPanel(context, deps);
+        panel.openSession(info);
+        return panel;
+    }
+
+    /** Re-pushes the sessions list to every open panel. */
     static refreshSessions(): void {
-        void ChatPanel.current?.surface.refreshSessions();
+        for (const panel of ChatPanel.panels) { void panel.surface.refreshSessions(); }
     }
 
-    /** Resets the panel if it currently shows the just-deleted session. */
+    /** Resets only panels currently showing the just-deleted session. */
     static sessionDeleted(sessionId: string): void {
-        ChatPanel.current?.surface.sessionDeleted(sessionId);
+        for (const panel of ChatPanel.panels) {
+            if (panel.sessionId === sessionId) { panel.surface.sessionDeleted(sessionId); }
+        }
     }
 
     private constructor(context: vscode.ExtensionContext, deps: ChatSurfaceDeps) {
@@ -40,22 +70,33 @@ export class ChatPanel {
         );
         this.surface = new ChatSurface(this.panel.webview, deps,
             (title) => { this.panel.title = title; },
+            (sessionId) => { this.sessionId = sessionId; },
             /* chatOnly */ true);
+        ChatPanel.panels.add(this);
         this.panel.onDidDispose(() => {
             this.surface.dispose();
-            ChatPanel.current = undefined;
+            ChatPanel.panels.delete(this);
+            if (ChatPanel.newChatPanel === this) { ChatPanel.newChatPanel = undefined; }
         }, undefined, context.subscriptions);
     }
 
     openSession(info: SessionInfo): void {
+        this.sessionId = info.sessionId;
+        if (ChatPanel.newChatPanel === this) { ChatPanel.newChatPanel = undefined; }
         this.surface.openSession(info);
     }
 
     async followSession(info: SessionInfo): Promise<void> {
+        this.sessionId = info.sessionId;
+        if (ChatPanel.newChatPanel === this) { ChatPanel.newChatPanel = undefined; }
         await this.surface.followSession(info);
     }
 
     openDialogue(backend: string, options: SessionStartOptions, title: string): void {
+        // Reserve a blank panel before the backend creates its session so a
+        // second New Chat never replaces an in-flight conversation.
+        this.sessionId = options.resumeSessionId;
+        if (ChatPanel.newChatPanel === this) { ChatPanel.newChatPanel = undefined; }
         this.surface.openDialogue(backend, options, title);
     }
 
@@ -64,6 +105,8 @@ export class ChatPanel {
     }
 
     openTerminalDialogue(backend: string, options: SessionStartOptions & { env?: Record<string, string>; tmuxName?: string; reasoning?: string }, title: string): void {
+        this.sessionId = options.resumeSessionId;
+        if (ChatPanel.newChatPanel === this) { ChatPanel.newChatPanel = undefined; }
         this.surface.openTerminalDialogue(backend, options, title);
     }
 }

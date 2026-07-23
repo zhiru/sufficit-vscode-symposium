@@ -205,6 +205,14 @@ export class SurfaceMessages {
                     await vscode.commands.executeCommand("symposium.newSession");
                     return;
                 }
+                case "new-editor-session": {
+                    await vscode.commands.executeCommand("symposium.newEditorSession");
+                    return;
+                }
+                case "pick-session": {
+                    await vscode.commands.executeCommand("symposium.pickEditorSession");
+                    return;
+                }
                 case "set-compression-preset": {
                     const controller = this.d.getController();
                     if (controller && typeof message.compressionPresetId === "string") {

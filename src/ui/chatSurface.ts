@@ -77,6 +77,7 @@ export class ChatSurface {
         private readonly webview: vscode.Webview,
         private readonly deps: ChatSurfaceDeps,
         private readonly onTitleChange?: (title: string) => void,
+        private readonly onSessionCreated?: (sessionId: string) => void,
         // Editor panels show only the open conversation; the sidebar shows the
         // sessions list beside it.
         private readonly chatOnly = false,
@@ -88,6 +89,7 @@ export class ChatSurface {
             post: (m) => this.post(m),
             getController: () => this.controller,
             setController: (c) => { this.controller = c; },
+            onSessionCreated: (sessionId) => this.onSessionCreated?.(sessionId),
             setTerminalSession: (t) => { this.terminalSession = t; },
             setFollowHandle: (h) => { this.followHandle = h; },
             setFollowedSessionId: (id) => { this.followedSessionId = id; },
@@ -146,6 +148,11 @@ export class ChatSurface {
         this.disposables.push(vscode.extensions.onDidChange(() => {
             if (this.ready) { this.pushVoicePreferences(); }
         }));
+    }
+
+    /** Focuses the chat composer without replacing its current draft. */
+    focusInput(): void {
+        this.post({ type: "focus-input" });
     }
 
     private post(message: unknown): void {

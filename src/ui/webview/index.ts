@@ -26,6 +26,8 @@ import { applyStaticI18n } from "./staticI18n";
 
 
     document.getElementById("newSessionBtn").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
+    document.getElementById("headerSessionsBtn").addEventListener("click", () => vscode.postMessage({ type: "pick-session" }));
+    document.getElementById("headerNewSessionBtn").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-editor-session" }); });
     document.getElementById("emptyNewSession").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
     document.getElementById("bootstrapLink").addEventListener("click", () => { if (bootstrapPath) { vscode.postMessage({ type: "open-file", path: bootstrapPath }); } });
     document.getElementById("archToggle").addEventListener("click", () => { setShowArchived(!showArchived); renderSessions(); });

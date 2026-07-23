@@ -13,6 +13,13 @@ export function registerMiscCommands(ctx: CommandContext): void {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(ChatViewProvider.viewId, chatView,
             { webviewOptions: { retainContextWhenHidden: true } }),
+        // The global editor-title icon always starts a fresh conversation.
+        // Session reopening belongs to the dedicated action in Symposium tabs.
+        vscode.commands.registerCommand("symposium.openChatEditor", () =>
+            vscode.commands.executeCommand("symposium.newEditorSession")),
+        // Lets an editor-tab conversation jump to the persistent sidebar chat,
+        // keeping both surfaces available at the same time.
+        vscode.commands.registerCommand("symposium.showChat", () => chatView.focusInput()),
         vscode.commands.registerCommand("symposium.refreshSessions", () => refreshAll()),
 
         // dev convenience: reload the window so a freshly installed vsix is

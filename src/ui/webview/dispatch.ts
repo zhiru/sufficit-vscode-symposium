@@ -31,6 +31,7 @@ window.addEventListener("message", ({ data }) => {
             break;
         }
         case "setLang": { setLang(String(data.lang || "en")); applyStaticI18n(); break; }
+        case "focus-input": { input.focus(); break; }
         case "agent-picker": { renderAgentPicker(Array.isArray(data.agents) ? data.agents : []); break; }
         case "meta": { applyMeta(data); break; }
         case "browser-state": {

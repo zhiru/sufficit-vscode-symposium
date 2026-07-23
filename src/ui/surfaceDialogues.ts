@@ -28,6 +28,8 @@ export interface SurfaceDialoguesDeps {
     post: (message: unknown) => void;
     getController: () => ChatController | undefined;
     setController: (c: ChatController | undefined) => void;
+    /** Receives the backend session id once a newly-created dialogue gets one. */
+    onSessionCreated?: (sessionId: string) => void;
     setTerminalSession: (t: TerminalSession | undefined) => void;
     setFollowHandle: (h: FollowHandle | undefined) => void;
     setFollowedSessionId: (id: string | undefined) => void;

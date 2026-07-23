@@ -13,9 +13,39 @@ export function registerSessionCommands(ctx: CommandContext): void {
     const { context, adapterByBackend, surfaceDeps, chatView, runtime, store, deleting, refreshAll, inEditor, infoOf } = ctx;
 
     context.subscriptions.push(
+        // Editor-title session history action. QuickPick gives the requested
+        // modal popup without switching the current Symposium tab first.
+        vscode.commands.registerCommand("symposium.pickEditorSession", async () => {
+            const sessions = (await surfaceDeps.listSessions())
+                .filter((session) => !session.archived && !session.deleting)
+                .sort((a, b) => {
+                    if (!!a.pinned !== !!b.pinned) { return a.pinned ? -1 : 1; }
+                    return (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0);
+                });
+            if (!sessions.length) {
+                void vscode.window.showInformationMessage("No Symposium sessions found.");
+                return;
+            }
+            const choice = await vscode.window.showQuickPick(sessions.map((info) => ({
+                label: `${info.pinned ? "$(pin) " : ""}${info.title || "Untitled session"}`,
+                description: info.backendName ?? info.backend,
+                detail: [
+                    info.updatedAt ? info.updatedAt.toLocaleString() : "",
+                    info.cwd ?? "",
+                    info.status === "working" ? "working" : "",
+                ].filter(Boolean).join("  •  "),
+                info,
+            })), {
+                placeHolder: "Open a Symposium session",
+                matchOnDescription: true,
+                matchOnDetail: true,
+            });
+            if (choice) { ChatPanel.openSession(context, surfaceDeps, choice.info); }
+        }),
+
         vscode.commands.registerCommand("symposium.openSession", (info: SessionInfo) => {
             if (inEditor()) {
-                ChatPanel.show(context, surfaceDeps).openSession(info);
+                ChatPanel.openSession(context, surfaceDeps, info);
             } else {
                 void chatView.openSession(info);
             }
@@ -23,13 +53,13 @@ export function registerSessionCommands(ctx: CommandContext): void {
 
         vscode.commands.registerCommand("symposium.openSessionInEditor", (item: { info?: SessionInfo } | SessionInfo) => {
             const info = "info" in item && item.info ? item.info : item as SessionInfo;
-            ChatPanel.show(context, surfaceDeps).openSession(info);
+            ChatPanel.openSession(context, surfaceDeps, info);
         }),
 
         vscode.commands.registerCommand("symposium.followSession", (item: { info?: SessionInfo } | SessionInfo) => {
             const info = "info" in item && item.info ? item.info : item as SessionInfo;
             if (inEditor()) {
-                void ChatPanel.show(context, surfaceDeps).followSession(info);
+                void ChatPanel.openSession(context, surfaceDeps, info).followSession(info);
             } else {
                 void chatView.followSession(info);
             }

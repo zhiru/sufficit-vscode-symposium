@@ -33,6 +33,8 @@ export function applyStaticI18n(): void {
     setT(listToggle, "chat.icon.toggleSessions");
     setT(switchAgentBtn, "chat.icon.switchAgent");
     if (copySessionBtn) { copySessionBtn.title = t("chat.icon.copySession.title"); copySessionBtn.setAttribute("aria-label", t("chat.icon.copySession.aria")); }
+    setT(document.getElementById("headerSessionsBtn"), "chat.icon.toggleSessions");
+    setT(document.getElementById("headerNewSessionBtn"), "chat.icon.newSession");
 
     const bh = document.getElementById("bootHint");
     if (bh) { bh.textContent = t("chat.boot.starting"); }

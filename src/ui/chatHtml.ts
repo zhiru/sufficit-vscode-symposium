@@ -43,6 +43,12 @@ export const chatBodyMarkup = /* html */ `<div id="root">
             <button id="copySessionBtn" class="iconBtn" title="Copy session id + title" aria-label="Copy session id and title" style="display:none">
                 <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 2h6a1 1 0 0 1 1 1v8h-1V3H5V2ZM3 4h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm0 1v8h6V5H3Z"/></svg>
             </button>
+            <button id="headerSessionsBtn" class="iconBtn" title="Open session" aria-label="Open session">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v1H2V3Zm0 4h12v1H2V7Zm0 4h12v1H2v-1Z"/></svg>
+            </button>
+            <button id="headerNewSessionBtn" class="iconBtn" title="New session" aria-label="New session">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"><path d="M2.5 3.5h7a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6l-2.5 2v-2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2Z"/><path d="M12 1v5M9.5 3.5h5" stroke-width="1.3" stroke-linecap="round"/></svg>
+            </button>
         </div>
         <div id="logWrap">
             <div id="log"><div id="logBody"></div></div>

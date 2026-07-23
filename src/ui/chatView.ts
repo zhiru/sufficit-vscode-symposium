@@ -44,6 +44,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.consumePending();
     }
 
+    /** Reveals the sidebar and puts keyboard focus in its composer. */
+    async focusInput(): Promise<void> {
+        await this.reveal();
+        this.surface?.focusInput();
+    }
+
     /** Re-pushes the sessions list to the webview (after rename/archive/delete). */
     refreshSessions(): void {
         void this.surface?.refreshSessions();
