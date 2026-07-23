@@ -421,7 +421,7 @@
         #toast.show { transform: translateX(-50%); }
     }
     #ctxMenu {
-        position: fixed; z-index: 50; display: none; min-width: 220px; max-width: 340px;
+        position: fixed; z-index: 1000; display: none; min-width: 220px; max-width: 340px;
         background: var(--vscode-menu-background, var(--vscode-editor-background));
         color: var(--vscode-menu-foreground, var(--vscode-foreground));
         border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, #454545));

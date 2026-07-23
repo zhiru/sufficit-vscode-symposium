@@ -28,6 +28,9 @@ import { applyStaticI18n } from "./staticI18n";
 
     document.getElementById("newSessionBtn").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
     document.getElementById("headerSessionsBtn").addEventListener("click", (event) => {
+        // The document-level click handler closes menus. Keep this opening click
+        // from bubbling into it and immediately hiding the session popover.
+        event.stopPropagation();
         const anchor = event.currentTarget as HTMLButtonElement;
         const recent = [...sessions]
             .filter((session: any) => !session.archived && !session.deleting)
