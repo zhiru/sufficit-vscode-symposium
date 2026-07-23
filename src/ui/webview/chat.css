@@ -230,6 +230,13 @@
     #root.narrow #sessionsPane { display: none; }
     #root.chat-only #sessionsPane { display: none; }
     #root.chat-only #listToggle { display: none; }
+    /* The anchored recent-session popover + new-session buttons are an
+       editor-tab-only feature: in the sidebar their actions always target an
+       editor tab (open/new-editor-session), which is surface-inappropriate.
+       The sidebar has its own #newSessionBtn with sidebar semantics. Hide them
+       whenever the surface is NOT the editor (chat-only) surface. */
+    #root:not(.chat-only) #headerSessionsBtn,
+    #root:not(.chat-only) #headerNewSessionBtn { display: none; }
     #root.narrow.listOpen #sessionsPane {
         display: flex; position: absolute; z-index: 10; height: 100vh;
         background: var(--vscode-editor-background);
@@ -421,7 +428,7 @@
         #toast.show { transform: translateX(-50%); }
     }
     #ctxMenu {
-        position: fixed; z-index: 50; display: none; min-width: 220px; max-width: 340px;
+        position: fixed; z-index: 1000; display: none; min-width: 220px; max-width: 340px;
         background: var(--vscode-menu-background, var(--vscode-editor-background));
         color: var(--vscode-menu-foreground, var(--vscode-foreground));
         border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, #454545));

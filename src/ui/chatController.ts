@@ -142,21 +142,19 @@ export class ChatController {
     /** Retorna a sessão atual do AgentAdapter para acesso direto. */
     getSession(): AgentSession | undefined { return this.session; }
 
-    /** Binds this controller to a webview sink and replays its render log. */
-    attach(sink: (message: unknown) => void): void {
+    /** Binds this controller to one webview sink and replays its render log. */
+    attach(sink: (message: unknown) => void): () => void {
         // A controller that was already busy before this attach (e.g. survived a
         // reload) may have no watchdog armed — re-arm so a stalled turn still
         // self-heals instead of showing "working" forever.
         if (this.busy && !this.watchdogState.timer) { this.armWatchdog(); }
-        this.stream.bindSink(sink);   // sets the sink + replays the buffered log
+        const detach = this.stream.bindSink(sink);
         // The edited-files set is controller state (not in the replay log), so
         // push it after replay — this is what keeps approvals from "coming back"
         // when switching away and back.
         this.emitChanged();
+        return detach;
     }
-
-    /** Stops forwarding to the webview but keeps the process running. */
-    detach(): void { this.stream.clearSink(); }
 
     /** Subscribes a read-only follower (remote viewer) to the render stream. */
     subscribe(observer: (message: unknown) => void): () => void { return this.stream.addObserver(observer); }

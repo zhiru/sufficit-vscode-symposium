@@ -1,6 +1,6 @@
 /**
  * Render-stream buffer for a chat session: keeps a replayable log of render
- * messages, fans each out to the active webview sink (if any) plus any read-only
+ * messages, fans each out to every attached webview sink plus any read-only
  * followers, and replays the buffer to a sink/observer on (re)bind so a late
  * joiner or a reattached webview sees the full conversation.
  *
@@ -9,7 +9,7 @@
  */
 export class RenderStream {
     private readonly log: unknown[] = [];
-    private sink: ((message: unknown) => void) | null = null;
+    private readonly sinks = new Set<(message: unknown) => void>();
     private readonly observers = new Set<(message: unknown) => void>();
 
     /**
@@ -35,9 +35,9 @@ export class RenderStream {
         return this.log.length;
     }
 
-    /** True while a webview sink is bound. */
+    /** True while at least one webview sink is bound. */
     get hasSink(): boolean {
-        return this.sink !== null;
+        return this.sinks.size > 0;
     }
 
     /** The buffered render log (read-only use, e.g. transcript building). */
@@ -45,27 +45,13 @@ export class RenderStream {
         return this.log;
     }
 
-    /** Binds the active webview sink and replays the buffered log to it. */
-    bindSink(sink: (message: unknown) => void): void {
-        // RenderStream intentionally has a single writable sink. When another
-        // surface takes over, tell the old one once so it does not look frozen
-        // while its controller is still alive elsewhere.
-        if (this.sink && this.sink !== sink) {
-            try {
-                this.sink({ type: "event", event: { kind: "status-notice", text: "This conversation moved to another panel." } });
-            } catch {
-                // The previous webview may already be disposed.
-            }
-        }
-        this.sink = sink;
+    /** Binds one webview sink, replays the buffered log, and returns its disposer. */
+    bindSink(sink: (message: unknown) => void): () => void {
+        this.sinks.add(sink);
         for (const message of this.log) {
             sink(message);
         }
-    }
-
-    /** Unbinds the webview sink (the process keeps running). */
-    clearSink(): void {
-        this.sink = null;
+        return () => { this.sinks.delete(sink); };
     }
 
     /** Adds a read-only follower, replays the log to it, returns an unsubscribe. */
@@ -77,22 +63,26 @@ export class RenderStream {
         return () => { this.observers.delete(observer); };
     }
 
-    /** Buffers a render message and fans it out to the sink + all observers. */
+    /** Buffers a render message and fans it out to all sinks + observers. */
     emit(message: unknown): void {
         this.log.push(message);
         if (this.log.length > 5000) {
             this.log.shift();
         }
-        this.sink?.(message);
+        for (const sink of this.sinks) {
+            sink(message);
+        }
         for (const observer of this.observers) {
             observer(message);
         }
         try { this.onPersist?.(message); } catch { /* persistence is best-effort */ }
     }
 
-    /** Sends a message to the webview sink only (not buffered, not fanned out). */
+    /** Sends a transient message to every attached webview sink. */
     toSink(message: unknown): void {
-        this.sink?.(message);
+        for (const sink of this.sinks) {
+            sink(message);
+        }
     }
 }
 

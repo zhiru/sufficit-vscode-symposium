@@ -18,7 +18,7 @@ export async function handleVoiceMessage(message: WebviewToHost, d: SurfaceMessa
                 const settings = readSettings();
                 if (settings.engine === "vscode-speech") {
                     const { startVscodeSpeechDictation } = await import("../voice/vscodeSpeechBridge");
-                    const started = await startVscodeSpeechDictation(settings.language);
+                    const started = await startVscodeSpeechDictation(settings.language, d.restoreFocus);
                     if (!started) { return true; }
                 } else {
                     // Native mic capture in the extension host (no webview

@@ -13,7 +13,6 @@ export const VSCODE_SPEECH_EXTENSION_ID = "ms-vscode.vscode-speech";
 
 const START_DICTATION_COMMAND = "workbench.action.editorDictation.start";
 const STOP_DICTATION_COMMAND = "workbench.action.editorDictation.stop";
-const REVERT_AND_CLOSE_COMMAND = "workbench.action.revertAndCloseActiveEditor";
 const TRANSCRIPT_QUIET_MS = 350;
 const TRANSCRIPT_SETTLE_TIMEOUT_MS = 1_500;
 
@@ -24,7 +23,7 @@ let cancellationGeneration = 0;
 interface DictationSession {
     document: vscode.TextDocument;
     filePath: string;
-    originalEditor: vscode.TextEditor | undefined;
+    restoreFocus: () => void | Thenable<void>;
 }
 
 let activeSession: DictationSession | undefined;
@@ -74,12 +73,15 @@ export async function installVscodeSpeechProvider(): Promise<VscodeSpeechStatus>
 }
 
 /** Start editor dictation. Returns false when a concurrent cancel won the race. */
-export async function startVscodeSpeechDictation(language: string): Promise<boolean> {
+export async function startVscodeSpeechDictation(
+    language: string,
+    restoreFocus: () => void | Thenable<void> = () => undefined,
+): Promise<boolean> {
     if (activeSession || startInFlight) {
         throw new Error("VS Code Speech dictation is already in progress.");
     }
     const generation = cancellationGeneration;
-    const pending = createAndStartSession(language, generation);
+    const pending = createAndStartSession(language, generation, restoreFocus);
     startInFlight = pending;
     try {
         return await pending;
@@ -88,7 +90,11 @@ export async function startVscodeSpeechDictation(language: string): Promise<bool
     }
 }
 
-async function createAndStartSession(language: string, generation: number): Promise<boolean> {
+async function createAndStartSession(
+    language: string,
+    generation: number,
+    restoreFocus: () => void | Thenable<void>,
+): Promise<boolean> {
     const status = getVscodeSpeechStatus();
     if (!status.supported) {
         throw new Error("VS Code Speech is unavailable in web/code-server sessions.");
@@ -111,7 +117,7 @@ async function createAndStartSession(language: string, generation: number): Prom
     await fs.writeFile(filePath, "", "utf8");
 
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
-    const session: DictationSession = { document, filePath, originalEditor: vscode.window.activeTextEditor };
+    const session: DictationSession = { document, filePath, restoreFocus };
     activeSession = session;
 
     try {
@@ -121,6 +127,10 @@ async function createAndStartSession(language: string, generation: number): Prom
         }
         await vscode.window.showTextDocument(document, { preview: true, preserveFocus: false });
         await vscode.commands.executeCommand(START_DICTATION_COMMAND);
+        // The command requires an ICodeEditor only while creating its speech
+        // session. Immediately return to the Symposium composer; the provider
+        // keeps writing into `document` through the retained editor model.
+        await session.restoreFocus();
         if (generation !== cancellationGeneration) {
             await stopAndReleaseSession(session);
             return false;
@@ -153,6 +163,7 @@ export async function stopVscodeSpeechDictation(): Promise<string> {
         return transcript;
     } finally {
         await releaseSession(session);
+        await session.restoreFocus();
     }
 }
 
@@ -161,7 +172,10 @@ export async function cancelVscodeSpeechDictation(): Promise<void> {
     cancellationGeneration += 1;
     if (startInFlight) { await startInFlight.catch(() => undefined); }
     const session = takeActiveSession();
-    if (session) { await stopAndReleaseSession(session); }
+    if (session) {
+        await stopAndReleaseSession(session);
+        await session.restoreFocus();
+    }
 }
 
 function takeActiveSession(): DictationSession | undefined {
@@ -183,24 +197,10 @@ async function stopAndReleaseSession(session: DictationSession): Promise<void> {
 
 async function releaseSession(session: DictationSession): Promise<void> {
     if (activeSession === session) { activeSession = undefined; }
-    try {
-        await vscode.window.showTextDocument(session.document, { preview: true, preserveFocus: false });
-        await vscode.commands.executeCommand(REVERT_AND_CLOSE_COMMAND);
-    } catch {
-        // Closing is cosmetic; the temporary file is always removed below.
-    }
-
-    if (session.originalEditor) {
-        try {
-            await vscode.window.showTextDocument(session.originalEditor.document, {
-                viewColumn: session.originalEditor.viewColumn,
-                preserveFocus: true,
-                selection: session.originalEditor.selection,
-            });
-        } catch {
-            // The original editor may have been closed while dictating.
-        }
-    }
+    // Closing a hidden retained editor would bring its TXT tab to the front.
+    // The document is clean after STOP_DICTATION_COMMAND, so deleting the
+    // backing file and dropping our reference lets VS Code release it without
+    // another visible editor transition.
     await fs.unlink(session.filePath).catch(() => undefined);
 }
 

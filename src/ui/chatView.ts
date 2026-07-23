@@ -35,13 +35,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     resolveWebviewView(webviewView: vscode.WebviewView): void {
         this.view = webviewView;
         this.surface = new ChatSurface(webviewView.webview, this.deps,
-            (title) => { if (this.view) { this.view.title = title; } });
+            (title) => { if (this.view) { this.view.title = title; } },
+            undefined,
+            () => vscode.commands.executeCommand(`${ChatViewProvider.viewId}.focus`));
         webviewView.onDidDispose(() => {
             this.surface?.dispose();
             this.surface = undefined;
             this.view = undefined;
         });
         this.consumePending();
+    }
+
+    /** Reveals the sidebar and puts keyboard focus in its composer. */
+    async focusInput(): Promise<void> {
+        await this.reveal();
+        this.surface?.focusInput();
     }
 
     /** Re-pushes the sessions list to the webview (after rename/archive/delete). */

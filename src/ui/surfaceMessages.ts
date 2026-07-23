@@ -34,6 +34,8 @@ export interface SurfaceMessagesDeps {
     refreshSessions: () => Promise<void>;
     refreshQuotas: (force?: boolean) => Promise<void>;
     openSession: (info: SessionInfo) => void;
+    /** Reveals this surface and focuses its composer after host UI detours. */
+    restoreFocus: () => Promise<void>;
     getController: () => ChatController | undefined;
     getTerminalSession: () => TerminalSession | undefined;
     getFollowHandle: () => FollowHandle | undefined;
@@ -203,6 +205,14 @@ export class SurfaceMessages {
                 }
                 case "new-session": {
                     await vscode.commands.executeCommand("symposium.newSession");
+                    return;
+                }
+                case "new-editor-session": {
+                    await vscode.commands.executeCommand("symposium.newEditorSession");
+                    return;
+                }
+                case "pick-session": {
+                    await vscode.commands.executeCommand("symposium.pickEditorSession");
                     return;
                 }
                 case "set-compression-preset": {

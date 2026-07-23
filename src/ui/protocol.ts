@@ -85,6 +85,8 @@ export type WebviewToHost =
     | { type: "pin-model"; model: string }
     | { type: "set-model-default"; model: string }
     | { type: "new-session"; compressionPresetId?: string }
+    | { type: "new-editor-session" }
+    | { type: "pick-session" }
     | { type: "set-compression-preset"; compressionPresetId: string }
     | { type: "list-backends" }
     | { type: "switch-backend"; backend: string }

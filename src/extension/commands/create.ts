@@ -13,29 +13,39 @@ import { CommandContext } from "./helpers";
 export function registerCreateCommands(ctx: CommandContext): void {
     const { context, adapters, surfaceDeps, chatView, inEditor, startTerminal, persistGet, persistAdd, tmuxAlive, infoOf } = ctx;
 
+    // Shared probe for both New Session entry points. The global/editor-toolbar
+    // variant must never be redirected into the visible sidebar.
+    const collectAgentPickerEntries = () => Promise.all(adapters.map(async (adapter) => {
+        const probe = await adapter.available();
+        const isEnoent = !probe.ok && /ENOENT|not found/i.test(probe.error ?? "");
+        const hasInstall = isEnoent && !!CLI_INSTALL[adapter.backend];
+        return {
+            backend: adapter.backend,
+            name: adapter.displayName ?? adapter.backend,
+            version: probe.ok ? (probe.version ?? "") : `unavailable: ${probe.error}`,
+            ok: probe.ok,
+            installCmd: hasInstall ? CLI_INSTALL[adapter.backend].cmd : undefined,
+        };
+    }));
+
     context.subscriptions.push(
         vscode.commands.registerCommand("symposium.newSession", async () => {
             // In-chat picker (rendered inside the chat surface) instead of a
             // native QuickPick floating over a bare "Starting…" spinner. The
             // agent list + availability is probed here and handed to the webview;
             // the choice comes back as a `pick-agent` / `install-agent` message.
-            const agents = await Promise.all(adapters.map(async (adapter) => {
-                const probe = await adapter.available();
-                const isEnoent = !probe.ok && /ENOENT|not found/i.test(probe.error ?? "");
-                const hasInstall = isEnoent && !!CLI_INSTALL[adapter.backend];
-                return {
-                    backend: adapter.backend,
-                    name: adapter.displayName ?? adapter.backend,
-                    version: probe.ok ? (probe.version ?? "") : `unavailable: ${probe.error}`,
-                    ok: probe.ok,
-                    installCmd: hasInstall ? CLI_INSTALL[adapter.backend].cmd : undefined,
-                };
-            }));
+            const agents = await collectAgentPickerEntries();
             if (inEditor()) {
-                ChatPanel.show(context, surfaceDeps).showAgentPicker(agents);
+                ChatPanel.newSession(context, surfaceDeps, agents);
             } else {
                 void chatView.showAgentPicker(agents);
             }
+        }),
+
+        // Used by both the global logo and the chat-plus editor-title action:
+        // always create a separate, blank conversation tab.
+        vscode.commands.registerCommand("symposium.newEditorSession", async () => {
+            ChatPanel.newSession(context, surfaceDeps, await collectAgentPickerEntries());
         }),
 
         // New session bound to a local agent-def: seeds the system prompt from the

@@ -51,6 +51,7 @@ export interface ChatSurfaceDeps {
  */
 export class ChatSurface {
     private controller: ChatController | undefined;
+    private controllerDetach: (() => void) | undefined;
     private terminalSession: TerminalSession | undefined;
     private followHandle: FollowHandle | undefined;
     private followedSessionId: string | undefined;
@@ -77,6 +78,10 @@ export class ChatSurface {
         private readonly webview: vscode.Webview,
         private readonly deps: ChatSurfaceDeps,
         private readonly onTitleChange?: (title: string) => void,
+        private readonly onSessionCreated?: (sessionId: string) => void,
+        // Restores this exact webview after a host command temporarily moves
+        // workbench focus away (notably VS Code's editor-dictation command).
+        private readonly reveal?: () => void | Thenable<void>,
         // Editor panels show only the open conversation; the sidebar shows the
         // sessions list beside it.
         private readonly chatOnly = false,
@@ -88,6 +93,8 @@ export class ChatSurface {
             post: (m) => this.post(m),
             getController: () => this.controller,
             setController: (c) => { this.controller = c; },
+            setControllerDetach: (detach) => { this.controllerDetach = detach; },
+            onSessionCreated: (sessionId) => this.onSessionCreated?.(sessionId),
             setTerminalSession: (t) => { this.terminalSession = t; },
             setFollowHandle: (h) => { this.followHandle = h; },
             setFollowedSessionId: (id) => { this.followedSessionId = id; },
@@ -107,6 +114,10 @@ export class ChatSurface {
             refreshSessions: () => this.refreshSessions(),
             refreshQuotas: (force) => this.refreshQuotas(force),
             openSession: (info) => this.openSession(info),
+            restoreFocus: async () => {
+                await this.reveal?.();
+                this.focusInput();
+            },
             getController: () => this.controller,
             getTerminalSession: () => this.terminalSession,
             getFollowHandle: () => this.followHandle,
@@ -146,6 +157,11 @@ export class ChatSurface {
         this.disposables.push(vscode.extensions.onDidChange(() => {
             if (this.ready) { this.pushVoicePreferences(); }
         }));
+    }
+
+    /** Focuses the chat composer without replacing its current draft. */
+    focusInput(): void {
+        this.post({ type: "focus-input" });
     }
 
     private post(message: unknown): void {
@@ -293,7 +309,8 @@ export class ChatSurface {
     }
 
     private detachActive(): void {
-        this.controller?.detach();
+        this.controllerDetach?.();
+        this.controllerDetach = undefined;
         this.controller = undefined;
         this.detachTerminal();
         this.detachFollow();
