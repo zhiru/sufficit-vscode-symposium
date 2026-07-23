@@ -51,6 +51,7 @@ export interface ChatSurfaceDeps {
  */
 export class ChatSurface {
     private controller: ChatController | undefined;
+    private controllerDetach: (() => void) | undefined;
     private terminalSession: TerminalSession | undefined;
     private followHandle: FollowHandle | undefined;
     private followedSessionId: string | undefined;
@@ -89,6 +90,7 @@ export class ChatSurface {
             post: (m) => this.post(m),
             getController: () => this.controller,
             setController: (c) => { this.controller = c; },
+            setControllerDetach: (detach) => { this.controllerDetach = detach; },
             onSessionCreated: (sessionId) => this.onSessionCreated?.(sessionId),
             setTerminalSession: (t) => { this.terminalSession = t; },
             setFollowHandle: (h) => { this.followHandle = h; },
@@ -300,7 +302,8 @@ export class ChatSurface {
     }
 
     private detachActive(): void {
-        this.controller?.detach();
+        this.controllerDetach?.();
+        this.controllerDetach = undefined;
         this.controller = undefined;
         this.detachTerminal();
         this.detachFollow();

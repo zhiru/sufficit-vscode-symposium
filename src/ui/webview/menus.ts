@@ -100,8 +100,13 @@ export function openChoiceMenu(anchorEl, options, current, onPick, opts) {
     ctxMenu.style.display = "block";
     const r = anchorEl.getBoundingClientRect();
     const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
-    ctxMenu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4)) + "px";
-    ctxMenu.style.top = Math.max(4, r.top - h - 4) + "px";
+    const anchorLeft = opts.align === "right" ? r.right - w : r.left;
+    ctxMenu.style.left = Math.max(4, Math.min(anchorLeft, window.innerWidth - w - 4)) + "px";
+    if (opts.placement === "below") {
+        ctxMenu.style.top = Math.max(4, Math.min(r.bottom + 4, window.innerHeight - h - 4)) + "px";
+    } else {
+        ctxMenu.style.top = Math.max(4, r.top - h - 4) + "px";
+    }
 }
 
 // Transient toast (bottom-center, auto-dismiss). Reused for copy feedback.

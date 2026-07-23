@@ -7,10 +7,11 @@ import "./dispatch";
 import { t } from "./i18n";
 import { renderTodos, renderPlan, renderTasks, renderGuardrails, renderQueued, renderChangedFiles, refreshPanels, resetWorkingState, startWorkingSet, bindWorkingSet, panelDefs } from "./panels";
 import { bootStep, bootComplete, renderBootStep, bootTimer } from "./boot";
-import { renderSessions, renderAccount, renderSessionItem, groupHeader, toggleCollapsed, dropPinnedOn, openSessionsFilterMenu } from "./sessions";
+import { renderSessions, renderAccount, renderSessionItem, groupHeader, toggleCollapsed, dropPinnedOn, openSessionsFilterMenu, backendLabel } from "./sessions";
 import { isMac, MOD, ALT, MODE_LABELS, MODE_KBD, MODE_ICONS, MODE_DESC, STOP_ICON, updateSendTitle, setStatus, syncProgress, setLoading } from "./status";
 import { modelValue, reasoningValue, modelList, reasoningList, reasoningDefault, modelDefault, modelLabels, pinnedModels, modelLabel, defLabel, setModelLabel, setReasoningLabel, buildModelMenuOpts, setModelValue, setModelList, setReasoningValue, setReasoningList, setReasoningDefault, setModelDefault, setModelLabels, setPinnedModels } from "./models";
 import { openChoiceMenu, showToast, showCtx, showFileMenu, showTip, hideTip, hideCtx, placeTip, actionsFor, runAction } from "./menus";
+import { relTime } from "./format";
 import { attachments, activeFile, activeFileRange, activeFileDismissed, activeFilePreview, activeFilePinned, currentBackend, currentBackendName, agentLabels, activeModel, activeSessionId, busy, queued, loading, sessions, showArchived, bootstrapPath, setAttachments, setActiveFile, setActiveFileRange, setActiveFileDismissed, setActiveFilePreview, setActiveFilePinned, setCurrentBackend, setCurrentBackendName, setAgentLabels, setActiveModel, setActiveSessionId, setBusy, setQueued, setLoadingFlag, setSessions, setShowArchived, setSessionSearchTerm, setBootstrapPath, setSideMode, pendingSessionSwitch, setPendingSessionSwitch, conversationRows, commands, setConversationRows, setCommands, autonomyValue, setAutonomyValue, permissionModes, permissionValue, permissionDefault, aiToolsAvailable, aiToolsEnabled, pendingSwitchAnchor, setPermissionModes, setPermissionValue, setPermissionDefault, setAiToolsAvailable, setAiToolsEnabled, setPendingSwitchAnchor } from "./state";
 import { allDigits, middleEllipsisPath, relWhen, relTime, bucket, fmtTokens, usageColor } from "./format";
 import { layout, nearBottom, autoScroll, scrollToBottom, updateScrollBtn, refreshEmpty, sideIsRight, lastAutoScroll } from "./scroll";
@@ -26,7 +27,30 @@ import { applyStaticI18n } from "./staticI18n";
 
 
     document.getElementById("newSessionBtn").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
-    document.getElementById("headerSessionsBtn").addEventListener("click", () => vscode.postMessage({ type: "pick-session" }));
+    document.getElementById("headerSessionsBtn").addEventListener("click", (event) => {
+        const anchor = event.currentTarget as HTMLButtonElement;
+        const recent = [...sessions]
+            .filter((session: any) => !session.archived && !session.deleting)
+            .sort((a: any, b: any) => {
+                if (!!a.pinned !== !!b.pinned) { return a.pinned ? -1 : 1; }
+                return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+            });
+        if (!recent.length) {
+            showToast("No Symposium sessions found.");
+            vscode.postMessage({ type: "refresh-sessions" });
+            return;
+        }
+        openChoiceMenu(anchor, recent.map((session: any) => ({
+            value: `${session.backend}:${session.sessionId}`,
+            label: `${session.pinned ? "● " : ""}${session.title || "Untitled session"}`,
+            detail: [session.backendName || backendLabel(session.backend), relTime(session.updatedAt)].filter(Boolean).join("  ·  "),
+            title: session.cwd || session.sessionId,
+        })), `${currentBackend}:${activeSessionId}`, (value: string) => {
+            hideCtx();
+            const split = value.indexOf(":");
+            vscode.postMessage({ type: "open-session", backend: value.slice(0, split), sessionId: value.slice(split + 1) });
+        }, { search: true, placement: "below", align: "right" });
+    });
     document.getElementById("headerNewSessionBtn").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-editor-session" }); });
     document.getElementById("emptyNewSession").addEventListener("click", () => { setLoading(true, "Starting…"); vscode.postMessage({ type: "new-session" }); });
     document.getElementById("bootstrapLink").addEventListener("click", () => { if (bootstrapPath) { vscode.postMessage({ type: "open-file", path: bootstrapPath }); } });

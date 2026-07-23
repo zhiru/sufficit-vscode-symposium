@@ -28,6 +28,7 @@ export interface SurfaceDialoguesDeps {
     post: (message: unknown) => void;
     getController: () => ChatController | undefined;
     setController: (c: ChatController | undefined) => void;
+    setControllerDetach: (detach: (() => void) | undefined) => void;
     /** Receives the backend session id once a newly-created dialogue gets one. */
     onSessionCreated?: (sessionId: string) => void;
     setTerminalSession: (t: TerminalSession | undefined) => void;
@@ -363,7 +364,7 @@ export class SurfaceDialogues {
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
         this.d.activateUsage(adapter);
-        controller.attach((message) => handleControllerEvent(this.d, backend, message));
+        this.d.setControllerDetach(controller.attach((message) => handleControllerEvent(this.d, backend, message)));
         if (!existing && info && !seededVisual) {
             void controller.loadHistory(info).finally(() => {
                 if (generation === this.generation) {
