@@ -49,6 +49,27 @@ export class ChatPanel {
         return panel;
     }
 
+    /**
+     * Opens (or reveals) a dedicated editor tab that read-only *follows* a
+     * session running elsewhere. Same find-or-reveal dedup as openSession, but
+     * a freshly created panel binds STRAIGHT into follow mode. Going through
+     * openSession() first would run a full normal session-open (real history
+     * fetch + a ChatController registered in LiveSessions) only to tear it down
+     * on the immediately-following followSession() — a wasted open that also
+     * leaks a stray controller. The followed process has no local controller.
+     */
+    static followSession(context: vscode.ExtensionContext, deps: ChatSurfaceDeps, info: SessionInfo): ChatPanel {
+        const existing = [...ChatPanel.panels].find((panel) => panel.sessionId === info.sessionId);
+        if (existing) {
+            existing.panel.reveal();
+            void existing.followSession(info);
+            return existing;
+        }
+        const panel = new ChatPanel(context, deps);
+        void panel.followSession(info);
+        return panel;
+    }
+
     /** Re-pushes the sessions list to every open panel. */
     static refreshSessions(): void {
         for (const panel of ChatPanel.panels) { void panel.surface.refreshSessions(); }

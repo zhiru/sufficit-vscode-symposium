@@ -59,7 +59,7 @@ export function registerSessionCommands(ctx: CommandContext): void {
         vscode.commands.registerCommand("symposium.followSession", (item: { info?: SessionInfo } | SessionInfo) => {
             const info = "info" in item && item.info ? item.info : item as SessionInfo;
             if (inEditor()) {
-                void ChatPanel.openSession(context, surfaceDeps, info).followSession(info);
+                ChatPanel.followSession(context, surfaceDeps, info);
             } else {
                 void chatView.followSession(info);
             }
