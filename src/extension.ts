@@ -15,7 +15,8 @@ import { createSymposiumApi, SymposiumApi } from "./api/symposiumApi";
 import { RemoteBridge } from "./api/bridge";
 import { SufficitAuth } from "./auth/identity";
 import { SufficitAuthProvider } from "./auth/provider";
-import { setHubTokenProvider } from "./sync/hubClient";
+import { setHubTokenProvider, HubClient } from "./sync/hubClient";
+import { ensureTailnetJoined } from "./net/tailnet";
 import { symposiumLog, setSymposiumOutput } from "./extension/log";
 import { claudeConfig, codexConfig, copilotConfig, openaiConfig, normalizeAdapterDefs, buildCustomAdapters } from "./extension/config";
 import { buildChatSurfaceDeps } from "./extension/surfaceDeps";
@@ -157,6 +158,18 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     context.subscriptions.push(auth.onDidChange(() => autoSync("login-change")));
     autoSync("activate");
 
+    // Join the Sufficit tailnet (self-hosted Headscale) so Symposium's remote bridge is
+    // reachable without manual NAT/port-forward setup. Background, best-effort — see
+    // net/tailnet.ts for why login failures here must never surface to the user.
+    const joinTailnet = (reason: string) => {
+        void (async () => {
+            if (!(await auth.isLoggedIn())) { return; }
+            await ensureTailnetJoined(new HubClient(), (msg) => symposiumLog(`${msg} (${reason})`));
+        })();
+    };
+    context.subscriptions.push(auth.onDidChange(() => joinTailnet("login-change")));
+    joinTailnet("activate");
+
     // First install: offer to auto-approve agent tool calls so browser/navigation
     // tools don't keep prompting. Ask ONCE (a globalState flag), only if the user
     // hasn't already chosen a value, and only write the setting on explicit
@@ -210,15 +223,17 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
 
     // Opt-in remote control bridge (off unless symposium.bridge.enabled).
     const bridge = new RemoteBridge(api, (msg) => output.appendLine(msg));
-    bridge.start();
+    void bridge.start();
     context.subscriptions.push({ dispose: () => bridge.stop() });
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
         if (!e.affectsConfiguration("symposium.bridge")) { return; }
         bridge.stop();
-        const url = bridge.start();
-        output.appendLine(url
-            ? `[bridge] configuration changed; restarted on ${url}`
-            : "[bridge] configuration changed; bridge is disabled");
+        void (async () => {
+            const url = await bridge.start();
+            output.appendLine(url
+                ? `[bridge] configuration changed; restarted on ${url}`
+                : "[bridge] configuration changed; bridge is disabled");
+        })();
     }));
 
     registerCommands({

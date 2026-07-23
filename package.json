@@ -2,7 +2,7 @@
   "name": "sufficit-vscode-symposium",
   "displayName": "Sufficit Symposium",
   "description": "Symposium (συμπόσιον) — host and conduct dialogue sessions with multiple AI agents (Claude Code, Codex CLI, GitHub Copilot CLI) side by side inside VS Code.",
-  "version": "2026.722.5",
+  "version": "2026.722.6",
   "publisher": "sufficit",
   "license": "MIT",
   "icon": "media/symposium-icon.png",
@@ -172,6 +172,11 @@
         "command": "symposium.restartBridge",
         "title": "Symposium: Restart Remote Bridge",
         "icon": "$(broadcast)"
+      },
+      {
+        "command": "symposium.showRemoteAccess",
+        "title": "Symposium: Enable Remote Access",
+        "icon": "$(device-mobile)"
       },
       {
         "command": "symposium.login",
@@ -400,7 +405,9 @@
         },
         "symposium.lmToolsBlocklist": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Extra VS Code Language Model Tools to never bridge to the native 'Sufficit AI' backend (substring match on the tool name). Copilot's own memory tools (copilot_memory and *memory* tools, which write to Copilot's store — NOT the Sufficit memory) are always blocked regardless of this list."
         },
@@ -585,13 +592,21 @@
         },
         "symposium.bridge.sessionPermission": {
           "type": "string",
-          "enum": ["plan", "acceptEdits", "on-request", "on-failure", "untrusted"],
+          "enum": [
+            "plan",
+            "acceptEdits",
+            "on-request",
+            "on-failure",
+            "untrusted"
+          ],
           "default": "acceptEdits",
           "description": "Permission mode forced onto every session created via the remote bridge. bypassPermissions / never are deliberately not offered — a remote request must never run the agent's shell/edits unattended without approval."
         },
         "symposium.bridge.allowedLmTools": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Exact VS Code Language Model tool names a remote caller may invoke via /vscode/lmtool. Empty = none (the default), because LM tools can include terminal execution."
         },
@@ -607,7 +622,9 @@
         },
         "symposium.bridge.allowedHosts": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Accepted HTTP Host header values (not bind/listen addresses), for anti DNS-rebinding. Include the hostname or internal IP seen in the request Host header when using SSH reverse tunnels, reverse proxies, Docker, or Tailscale. Loopback is always accepted. Empty cannot enforce and logs a warning. Bridge settings are reapplied automatically."
         },
@@ -969,6 +986,7 @@
     "esbuild": "^0.24.0",
     "eslint": "^9.17.0",
     "prettier": "^3.4.2",
+    "qrcode-generator": "2.0.4",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.62.0"
   }

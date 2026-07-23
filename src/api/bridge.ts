@@ -1,6 +1,5 @@
 import * as http from "http";
-import * as fs from "fs";
-import * as path from "path";
+import * as https from "https";
 import { randomUUID } from "crypto";
 import * as vscode from "vscode";
 import { lmToolInvocationOptions } from "../adapters/lmToolInvocation";
@@ -8,14 +7,11 @@ import { ResourceKind } from "../config/root";
 import { SymposiumApi, SendMode } from "./symposiumApi";
 import { isBridgeAuthorized } from "./bridgeAuth";
 import { BridgePolicy, resolveBridgePolicy, isCwdAllowed, isHostAllowed, isLmToolAllowed } from "./bridgePolicy";
-import { renderPwaHtml } from "../ui/pwaHtml";
 import { decodeBridgePathSegment } from "./bridgeRoutes";
 import { removeBridgeAdvertisement, writeBridgeAdvertisement } from "./bridgeAdvertisement";
-
-const PWA_MIME: Record<string, string> = {
-    ".js": "text/javascript", ".css": "text/css", ".map": "application/json",
-    ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml",
-};
+import { getJoinedHostname } from "../net/tailnet";
+import { loadBridgeTlsMaterial } from "./bridgeTls";
+import { serveBridgeStatic } from "./bridgeStatic";
 
 /** VS Code commands the bridge is allowed to run (browser/navigation only). */
 const ALLOWED_COMMANDS = new Set<string>([
@@ -35,9 +31,15 @@ const ALLOWED_COMMANDS = new Set<string>([
  * token. Off unless `symposium.bridge.enabled` is set.
  */
 export class RemoteBridge {
-    private server: http.Server | undefined;
+    private server: http.Server | https.Server | undefined;
     private listening: { host: string; port: number } | undefined;
+    private connection: { url: string; token: string; https: boolean } | undefined;
     private lastRejection: { at: string; reason: "allowedHosts"; receivedHost: string; allowedHosts: string[] } | undefined;
+
+    /** The running bridge's URL/token, for surfaces that need to build a share link (e.g. the remote-access panel). Undefined while stopped. */
+    getConnection(): { url: string; token: string; https: boolean } | undefined {
+        return this.connection;
+    }
 
     constructor(
         private readonly api: SymposiumApi,
@@ -45,7 +47,7 @@ export class RemoteBridge {
     ) { }
 
     /** Starts the bridge if enabled in settings. Returns the bound URL or null. */
-    start(): string | null {
+    async start(): Promise<string | null> {
         const cfg = vscode.workspace.getConfiguration("symposium.bridge");
         if (!cfg.get<boolean>("enabled", false)) {
             return null;
@@ -57,18 +59,24 @@ export class RemoteBridge {
             token = randomUUID();
             this.log("[bridge] no token configured; generated ephemeral token (see ~/.symposium/bridge.json)");
         }
-        if ((cfg.get<string[]>("allowedHosts", []) ?? []).length === 0) {
+        if ((cfg.get<string[]>("allowedHosts", []) ?? []).length === 0 && !getJoinedHostname()) {
             this.log("[bridge] symposium.bridge.allowedHosts is empty — Host validation (anti DNS-rebinding) is not enforced; set it once you have a stable tunnel hostname.");
         }
 
-        const url = `http://${host}:${port}`;
-        this.server = http.createServer((req, res) => void this.handle(req, res, token));
+        const tls = await loadBridgeTlsMaterial();
+        const url = `${tls ? "https" : "http"}://${host}:${port}`;
+        const requestHandler = (req: http.IncomingMessage, res: http.ServerResponse) => void this.handle(req, res, token);
+        this.server = tls ? https.createServer(tls, requestHandler) : http.createServer(requestHandler);
+        if (!tls) {
+            this.log("[bridge] no TLS cert available (vault unreachable or not logged in) — serving plain HTTP; a tailnet PWA client needs HTTPS for its service worker.");
+        }
         this.server.on("error", (err) => {
             this.log(`[bridge] server error: ${err}`);
             removeBridgeAdvertisement();
         });
         this.server.listen(port, host, () => {
             this.listening = { host, port };
+            this.connection = { url, token, https: !!tls };
             this.log(`[bridge] listening on ${url}`);
             // Publish url+token so local skills/scripts can reach the bridge without
             // hardcoding them, but only after we own the advertised listener.
@@ -83,6 +91,7 @@ export class RemoteBridge {
         this.server?.close();
         this.server = undefined;
         this.listening = undefined;
+        this.connection = undefined;
         removeBridgeAdvertisement();
     }
 
@@ -93,6 +102,10 @@ export class RemoteBridge {
     private policy(): BridgePolicy {
         const cfg = vscode.workspace.getConfiguration("symposium.bridge");
         const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+        // Auto-permit this machine's own tailnet hostname (net/tailnet.ts) — an identity
+        // the extension itself established, not user input — on top of any explicit config.
+        const joinedHostname = getJoinedHostname();
+        const allowedHosts = cfg.get<string[]>("allowedHosts", []);
         return resolveBridgePolicy({
             allowedRoots: cfg.get<string[]>("allowedRoots", []),
             workspaceRoots,
@@ -100,7 +113,7 @@ export class RemoteBridge {
             allowedLmTools: cfg.get<string[]>("allowedLmTools", []),
             allowExecutableOverride: cfg.get<boolean>("allowExecutableOverride", false),
             allowVaultResolve: cfg.get<boolean>("allowVaultResolve", false),
-            allowedHosts: cfg.get<string[]>("allowedHosts", []),
+            allowedHosts: joinedHostname ? [...allowedHosts, joinedHostname] : allowedHosts,
         });
     }
 
@@ -129,7 +142,7 @@ export class RemoteBridge {
             if (!vscode.workspace.getConfiguration("symposium.bridge").get<boolean>("pwa", false)) {
                 return json(res, 404, { error: "not found" });
             }
-            return this.serveStatic(parts.slice(1).join("/") || "index.html", res);
+            return serveBridgeStatic(parts.slice(1).join("/") || "index.html", res);
         }
         if (!this.authorized(req, url, token)) {
             return json(res, 401, { error: "unauthorized" });
@@ -321,24 +334,6 @@ export class RemoteBridge {
             // paths / usernames from fs/spawn errors to the remote caller.
             this.log(`[bridge] request error: ${String(err)}`);
             return json(res, 500, { error: "internal error" });
-        }
-    }
-
-    private serveStatic(rel: string, res: http.ServerResponse): void {
-        if (rel === "index.html" || rel === "") {
-            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-            res.end(renderPwaHtml());
-            return;
-        }
-        const root = path.join(__dirname, "pwa");
-        const file = path.resolve(root, rel);
-        if (!file.startsWith(root + path.sep)) { return json(res, 403, { error: "forbidden" }); }
-        try {
-            const body = fs.readFileSync(file);
-            res.writeHead(200, { "Content-Type": PWA_MIME[path.extname(file)] ?? "application/octet-stream" });
-            res.end(body);
-        } catch {
-            return json(res, 404, { error: "not found" });
         }
     }
 

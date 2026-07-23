@@ -44,6 +44,20 @@ export interface SaveResponse {
     data?: { id: string; createdAtUtc: string };
 }
 
+export interface SymposiumJoinResult {
+    ok: boolean;
+    tailnetJoinKey?: string;
+    tailnetLoginServer?: string;
+    hostnamePrefix?: string;
+    magicDnsBaseDomain?: string;
+}
+
+export interface SymposiumRemoteUrlResult {
+    online: boolean;
+    hostname?: string;
+    bridgePort?: number;
+}
+
 /**
  * Optional provider of a Sufficit Identity access token (from the logged-in
  * session). When set and it returns a token, the hub uses it as the Bearer
@@ -208,6 +222,38 @@ export class HubClient {
             }
             const body = (await res.json()) as { value?: string };
             return body.value ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    /** Mints a tailnet preauthkey for this Symposium install's remote-bridge node. */
+    async joinSymposiumTailnet(): Promise<SymposiumJoinResult | null> {
+        if (!this.configured()) {
+            return null;
+        }
+        try {
+            const res = await fetch(`${this.base()}/api/symposium/join`, { method: "POST", headers: await this.headers() });
+            if (!res.ok) {
+                return null;
+            }
+            return (await res.json()) as SymposiumJoinResult;
+        } catch {
+            return null;
+        }
+    }
+
+    /** Resolves whichever machine currently has this user's Symposium remote bridge active. */
+    async resolveSymposiumRemoteUrl(): Promise<SymposiumRemoteUrlResult | null> {
+        if (!this.configured()) {
+            return null;
+        }
+        try {
+            const res = await fetch(`${this.base()}/api/symposium/remote-url`, { headers: await this.headers() });
+            if (!res.ok) {
+                return null;
+            }
+            return (await res.json()) as SymposiumRemoteUrlResult;
         } catch {
             return null;
         }

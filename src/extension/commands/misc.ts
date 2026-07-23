@@ -1,10 +1,15 @@
 import * as vscode from "vscode";
 import { ChatViewProvider } from "../../ui/chatView";
 import { ConfigPanel } from "../../ui/configPanel";
+import { RemoteAccessPanel } from "../../ui/remoteAccessPanel";
 import { SufficitAuthProvider } from "../../auth/provider";
 import { seedExamples } from "../../config/seed";
 import { symposiumLog } from "../log";
 import { CommandContext } from "./helpers";
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** View registration + diagnostics, settings, auth, seed and bridge commands. */
 export function registerMiscCommands(ctx: CommandContext): void {
@@ -95,9 +100,24 @@ export function registerMiscCommands(ctx: CommandContext): void {
         // Manual recovery action; bridge setting changes are also applied live.
         vscode.commands.registerCommand("symposium.restartBridge", () => {
             bridge.stop();
-            const url = bridge.start();
-            void vscode.window.showInformationMessage(
-                url ? `Symposium bridge: ${url}` : "Symposium bridge disabled (symposium.bridge.enabled=false).");
+            void (async () => {
+                const url = await bridge.start();
+                void vscode.window.showInformationMessage(
+                    url ? `Symposium bridge: ${url}` : "Symposium bridge disabled (symposium.bridge.enabled=false).");
+            })();
+        }),
+
+        // Friendly front door for the bridge (see remoteAccessPanel.ts) — flips the raw
+        // symposium.bridge.enabled setting on if needed (the extension.ts config-change
+        // listener owns the actual restart) instead of requiring the user to find it in
+        // Settings UI, then shows the QR/URL once the bridge comes up.
+        vscode.commands.registerCommand("symposium.showRemoteAccess", async () => {
+            const cfg = vscode.workspace.getConfiguration("symposium.bridge");
+            if (!cfg.get<boolean>("enabled", false)) {
+                await cfg.update("enabled", true, vscode.ConfigurationTarget.Global);
+                for (let i = 0; i < 20 && !bridge.getConnection(); i++) { await sleep(100); }
+            }
+            await RemoteAccessPanel.show(context, bridge);
         }),
     );
 }
