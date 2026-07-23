@@ -14,6 +14,7 @@ import { clearFailedAttemptForEdit } from "./errorEditRecovery";
 import { renderTodos, todoMark } from "./panels";
 import { configureThinkingRenderer, endThinkingStream } from "./thinking";
 import { createSystemNotice } from "./systemNotice";
+import { presentTurnError } from "../errorPresentation";
 export { renderThinkBlock, streamThinkingDelta } from "./thinking";
 
 // Tracks the Retry bar for the most recent retry click, so it can be
@@ -28,7 +29,10 @@ export function resolvePendingRetry() {
     if (pendingRetryBar) { pendingRetryBar.remove(); pendingRetryBar = null; }
 }
 
-// Error block with a Retry action (re-sends the last user message).
+// Terminal backend error with a Retry action (re-sends the last user message).
+// This deliberately uses the same system-notice component as guardrails and
+// interruptions: a provider failure must never look like agent output or
+// disappear into a raw JSON blob.
 // `historical` marks an error replayed from a reopened session's saved log
 // that is no longer the last thing that happened (see renderStream.ts's
 // neutralizeSupersededErrors) — its Retry button is omitted, since retrying
@@ -37,8 +41,23 @@ export function renderError(message, historical, retryable) {
     const stick = nearBottom();
     endToolGroup(); endStream();
     removeDuplicateAssistantError(message);
-    const el = document.createElement("div"); el.className = "msg plain error";
-    const txt = document.createElement("div"); txt.textContent = "✖ " + message; el.appendChild(txt);
+    const presentation = presentTurnError(message, retryable);
+    const el = createSystemNotice(presentation.summary, "error");
+    el.classList.add("turnError");
+    el.dataset.errorStatus = /\bHTTP\s+(\d{3})\b/i.exec(presentation.detail)?.[1] || "unknown";
+    if (presentation.detail !== presentation.summary) {
+        const content = el.querySelector(".statusNoticeContent");
+        if (content) {
+            const details = document.createElement("details");
+            details.className = "turnErrorDetails";
+            const summary = document.createElement("summary");
+            summary.textContent = "Technical details";
+            const pre = document.createElement("pre");
+            pre.textContent = presentation.detail;
+            details.append(summary, pre);
+            content.appendChild(details);
+        }
+    }
     const lastUser = lastUserRow();
     if (lastUser && !historical) {
         const bar = document.createElement("div"); bar.className = "errActions";
@@ -71,7 +90,9 @@ export function renderError(message, historical, retryable) {
             beginEdit(lastUser.idx, lastUser.text);
         });
 
-        bar.appendChild(edit); el.appendChild(bar);
+        bar.appendChild(edit);
+        const content = el.querySelector(".statusNoticeContent");
+        (content ?? el).appendChild(bar);
     }
     log.appendChild(el); refreshEmpty(); autoScroll(stick);
 }
