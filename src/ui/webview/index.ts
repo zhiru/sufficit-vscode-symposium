@@ -96,6 +96,7 @@ import { applyStaticI18n } from "./staticI18n";
     }
     presencePicker.addEventListener("click", (ev) => {
         ev.stopPropagation();
+        if ((presencePicker as HTMLButtonElement).disabled) { return; }
         openChoiceMenu(presencePicker, presenceMenu(), autonomyValue, (v) => { setAutonomyValue(v); saveState({ autonomy: v }); setPresenceLabel(); });
     });
     // ICONS is imported (no temporal dead zone), so paint the presence icon now.

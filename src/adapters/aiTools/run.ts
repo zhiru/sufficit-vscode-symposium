@@ -273,8 +273,11 @@ export async function runAiTool(name: string, args: Record<string, unknown>, ctx
                 try {
                     if (!hub.configured()) { throw new Error("memory hub not configured"); }
                     const id = await saveGuardrail(hub, ctx.sessionId, text);
-                    // Silence success — empty string saves tokens; only the panel refresh matters.
-                    return id ? "" : JSON.stringify({ error: "save failed" });
+                    // Return the id (not silent "") so the UI can read it back
+                    // by id instantly instead of racing the hub's eventually
+                    // consistent search index (which can lag past the retry
+                    // window and leave the panel looking like it never landed).
+                    return id ? JSON.stringify({ id }) : JSON.stringify({ error: "save failed" });
                 } catch (e: unknown) {
                     // Fallback to local memory if hub fails
                     console.warn(`[Symposium] Hub saveGuardrail failed, using local memory: ${e instanceof Error ? e.message : String(e)}`);
