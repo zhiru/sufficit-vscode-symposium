@@ -34,6 +34,8 @@ export interface SurfaceMessagesDeps {
     refreshSessions: () => Promise<void>;
     refreshQuotas: (force?: boolean) => Promise<void>;
     openSession: (info: SessionInfo) => void;
+    /** Reveals this surface and focuses its composer after host UI detours. */
+    restoreFocus: () => Promise<void>;
     getController: () => ChatController | undefined;
     getTerminalSession: () => TerminalSession | undefined;
     getFollowHandle: () => FollowHandle | undefined;

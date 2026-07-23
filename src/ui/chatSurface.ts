@@ -79,6 +79,9 @@ export class ChatSurface {
         private readonly deps: ChatSurfaceDeps,
         private readonly onTitleChange?: (title: string) => void,
         private readonly onSessionCreated?: (sessionId: string) => void,
+        // Restores this exact webview after a host command temporarily moves
+        // workbench focus away (notably VS Code's editor-dictation command).
+        private readonly reveal?: () => void | Thenable<void>,
         // Editor panels show only the open conversation; the sidebar shows the
         // sessions list beside it.
         private readonly chatOnly = false,
@@ -111,6 +114,10 @@ export class ChatSurface {
             refreshSessions: () => this.refreshSessions(),
             refreshQuotas: (force) => this.refreshQuotas(force),
             openSession: (info) => this.openSession(info),
+            restoreFocus: async () => {
+                await this.reveal?.();
+                this.focusInput();
+            },
             getController: () => this.controller,
             getTerminalSession: () => this.terminalSession,
             getFollowHandle: () => this.followHandle,

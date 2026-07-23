@@ -71,6 +71,7 @@ export class ChatPanel {
         this.surface = new ChatSurface(this.panel.webview, deps,
             (title) => { this.panel.title = title; },
             (sessionId) => { this.sessionId = sessionId; },
+            () => this.panel.reveal(this.panel.viewColumn, true),
             /* chatOnly */ true);
         ChatPanel.panels.add(this);
         this.panel.onDidDispose(() => {

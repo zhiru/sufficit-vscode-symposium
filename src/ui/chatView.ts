@@ -35,7 +35,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     resolveWebviewView(webviewView: vscode.WebviewView): void {
         this.view = webviewView;
         this.surface = new ChatSurface(webviewView.webview, this.deps,
-            (title) => { if (this.view) { this.view.title = title; } });
+            (title) => { if (this.view) { this.view.title = title; } },
+            undefined,
+            () => vscode.commands.executeCommand(`${ChatViewProvider.viewId}.focus`));
         webviewView.onDidDispose(() => {
             this.surface?.dispose();
             this.surface = undefined;
