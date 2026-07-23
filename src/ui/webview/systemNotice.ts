@@ -4,13 +4,14 @@ import { svgIcon } from "./icons";
 const MANUAL_TOKENS = new Map([
     ["folded_orphan_tools", "openai-history"],
     ["folded_missing_tool_calls", "openai-history"],
+    ["repaired_missing_tool_calls", "openai-history"],
     ["orphan_tools", "openai-history"],
     ["missing_tool_results", "openai-history"],
 ]);
 
 function renderText(el, text) {
     const value = String(text ?? "");
-    const tokenPattern = /\b(folded_orphan_tools|folded_missing_tool_calls|orphan_tools|missing_tool_results)(?==)/g;
+    const tokenPattern = /\b(folded_orphan_tools|folded_missing_tool_calls|repaired_missing_tool_calls|orphan_tools|missing_tool_results)(?==)/g;
     let last = 0;
     let match;
     while ((match = tokenPattern.exec(value)) !== null) {

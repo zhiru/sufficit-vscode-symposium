@@ -6,13 +6,15 @@ O Symposium mantém o transcript salvo sem alterações, mas pode precisar reorg
 
 APIs compatíveis com OpenAI exigem que chamadas de ferramenta e resultados de ferramenta apareçam em pares estritos. Sessões salvas antigas, turns interrompidos, transcripts importados ou histórico recortado podem deixar um resultado de ferramenta sem a chamada original, ou uma chamada de ferramenta sem o resultado correspondente dentro da janela enviada.
 
-Quando isso acontece, o Symposium dobra os itens inseguros em um resumo de texto simples para a requisição de saída. O transcript persistido não é editado.
+Quando isso acontece, o Symposium dobra um resultado órfão em um resumo de texto simples. Para um resultado ausente, ele mantém a chamada correspondente e acrescenta um resultado somente na requisição, explicando que a execução foi interrompida. O transcript persistido não é editado.
 
 ## Contadores
 
 **folded_orphan_tools** conta mensagens de resultado de ferramenta que não tinham mais uma chamada de ferramenta correspondente no histórico da requisição. Elas são dobradas em texto para evitar rejeição pelo provedor.
 
-**folded_missing_tool_calls** conta mensagens do assistente com chamadas de ferramenta cujo resultado correspondente estava ausente no histórico da requisição. Elas também são dobradas em texto.
+**folded_missing_tool_calls** é mantido por compatibilidade com diagnósticos anteriores.
+
+**repaired_missing_tool_calls** conta chamadas de ferramenta do assistente cujo resultado estava ausente. O Symposium acrescenta um resultado de interrupção somente na requisição para que o modelo reavalie o contexto em vez de repetir a chamada cegamente.
 
 **orphan_tools** e **missing_tool_results** são contadores de validação do envio final. Se aparecerem, o Symposium detectou pareamento inválido na requisição que seria enviada e informa o que encontrou.
 

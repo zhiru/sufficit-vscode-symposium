@@ -20,7 +20,7 @@ import { stripSourcePrefix } from "./toolMerge";
 import { findToolHistoryIssues, materializeToolSafeHistory } from "./toolHistory";
 import { buildTurnTools, executeTurnTool } from "./turnTools";
 import { emitTurnUsage } from "./turnUsage";
-import { guardrailStopNotice } from "./turnNotices";
+import { guardrailStopNotice, REPEAT_TOOL_CALL_LIMIT, repeatedToolCallWithoutProgress } from "./turnNotices";
 
 /**
  * One conversation turn for an OpenAISession: the streaming tool-call loop that
@@ -144,7 +144,6 @@ export class TurnRunner {
         let hitCap = !unlimited;   // cleared when the model finishes on its own
         let toolHistoryMaterializationNoticeEmitted = false;
         const recentCalls: string[] = [];
-        const REPEAT_LIMIT = 6;
         const noProgressStop = Math.max(0, this.d.cfg.noProgressStop ?? 0);
         let noTextHops = 0;
         try {
@@ -158,8 +157,8 @@ export class TurnRunner {
                     this.d.cfg.supportsDeveloperRole !== false ? "developer" : "system",
                 );
                 const outMessages = materialized.messages;
-                if (!toolHistoryMaterializationNoticeEmitted && (materialized.foldedOrphanTools > 0 || materialized.foldedMissingToolCalls > 0)) {
-                    this.d.emit({ kind: "status-notice", text: `OpenAI request history materialized from saved session; persisted transcript unchanged. folded_orphan_tools=${materialized.foldedOrphanTools} folded_missing_tool_calls=${materialized.foldedMissingToolCalls}` });
+                if (!toolHistoryMaterializationNoticeEmitted && (materialized.foldedOrphanTools > 0 || materialized.foldedMissingToolCalls > 0 || materialized.repairedMissingToolCalls > 0)) {
+                    this.d.emit({ kind: "status-notice", text: `OpenAI request history materialized from saved session; persisted transcript unchanged. folded_orphan_tools=${materialized.foldedOrphanTools} folded_missing_tool_calls=${materialized.foldedMissingToolCalls} repaired_missing_tool_calls=${materialized.repairedMissingToolCalls}` });
                     toolHistoryMaterializationNoticeEmitted = true;
                 }
                 const toolHistoryIssues = findToolHistoryIssues(outMessages);
@@ -260,19 +259,17 @@ export class TurnRunner {
                     }
                 }
 
-                messages.push({ role: "assistant", content: text || null, tool_calls: toolCalls });
-                if (text) { this.d.led("assistant", text); }
-                this.d.safePersist();
                 const sig = toolCalls.map((tc) => `${tc.function.name}:${tc.function.arguments}`).join("|");
-                recentCalls.push(sig);
-                if (recentCalls.length > REPEAT_LIMIT) { recentCalls.shift(); }
-                if (recentCalls.length === REPEAT_LIMIT && recentCalls.every((c) => c === sig)) {
+                if (repeatedToolCallWithoutProgress(recentCalls, sig)) {
                     this.d.emit(guardrailStopNotice(
-                        `Stopped because the model repeated the same tool call ${REPEAT_LIMIT} times without progress.`,
+                        `Stopped because the model repeated the same tool call ${REPEAT_TOOL_CALL_LIMIT} times without progress.`,
                     ));
                     hitCap = false;
                     break;
                 }
+                messages.push({ role: "assistant", content: text || null, tool_calls: toolCalls });
+                if (text) { this.d.led("assistant", text); }
+                this.d.safePersist();
                 for (const tc of toolCalls) {
                     let args: Record<string, unknown> = {};
                     try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* leave empty */ }

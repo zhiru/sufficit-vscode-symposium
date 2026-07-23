@@ -8,6 +8,7 @@ import { findToolHistoryIssues, materializeToolSafeHistory } from "../adapters/o
 import { ChatMessage } from "../adapters/openai/types";
 import { mergeToolDefinitions } from "../adapters/openai/toolMerge";
 import { consumeStream } from "../adapters/openai/streamConsume";
+import { REPEAT_TOOL_CALL_LIMIT, repeatedToolCallWithoutProgress } from "../adapters/openai/turnNotices";
 
 /** Builds a ReadableStream that emits the given SSE text as UTF-8 bytes. */
 function sseStream(body: string): ReadableStream<Uint8Array> {
@@ -205,7 +206,7 @@ test("materializeToolSafeHistory folds orphan tool results without mutating save
     assert.deepEqual(findToolHistoryIssues(materialized.messages), []);
 });
 
-test("materializeToolSafeHistory omits missing tool calls and keeps matched calls valid", () => {
+test("materializeToolSafeHistory supplies a request-only result for missing tool calls", () => {
     const messages: ChatMessage[] = [
         { role: "system", content: "system" },
         { role: "user", content: "run tools" },
@@ -223,10 +224,24 @@ test("materializeToolSafeHistory omits missing tool calls and keeps matched call
     const materialized = materializeToolSafeHistory(messages);
 
     assert.equal(materialized.foldedOrphanTools, 0);
-    assert.equal(materialized.foldedMissingToolCalls, 1);
-    assert.deepEqual(materialized.messages[2].tool_calls?.map((toolCall) => toolCall.id), ["call_present"]);
-    assert.match(String(materialized.messages[2].content), /1 tool request/);
+    assert.equal(materialized.foldedMissingToolCalls, 0);
+    assert.equal(materialized.repairedMissingToolCalls, 1);
+    assert.deepEqual(materialized.messages[2].tool_calls?.map((toolCall) => toolCall.id), ["call_missing", "call_present"]);
+    assert.equal(materialized.messages[3].role, "tool");
+    assert.equal(materialized.messages[3].tool_call_id, "call_missing");
+    assert.match(String(materialized.messages[3].content), /was not executed/);
     assert.deepEqual(findToolHistoryIssues(materialized.messages), []);
+});
+
+test("repeated tool-call guard stops before an unmatched tool call is persisted", () => {
+    const recent: string[] = [];
+    const signature = 'read_file:{"path":"/repo/file.ts"}';
+
+    for (let i = 1; i < REPEAT_TOOL_CALL_LIMIT; i++) {
+        assert.equal(repeatedToolCallWithoutProgress(recent, signature), false, `call ${i} must remain executable`);
+    }
+    assert.equal(repeatedToolCallWithoutProgress(recent, signature), true);
+    assert.deepEqual(recent, Array(REPEAT_TOOL_CALL_LIMIT).fill(signature));
 });
 
 test("mergeToolDefinitions prefixes collisions without mutating shared tool defs", () => {

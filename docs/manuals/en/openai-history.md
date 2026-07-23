@@ -6,13 +6,15 @@ Symposium keeps the saved transcript unchanged, but it may need to reshape a sma
 
 OpenAI-compatible APIs require tool calls and tool results to appear in strict pairs. Older saved sessions, interrupted turns, imported transcripts, or trimmed history can leave a tool result without its original tool call, or a tool call without the matching result in the request window.
 
-When that happens, Symposium folds the unsafe items into a plain text summary for the outgoing request. The persisted transcript is not edited.
+When that happens, Symposium folds an orphaned result into a plain-text summary. For a missing result, it retains the matching call and adds a request-only result explaining that execution was interrupted. The persisted transcript is not edited.
 
 ## Counters
 
 **folded_orphan_tools** counts tool-result messages that no longer had a matching tool call in the request history. These are folded into text so the provider does not reject the request.
 
-**folded_missing_tool_calls** counts assistant tool-call messages whose matching tool result was missing from the request history. These are folded into text for the same reason.
+**folded_missing_tool_calls** is retained for compatibility with earlier diagnostics.
+
+**repaired_missing_tool_calls** counts assistant tool calls whose result was absent. Symposium adds a request-only interrupted-result so the model can reassess instead of blindly repeating the call.
 
 **orphan_tools** and **missing_tool_results** are dispatch validation counters. If they appear, Symposium detected invalid pairing in the final outgoing request and reports what it found.
 

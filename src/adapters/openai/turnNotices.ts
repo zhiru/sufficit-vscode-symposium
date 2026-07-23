@@ -1,5 +1,26 @@
 import type { AgentEvent } from "../types";
 
+/** Number of identical tool-call batches allowed before stopping the turn. */
+export const REPEAT_TOOL_CALL_LIMIT = 6;
+
+/**
+ * Records one tool-call batch and tells the caller whether the same batch has
+ * now been requested too many times in succession. Call this before adding
+ * the assistant tool call to durable history: a stopped call has no tool
+ * result, and persisting it would leave an invalid OpenAI tool-call pair.
+ */
+export function repeatedToolCallWithoutProgress(
+    recentCalls: string[],
+    signature: string,
+    limit = REPEAT_TOOL_CALL_LIMIT,
+): boolean {
+    recentCalls.push(signature);
+    if (recentCalls.length > limit) {
+        recentCalls.splice(0, recentCalls.length - limit);
+    }
+    return recentCalls.length === limit && recentCalls.every((call) => call === signature);
+}
+
 /**
  * Guardrail stops are runtime decisions made by Symposium, not words produced
  * by the model. Keeping them as structured warning notices prevents the UI and

@@ -11,6 +11,8 @@ export interface MaterializedToolHistory {
     messages: ChatMessage[];
     foldedOrphanTools: number;
     foldedMissingToolCalls: number;
+    /** Tool calls that had no saved result and received a request-only failure result. */
+    repairedMissingToolCalls: number;
 }
 
 export function findToolHistoryIssues(messages: ChatMessage[]): ToolHistoryIssue[] {
@@ -70,44 +72,28 @@ export function materializeToolSafeHistory(
     const out: ChatMessage[] = [];
     const pending = new Set<string>();
     let foldedOrphanTools = 0;
-    let foldedMissingToolCalls = 0;
+    // Kept in the dispatch diagnostics for backwards compatibility. Missing
+    // results are now repaired below instead of folding away their tool call.
+    const foldedMissingToolCalls = 0;
+    let repairedMissingToolCalls = 0;
 
     for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
 
         if (message.role === "assistant" && message.tool_calls?.length) {
-            const keptCalls = message.tool_calls.filter((toolCall) => hasToolResultAfter(toolResultIndexes, toolCall.id, i));
-            const removedCalls = message.tool_calls.length - keptCalls.length;
-
-            if (removedCalls > 0) {
-                foldedMissingToolCalls += removedCalls;
-            }
-
-            if (keptCalls.length > 0) {
-                for (const toolCall of keptCalls) {
+            out.push(message);
+            for (const toolCall of message.tool_calls) {
+                if (hasToolResultAfter(toolResultIndexes, toolCall.id, i)) {
                     pending.add(toolCall.id);
+                    continue;
                 }
-                out.push({
-                    ...message,
-                    content: removedCalls > 0
-                        ? appendToolHistoryNote(message.content, `[${removedCalls} tool request(s) omitted from this live request because their result is outside the materialized context. The saved session is unchanged.]`)
-                        : message.content,
-                    tool_calls: keptCalls,
-                });
-                continue;
-            }
 
-            if (hasContent(message.content)) {
-                out.push({
-                    ...message,
-                    content: appendToolHistoryNote(message.content, `[${removedCalls} tool request(s) omitted from this live request because their result is outside the materialized context. The saved session is unchanged.]`),
-                    tool_calls: undefined,
-                });
-            } else {
-                out.push(toolHistoryNotice(
-                    noticeRole,
-                    `${removedCalls} assistant tool request(s) were omitted from this live request because their result is outside the materialized context. The saved session is unchanged.`,
-                ));
+                // A guardrail or interruption can stop between receiving the
+                // assistant call and executing its tool. Preserve the saved
+                // transcript, but complete the request view with a deterministic
+                // result so a Retry sees why it must not blindly call it again.
+                repairedMissingToolCalls++;
+                out.push(missingToolResult(toolCall.id, toolCall.function.name));
             }
             continue;
         }
@@ -131,7 +117,7 @@ export function materializeToolSafeHistory(
         out.push(message);
     }
 
-    return { messages: out, foldedOrphanTools, foldedMissingToolCalls };
+    return { messages: out, foldedOrphanTools, foldedMissingToolCalls, repairedMissingToolCalls };
 }
 
 export function expandStartToToolBoundary(messages: ChatMessage[], startIndex: number): number {
@@ -168,20 +154,13 @@ function hasToolResultAfter(indexes: Map<string, number[]>, toolCallId: string, 
     return (indexes.get(toolCallId) ?? []).some((index) => index > messageIndex);
 }
 
-function hasContent(content: ChatMessage["content"]): boolean {
-    if (typeof content === "string") { return content.trim().length > 0; }
-    return Array.isArray(content) && content.length > 0;
-}
-
-function appendToolHistoryNote(content: ChatMessage["content"], note: string): ChatMessage["content"] {
-    if (typeof content === "string" && content.trim().length > 0) {
-        return `${content}\n\n${note}`;
-    }
-    // Assistant messages in this adapter use string/null content. If an old
-    // session somehow carries structured assistant content, replace only the
-    // outbound copy with a neutral note rather than risking an invalid mixed
-    // payload for OpenAI-compatible gateways.
-    return note;
+function missingToolResult(toolCallId: string, toolName: string): ChatMessage {
+    return {
+        role: "tool",
+        tool_call_id: toolCallId,
+        name: toolName,
+        content: "[System: This tool call was not executed because the previous turn ended before it could run. Do not repeat it blindly; reassess the current state and either take a different necessary step or respond to the user.]",
+    };
 }
 
 function toolHistoryNotice(role: "system" | "developer", detail: string): ChatMessage {
