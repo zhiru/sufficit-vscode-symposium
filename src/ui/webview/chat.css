@@ -770,6 +770,8 @@
         padding: 1px 5px; border-radius: 4px;
         border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
     }
+    .md code.inline.filepath { cursor: pointer; color: var(--vscode-textLink-foreground); }
+    .md code.inline.filepath:hover { text-decoration: underline; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.22)); }
     .md strong { font-weight: 700; color: var(--vscode-foreground); }
     .md em { font-style: italic; }
     .md .mdtable { border-collapse: collapse; margin: 8px 0; font-size: 0.95em; display: block; overflow-x: auto; max-width: 100%; }

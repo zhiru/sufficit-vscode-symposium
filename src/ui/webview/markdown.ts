@@ -1,4 +1,5 @@
 // Extracted from the chat webview client. Pure DOM/string helpers (no shared state).
+import { vscode } from "./vscode";
 // ---- minimal, safe markdown → DOM (no innerHTML of untrusted text) ----
 export function renderMarkdown(container, src) {
     const lines = String(src).split("\n");
@@ -217,6 +218,11 @@ function codexTagStart(line) {
     return null;
 }
 
+function looksLikeFilePath(s) {
+    if (!s || /\s/.test(s) || s.includes("://")) return false;
+    return /\/.*\.[A-Za-z][A-Za-z0-9]{1,9}$/.test(s);
+}
+
 // inline: **bold**, *italic*, `code`, [text](url) — builds text nodes safely
 export function inline(parent, text) {
     const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
@@ -224,7 +230,19 @@ export function inline(parent, text) {
     while ((m = re.exec(text)) !== null) {
         if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
         const tok = m[0];
-        if (tok.startsWith("`")) { const e = document.createElement("code"); e.className = "inline"; e.textContent = tok.slice(1, -1); parent.appendChild(e); }
+        if (tok.startsWith("`")) {
+            const raw = tok.slice(1, -1);
+            const e = document.createElement("code"); e.className = "inline"; e.textContent = raw;
+            // A narrow, conservative file-path guess: a directory separator plus a
+            // real (letter-first) extension. Doesn't touch bare `identifiers`,
+            // version numbers, or shell snippets — only paths worth opening.
+            if (looksLikeFilePath(raw)) {
+                e.classList.add("filepath");
+                e.title = "Click to open " + raw;
+                e.addEventListener("click", () => vscode.postMessage({ type: "open-file", path: raw }));
+            }
+            parent.appendChild(e);
+        }
         else if (tok.startsWith("**")) { const e = document.createElement("strong"); e.textContent = tok.slice(2, -2); parent.appendChild(e); }
         else if (tok.startsWith("*")) { const e = document.createElement("em"); e.textContent = tok.slice(1, -1); parent.appendChild(e); }
         else {

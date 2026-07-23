@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { FollowHandle, SessionInfo } from "../adapters/types";
 import { WebviewToHost } from "./protocol";
 import { ChatController } from "./chatController";
@@ -288,10 +289,17 @@ export class SurfaceMessages {
                     return;
                 }
                 case "open-file": {
-                    if (typeof message.path === "string") {
+                    if (typeof message.path === "string" && message.path.trim()) {
+                        const raw = message.path.trim();
+                        // Paths clicked from free-form message text (e.g. a
+                        // file-path mention in an agent reply) are workspace-
+                        // relative; tool/attachment-sourced paths are already
+                        // absolute and pass through path.isAbsolute unchanged.
+                        const cwd = this.d.getController()?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                        const resolved = path.isAbsolute(raw) ? raw : (cwd ? path.resolve(cwd, raw) : raw);
                         // vscode.open handles text AND binary (images open in the
                         // image preview), unlike openTextDocument.
-                        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(message.path), { preview: true });
+                        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(resolved), { preview: true });
                     }
                     return;
                 }
