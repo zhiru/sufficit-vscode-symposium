@@ -64,11 +64,17 @@ export function updateMicVisibility(webSpeechSupported: boolean): void {
     const prefs = getVoicePreferences();
     const canWebSpeech = webSpeechWorksHere(prefs, webSpeechSupported) && (prefs.engine === "webspeech" || (prefs.engine === "auto" && !prefs.localStt));
     const canLocal = prefs.localStt && prefs.engine !== "webspeech";
-    micBtn.style.display = (canWebSpeech || canLocal) ? "inline-flex" : "none";
+    // VS Code Speech captures through the workbench rather than either the
+    // browser or local-audio paths, so it must independently expose the mic.
+    const canVscodeSpeech = prefs.vscodeSpeechBridge;
+    micBtn.style.display = (canWebSpeech || canLocal || canVscodeSpeech) ? "inline-flex" : "none";
 }
 
 export function chooseVoicePath(webSpeechSupported: boolean): VoicePath {
     const prefs = getVoicePreferences();
+    // The webview routes this sentinel path through the host protocol below;
+    // VS Code Speech itself does not consume browser or local audio.
+    if (prefs.vscodeSpeechBridge) { return "local"; }
     if (prefs.localStt && prefs.engine !== "webspeech") { return "local"; }
     if (webSpeechWorksHere(prefs, webSpeechSupported) && (prefs.engine === "webspeech" || prefs.engine === "auto")) { return "webspeech"; }
     return "none";
