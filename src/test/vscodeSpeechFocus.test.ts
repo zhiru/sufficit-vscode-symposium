@@ -12,6 +12,7 @@ test("VS Code Speech restores the originating Symposium composer after starting"
     const returnStarted = bridge.indexOf("return true;", restoreFocus);
 
     assert.ok(startCommand >= 0, "bridge must start native editor dictation");
+    assert.match(bridge, /await vscode\.window\.tabGroups\.close\(transcriptTab, true\)/);
     assert.ok(restoreFocus > startCommand, "composer must be restored after the command captures its editor model");
     assert.ok(returnStarted > restoreFocus, "focus restoration must finish before recording is reported as active");
 });
@@ -24,4 +25,14 @@ test("each chat surface supplies an exact reveal callback to speech dictation", 
     assert.match(panel, /\(\) => this\.panel\.reveal\(this\.panel\.viewColumn, true\)/);
     assert.match(view, /executeCommand\(`\$\{ChatViewProvider\.viewId\}\.focus`\)/);
     assert.match(voice, /startVscodeSpeechDictation\(settings\.language, d\.restoreFocus\)/);
+});
+
+test("VS Code Speech independently exposes and routes the webview microphone", () => {
+    const prefs = source("ui/webview/voicePrefs.ts");
+    const voice = source("ui/webview/voice.ts");
+
+    assert.match(prefs, /canVscodeSpeech = prefs\.vscodeSpeechBridge/);
+    assert.match(prefs, /canWebSpeech \|\| canLocal \|\| canVscodeSpeech/);
+    assert.match(prefs, /if \(prefs\.vscodeSpeechBridge\) \{ return "local"; \}/);
+    assert.match(voice, /prefs\.hostCapture \|\| prefs\.vscodeSpeechBridge/);
 });

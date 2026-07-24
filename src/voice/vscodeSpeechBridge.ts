@@ -127,9 +127,14 @@ async function createAndStartSession(
         }
         await vscode.window.showTextDocument(document, { preview: true, preserveFocus: false });
         await vscode.commands.executeCommand(START_DICTATION_COMMAND);
-        // The command requires an ICodeEditor only while creating its speech
-        // session. Immediately return to the Symposium composer; the provider
-        // keeps writing into `document` through the retained editor model.
+        // Native editor dictation owns this editor contribution but does not
+        // stop when another workbench control receives focus. Close only the
+        // visible tab while preserving focus, then reveal the exact Symposium
+        // surface; its retained editor/model continues receiving speech edits.
+        const transcriptTab = findTextTab(document.uri);
+        if (transcriptTab) {
+            await vscode.window.tabGroups.close(transcriptTab, true);
+        }
         await session.restoreFocus();
         if (generation !== cancellationGeneration) {
             await stopAndReleaseSession(session);
@@ -182,6 +187,17 @@ function takeActiveSession(): DictationSession | undefined {
     const session = activeSession;
     activeSession = undefined;
     return session;
+}
+
+function findTextTab(uri: vscode.Uri): vscode.Tab | undefined {
+    for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+            if (tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri.toString()) {
+                return tab;
+            }
+        }
+    }
+    return undefined;
 }
 
 async function stopAndReleaseSession(session: DictationSession): Promise<void> {
