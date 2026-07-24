@@ -12,7 +12,10 @@ test("VS Code Speech restores the originating Symposium composer after starting"
     const returnStarted = bridge.indexOf("return true;", restoreFocus);
 
     assert.ok(startCommand >= 0, "bridge must start native editor dictation");
-    assert.match(bridge, /await vscode\.window\.tabGroups\.close\(transcriptTab, true\)/);
+    const releaseSession = bridge.indexOf("async function releaseSession", startCommand);
+    const closeTranscriptTab = bridge.indexOf("tabGroups.close(tab, true)", releaseSession);
+    assert.ok(releaseSession > startCommand, "dictation target cleanup must run after session start");
+    assert.ok(closeTranscriptTab > releaseSession, "dictation target tab must remain alive until stop/cancel cleanup");
     assert.ok(restoreFocus > startCommand, "composer must be restored after the command captures its editor model");
     assert.ok(returnStarted > restoreFocus, "focus restoration must finish before recording is reported as active");
 });
@@ -35,4 +38,15 @@ test("VS Code Speech independently exposes and routes the webview microphone", (
     assert.match(prefs, /canWebSpeech \|\| canLocal \|\| canVscodeSpeech/);
     assert.match(prefs, /if \(prefs\.vscodeSpeechBridge\) \{ return "local"; \}/);
     assert.match(voice, /prefs\.hostCapture \|\| prefs\.vscodeSpeechBridge/);
+});
+
+test("VS Code Speech static readiness requires both editor dictation commands", () => {
+    const bridge = source("voice/vscodeSpeechBridge.ts");
+    const service = source("voice/sttService.ts");
+
+    assert.match(bridge, /vscode\.commands\.getCommands\(true\)/);
+    assert.match(bridge, /commands\.includes\(START_DICTATION_COMMAND\)/);
+    assert.match(bridge, /commands\.includes\(STOP_DICTATION_COMMAND\)/);
+    assert.match(bridge, /vscode\.env\.remoteName !== undefined && commandsAvailable/);
+    assert.match(service, /vscodeSpeechStatus\.commandsAvailable/);
 });

@@ -31,6 +31,7 @@ let activeSession: DictationSession | undefined;
 export interface VscodeSpeechStatus {
     supported: boolean;
     installed: boolean;
+    commandsAvailable: boolean;
     extensionId: string;
 }
 
@@ -39,33 +40,43 @@ export function initVscodeSpeechBridge(globalStoragePath: string): void {
 }
 
 /** Static provider state. A real microphone session remains the final probe. */
-export function getVscodeSpeechStatus(): VscodeSpeechStatus {
+export async function getVscodeSpeechStatus(): Promise<VscodeSpeechStatus> {
     const supported = vscode.env.uiKind !== vscode.UIKind.Web;
+    const commands = supported ? await vscode.commands.getCommands(true) : [];
+    const commandsAvailable = commands.includes(START_DICTATION_COMMAND) && commands.includes(STOP_DICTATION_COMMAND);
+    const visibleInThisHost = vscode.extensions.getExtension(VSCODE_SPEECH_EXTENSION_ID) !== undefined;
+    // VS Code Speech declares extensionKind=["ui"]. During a Remote/WSL session
+    // Symposium runs in the workspace extension host, which cannot enumerate
+    // UI-host extensions even when they are installed and enabled locally.
+    // In that topology the workbench command registry is the only static bridge
+    // signal available to this host; microphone capture remains the final probe.
+    const installed = supported && (visibleInThisHost || (vscode.env.remoteName !== undefined && commandsAvailable));
     return {
         supported,
-        installed: supported && vscode.extensions.getExtension(VSCODE_SPEECH_EXTENSION_ID) !== undefined,
+        installed,
+        commandsAvailable,
         extensionId: VSCODE_SPEECH_EXTENSION_ID,
     };
 }
 
-export function isVscodeSpeechAvailable(): boolean {
-    const status = getVscodeSpeechStatus();
-    return status.supported && status.installed;
+export async function isVscodeSpeechAvailable(): Promise<boolean> {
+    const status = await getVscodeSpeechStatus();
+    return status.supported && status.installed && status.commandsAvailable;
 }
 
 /** Install the Microsoft provider through the same workbench that owns speech. */
 export async function installVscodeSpeechProvider(): Promise<VscodeSpeechStatus> {
-    const before = getVscodeSpeechStatus();
+    const before = await getVscodeSpeechStatus();
     if (!before.supported) {
         throw new Error("VS Code Speech is available only in the desktop VS Code UI.");
     }
-    if (before.installed) { return before; }
+    if (before.installed && before.commandsAvailable) { return before; }
 
     await vscode.commands.executeCommand("workbench.extensions.installExtension", VSCODE_SPEECH_EXTENSION_ID);
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
-        const status = getVscodeSpeechStatus();
-        if (status.installed) { return status; }
+        const status = await getVscodeSpeechStatus();
+        if (status.installed && status.commandsAvailable) { return status; }
         await delay(250);
     }
 
@@ -95,12 +106,15 @@ async function createAndStartSession(
     generation: number,
     restoreFocus: () => void | Thenable<void>,
 ): Promise<boolean> {
-    const status = getVscodeSpeechStatus();
+    const status = await getVscodeSpeechStatus();
     if (!status.supported) {
         throw new Error("VS Code Speech is unavailable in web/code-server sessions.");
     }
     if (!status.installed) {
         throw new Error(`Install and enable ${VSCODE_SPEECH_EXTENSION_ID}, then run the voice diagnostic again.`);
+    }
+    if (!status.commandsAvailable) {
+        throw new Error("VS Code editor dictation commands are unavailable in this extension host.");
     }
     if (!storageDir) {
         throw new Error("VS Code Speech bridge has not been initialized.");
@@ -127,14 +141,10 @@ async function createAndStartSession(
         }
         await vscode.window.showTextDocument(document, { preview: true, preserveFocus: false });
         await vscode.commands.executeCommand(START_DICTATION_COMMAND);
-        // Native editor dictation owns this editor contribution but does not
-        // stop when another workbench control receives focus. Close only the
-        // visible tab while preserving focus, then reveal the exact Symposium
-        // surface; its retained editor/model continues receiving speech edits.
-        const transcriptTab = findTextTab(document.uri);
-        if (transcriptTab) {
-            await vscode.window.tabGroups.close(transcriptTab, true);
-        }
+        // Editor dictation owns this editor contribution for the entire speech
+        // session. Closing the tab here disposes its live target and caused the
+        // Symposium microphone to disappear or stop immediately. Keep the
+        // preview tab until stop/cancel; releaseSession() closes it afterwards.
         await session.restoreFocus();
         if (generation !== cancellationGeneration) {
             await stopAndReleaseSession(session);
@@ -189,17 +199,6 @@ function takeActiveSession(): DictationSession | undefined {
     return session;
 }
 
-function findTextTab(uri: vscode.Uri): vscode.Tab | undefined {
-    for (const group of vscode.window.tabGroups.all) {
-        for (const tab of group.tabs) {
-            if (tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri.toString()) {
-                return tab;
-            }
-        }
-    }
-    return undefined;
-}
-
 async function stopAndReleaseSession(session: DictationSession): Promise<void> {
     if (activeSession === session) { activeSession = undefined; }
     try {
@@ -213,10 +212,18 @@ async function stopAndReleaseSession(session: DictationSession): Promise<void> {
 
 async function releaseSession(session: DictationSession): Promise<void> {
     if (activeSession === session) { activeSession = undefined; }
-    // Closing a hidden retained editor would bring its TXT tab to the front.
-    // The document is clean after STOP_DICTATION_COMMAND, so deleting the
-    // backing file and dropping our reference lets VS Code release it without
-    // another visible editor transition.
+    // Dictation has already stopped, so its editor target can now be closed
+    // without cancelling microphone capture. This removes dictation-*.txt only
+    // after the provider has delivered the final transcript.
+    for (const group of vscode.window.tabGroups.all) {
+        const tab = group.tabs.find((candidate) =>
+            candidate.input instanceof vscode.TabInputText
+            && candidate.input.uri.toString() === session.document.uri.toString());
+        if (tab) {
+            await vscode.window.tabGroups.close(tab, true);
+            break;
+        }
+    }
     await fs.unlink(session.filePath).catch(() => undefined);
 }
 

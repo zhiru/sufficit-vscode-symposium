@@ -100,7 +100,7 @@ export async function isLocalSttReady(): Promise<boolean> {
         // extensions. Availability is therefore validated by the actual
         // dictation command when the user starts recording; command failure
         // produces no transcript and the UI returns to its idle state.
-        return isVscodeSpeechAvailable();
+        return await isVscodeSpeechAvailable();
     }
     // ffmpeg is required for every local path (capture → 16 kHz mono WAV).
     const cmd = (fallback: string, override: string) => (override && override.trim() ? override.trim() : fallback);
@@ -134,8 +134,8 @@ export async function getSttState(): Promise<Record<string, unknown>> {
         commandAvailable(cmd("whisper-ctranslate2", s.fasterWhisper.binaryPath)),
         commandAvailable(cmd("vosk-transcriber", s.vosk.binaryPath)),
     ]);
-    const vscodeSpeechStatus = getVscodeSpeechStatus();
-    const vscodeSpeechOk = vscodeSpeechStatus.supported && vscodeSpeechStatus.installed;
+    const vscodeSpeechStatus = await getVscodeSpeechStatus();
+    const vscodeSpeechOk = vscodeSpeechStatus.supported && vscodeSpeechStatus.installed && vscodeSpeechStatus.commandsAvailable;
     const models = ALL_MODELS.map((m) => ({
         id: m.id, engine: m.engine, label: m.label, size: m.size, languages: m.languages,
         installed: isInstalled(m, root),
