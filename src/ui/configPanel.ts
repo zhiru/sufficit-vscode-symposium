@@ -11,6 +11,7 @@ import { handleMcpMessage } from "./configMcpHandler";
 import { handleResourcesMessage } from "./configResourcesHandler";
 import { handleVoiceMessage } from "./configVoiceHandler";
 import type { ConfigPanelDeps, ConfigMessage, ConfigHandlerCtx } from "./configTypes";
+import { offerConfigReload, reportSyncResult, resolveConfigLanguage } from "./configPanelSupport";
 export type { ConfigPanelDeps, ConfigMessage, ConfigHandlerCtx } from "./configTypes";
 
 /**
@@ -51,7 +52,7 @@ export class ConfigPanel {
             vscode.ViewColumn.Active,
             { enableScripts: true, retainContextWhenHidden: true },
         );
-        this.panel.webview.html = renderConfigHtml(this.resolveLang());
+        this.panel.webview.html = renderConfigHtml(resolveConfigLanguage());
         this.panel.webview.onDidReceiveMessage(
             (m) => { void this.onMessage(m).catch((e) => void vscode.window.showErrorMessage(this.tr("msg.config.actionFailed", { error: String((e && e.message) || e) }))); },
             undefined, this.disposables);
@@ -67,13 +68,8 @@ export class ConfigPanel {
         this.panel.onDidDispose(() => this.dispose(), undefined, context.subscriptions);
     }
 
-    private resolveLang(): string {
-        const c = vscode.workspace.getConfiguration("symposium.chat");
-        return (c.get<string>("preferredLanguage", "").trim() || vscode.env.language || "en").toLowerCase();
-    }
-
     private tr(key: string, vars?: Record<string, string | number>): string {
-        return tr(this.resolveLang(), key, vars);
+        return tr(resolveConfigLanguage(), key, vars);
     }
 
     private async onMessage(message: ConfigMessage): Promise<void> {
@@ -87,7 +83,7 @@ export class ConfigPanel {
             tr: (k, v) => this.tr(k, v),
             pushState: () => this.pushState(),
             post: (m) => { void this.panel.webview.postMessage(m); },
-            offerReload: (m) => this.offerReload(m),
+            offerReload: (message) => offerConfigReload(message, this.tr("msg.reloadWindow.action")),
         };
         if (await handleCompressionMessage(message, ctx)) { return; }
         if (await handleBackendsMessage(message, ctx)) { return; }
@@ -181,6 +177,8 @@ export class ConfigPanel {
                     else if (message.key === "symposium.voice.whisper.translate" || message.key === "symposium.voice.fasterWhisper.vad") {
                         value = message.value === "true";
                     }
+                    else if (message.key === "symposium.chat.sessionCache")
+                        { value = message.value === "true"; }
                     else if (message.key === "symposium.chat.devMode") {
                         value = message.value === "true";
                     }
@@ -204,13 +202,13 @@ export class ConfigPanel {
                 return;
             case "sync-pull": {
                 const r = await api.sync.pull();
-                this.report(this.tr("msg.sync.label.pull"), r);
+                reportSyncResult((key, vars) => this.tr(key, vars), this.tr("msg.sync.label.pull"), r);
                 await this.pushState();
                 return;
             }
             case "sync-push": {
                 const r = await api.sync.push();
-                this.report(this.tr("msg.sync.label.push"), r);
+                reportSyncResult((key, vars) => this.tr(key, vars), this.tr("msg.sync.label.push"), r);
                 await this.pushState();
                 return;
             }
@@ -265,29 +263,49 @@ export class ConfigPanel {
         }
     }
 
-    private async offerReload(message: string): Promise<void> {
-        const reload = this.tr("msg.reloadWindow.action");
-        const pick = await vscode.window.showInformationMessage(message, reload);
-        if (pick === reload) {
-            await vscode.commands.executeCommand("workbench.action.reloadWindow");
-        }
-    }
-
-    private report(label: string, r: { pushed: number; pulled: number; skipped: number; errors: string[] }): void {
-        if (r.errors.length) {
-            void vscode.window.showWarningMessage(
-                this.tr("msg.sync.report.error", { label, errors: r.errors.join(" · ") }));
-            return;
-        }
-        void vscode.window.showInformationMessage(
-            this.tr("msg.sync.report.success", { label, pulled: r.pulled, pushed: r.pushed, skipped: r.skipped }));
-    }
-
     private async pushState(): Promise<void> {
         const api = this.deps.api;
         const profile = this.deps.auth ? await this.deps.auth.getProfile().catch(() => undefined) : undefined;
         // OS-keyring persistence (drives the Sufficit-tab fallback-creds banner).
         const secretStorageWorking = this.deps.auth ? await this.deps.auth.isSecretStorageWorking().catch(() => true) : true;
+
+        // Network status: bridge, relay, VPN (Tailscale) — for the Sufficit tab.
+        const bridgeCfg = vscode.workspace.getConfiguration("symposium.bridge");
+        const { getJoinedHostname, checkTailscaleStatus } = await import("../net/tailnet");
+        const { getMachineId } = await import("../net/relayClient");
+        // Try the module-level cache first; if empty, check Tailscale directly
+        // (ensureTailnetJoined may not have run, e.g. not logged in to Sufficit).
+        let vpnHostname = getJoinedHostname();
+        if (!vpnHostname) {
+            const ts = await checkTailscaleStatus();
+            if (ts?.BackendState === "Running" && ts.Self?.HostName) {
+                vpnHostname = ts.Self.HostName;
+            }
+        }
+        const machineId = getMachineId();
+        const bridgeEnabled = bridgeCfg.get<boolean>("enabled", false);
+        const relayMode = bridgeCfg.get<string>("relay", "auto");
+        // Session cache RAM
+        let sessionCacheRam = 0;
+        let sessionCacheCount = 0;
+        try {
+            const mod = await import("../extension");
+            if (mod.sessionIndex) {
+                sessionCacheRam = mod.sessionIndex.memoryUsageBytes() ?? 0;
+                sessionCacheCount = mod.sessionIndex.listCached()?.length ?? 0;
+            }
+        } catch { /* not ready */ }
+        const networkInfo = {
+            sessionCacheRam,
+            sessionCacheCount,
+            bridgeEnabled,
+            bridgePort: bridgeCfg.get<number>("port", 47600),
+            relayMode,
+            relayMachineId: machineId,
+            relayPublicUrl: bridgeEnabled ? `https://ai.sufficit.com.br/symposium?machineId=${machineId}` : undefined,
+            vpnConnected: !!vpnHostname,
+            vpnHostname: vpnHostname ?? undefined,
+        };
 
         if (profile) {   // ensure the Sufficit native MCP server exists when logged in
             try {
@@ -335,6 +353,9 @@ export class ConfigPanel {
                 maxHistoryMessages: vscode.workspace.getConfiguration("symposium.openai").get<number>("maxHistoryMessages", 40),
                 timeGapNotice: vscode.workspace.getConfiguration("symposium.openai").get<string>("timeGapNotice", "5m"),
                 devMode: chat.get<boolean>("devMode", false),
+                sessionCache: chat.get<boolean>("sessionCache", true),
+                sessionCacheRam,
+                sessionCacheCount,
                 shellExecution: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
                 autoApprove: vscode.workspace.getConfiguration().get<boolean>("chat.tools.global.autoApprove", false),
                 voiceLanguage: root.get<string>("voice.language", "pt-BR"),
@@ -361,6 +382,7 @@ export class ConfigPanel {
             },
             // Local speech-to-text engines, models (with installed flag) and tool availability.
             stt: await getSttState().catch(() => null),
+            networkInfo,
         };
         await this.panel.webview.postMessage({ type: "state", state });
     }

@@ -29,6 +29,9 @@ import { setCodexSufficitTokenProvider, syncCodexSufficitMcp } from "./adapters/
 // Re-exported so consumers (e.g. ui/chatSurface) can keep importing from here.
 export { symposiumLog } from "./extension/log";
 
+/** SessionIndex singleton (set during activate, read by configPanel). */
+export let sessionIndex: import("./sessions/index").SessionIndex | undefined;
+
 export function activate(context: vscode.ExtensionContext): SymposiumApi {
     const output = vscode.window.createOutputChannel("Symposium");
     setSymposiumOutput(output);
@@ -48,12 +51,6 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     ];
     const adapterByBackend = new Map<string, AgentAdapter>(
         adapters.map((adapter) => [adapter.backend, adapter]));
-    const sessionIndex = new SessionIndex({
-        storageDir: context.globalStorageUri.fsPath,
-        adapters,
-        log: symposiumLog,
-    });
-    context.subscriptions.push(sessionIndex);
 
     // Live backend registry: when the user adds/imports/removes a custom backend
     // (symposium.adapters), rebuild the custom adapters IN PLACE so they're usable
@@ -204,10 +201,17 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     // a live controller can't re-inject them mid-delete.
     const deleting = new Set<string>();
 
+    sessionIndex = new SessionIndex({
+        storageDir: context.globalStorageUri.fsPath,
+        adapters,
+        log: symposiumLog,
+    });
+    context.subscriptions.push(sessionIndex);
     let indexPrimed = sessionIndex.listCached().length > 0;
     let lastReconcileAt = 0;
     const RECONCILE_INTERVAL_MS = 5_000;
     const rawSessions = (): Promise<SessionInfo[]> => {
+        if (!sessionIndex) { return Promise.resolve([]); }
         const cached = sessionIndex.listCached();
         if (indexPrimed) {
             // Stale-while-revalidate: startup and every surface receive the
@@ -222,7 +226,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         // First run has no snapshot to show. Await one shared bootstrap pass;
         // subsequent reloads are served entirely from globalStorage.
         lastReconcileAt = Date.now();
-        return sessionIndex.reconcile().then((sessions) => {
+        return sessionIndex.reconcile().then((sessions: import("./adapters/types").SessionInfo[]) => {
             indexPrimed = true;
             return sessions;
         });
@@ -234,6 +238,10 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
     const refreshAll = () => {
         void chatView.refreshSessions();
         ChatPanel.refreshSessions();
+        // Re-push session titles to active surfaces so the chat header updates
+        // when a session is renamed (not just the sessions list row).
+        ChatPanel.reMetaActive();
+        chatView.reMetaActive();
     };
     // Debounce status-driven refreshes (turns flip busy frequently).
     let statusTimer: ReturnType<typeof setTimeout> | undefined;
@@ -262,7 +270,7 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
 
     registerCommands({
         context, adapters, adapterByBackend, surfaceDeps, chatView,
-        runtime, store, api, auth, bridge, deleting, refreshAll, output,
+        runtime, sessionIndex, store, api, auth, bridge, deleting, refreshAll, output,
     });
 
     return api;

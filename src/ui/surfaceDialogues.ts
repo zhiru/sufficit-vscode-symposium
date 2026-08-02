@@ -1,16 +1,14 @@
 import * as vscode from "vscode";
-import { AgentAdapter, FollowHandle, HistoryMessage, SessionInfo, SessionStartOptions } from "../adapters/types";
-import { ChatController } from "./chatController";
+import { HistoryMessage, SessionInfo, SessionStartOptions } from "../adapters/types";
 import { TerminalSession } from "./terminalSession";
-import type { ChatSurfaceDeps } from "./chatSurface";
-import { SurfaceSync } from "./surfaceSync";
-import { ChangedFilesManager } from "./changedFiles";
 import { readWorkspaceBootstrap } from "../config/root";
 import { activeEditorContext, isSimpleBrowserOpen } from "./chatSurfaceContext";
 import { symposiumLog } from "../extension";
 import type { WebviewToHost } from "./protocol";
 import { restartFromMessage, retryLastMessage, editResend } from "./surfaceBranching";
 import { handleControllerEvent } from "./surfaceDialoguesAttach";
+import type { SurfaceDialoguesDeps } from "./surfaceDialoguesTypes";
+import { DEFAULT_BUSY_SEND_MODE } from "./sendMode";
 
 /**
  * Dialogue lifecycle for a chat surface: opening a dialogue (new / resumed /
@@ -20,30 +18,7 @@ import { handleControllerEvent } from "./surfaceDialoguesAttach";
  * surface keeps the actual session state (controller/terminal/follow handle)
  * and exposes it here via getters/setters so the surface stays the owner.
  */
-export interface SurfaceDialoguesDeps {
-    deps: ChatSurfaceDeps;
-    chatOnly: boolean;
-    /** Raw webview for boot messages that must bypass the ready-queue. */
-    webview: vscode.Webview;
-    post: (message: unknown) => void;
-    getController: () => ChatController | undefined;
-    setController: (c: ChatController | undefined) => void;
-    setControllerDetach: (detach: (() => void) | undefined) => void;
-    /** Receives the backend session id once a newly-created dialogue gets one. */
-    onSessionCreated?: (sessionId: string) => void;
-    setTerminalSession: (t: TerminalSession | undefined) => void;
-    setFollowHandle: (h: FollowHandle | undefined) => void;
-    setFollowedSessionId: (id: string | undefined) => void;
-    setSendBlockedReason: (reason: SessionInfo["continuationBlockedReason"] | "live-follow" | undefined) => void;
-    /** Selects the one adapter-owned usage singleton for this conversation. */
-    activateUsage: (adapter: AgentAdapter) => void;
-    /** Detaches (not stops) the current dialogue/terminal/follow before binding a new one. */
-    detachActive: () => void;
-    buildLangHint: () => string;
-    onTitleChange?: (title: string) => void;
-    sync: SurfaceSync;
-    changedFiles: ChangedFilesManager;
-}
+export type { SurfaceDialoguesDeps } from "./surfaceDialoguesTypes";
 
 export class SurfaceDialogues {
     constructor(private readonly d: SurfaceDialoguesDeps) { }
@@ -167,8 +142,9 @@ export class SurfaceDialogues {
             title: info.title,
             sessionsSide,
             chatOnly: this.d.chatOnly,
-            whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
+            whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", DEFAULT_BUSY_SEND_MODE),
             devMode: vscode.workspace.getConfiguration("symposium.chat").get("devMode", false),
+            openIn: vscode.workspace.getConfiguration("symposium.chat").get("openIn", "editor"),
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
         this.d.activateUsage(adapter);
@@ -246,8 +222,9 @@ export class SurfaceDialogues {
             activeFileStartColumn: activeEditorContext().startColumn,
             activeFileEndColumn: activeEditorContext().endColumn,
             activeFilePreview: activeEditorContext().preview,
-            whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
+            whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", DEFAULT_BUSY_SEND_MODE),
             devMode: vscode.workspace.getConfiguration("symposium.chat").get("devMode", false),
+            openIn: vscode.workspace.getConfiguration("symposium.chat").get("openIn", "editor"),
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
         this.d.activateUsage(adapter);
@@ -377,8 +354,9 @@ export class SurfaceDialogues {
             activeFileStartColumn: activeEditorContext().startColumn,
             activeFileEndColumn: activeEditorContext().endColumn,
             activeFilePreview: activeEditorContext().preview,
-            whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", "queue"),
+            whenBusy: vscode.workspace.getConfiguration("symposium.chat").get("whenBusy", DEFAULT_BUSY_SEND_MODE),
             devMode: vscode.workspace.getConfiguration("symposium.chat").get("devMode", false),
+            openIn: vscode.workspace.getConfiguration("symposium.chat").get("openIn", "editor"),
             execDisplay: vscode.workspace.getConfiguration("symposium.openai").get<string>("shellExecution", "silent"),
         });
         this.d.activateUsage(adapter);

@@ -14,7 +14,19 @@ import { HubClient } from "../sync/hubClient";
 function runTailscale(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
         try {
-            const child = spawn("tailscale", args, { stdio: ["ignore", "pipe", "pipe"] });
+            const bin = process.platform === "win32" ? "tailscale.exe" : "/usr/bin/tailscale";
+            const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+            child.on("error", () => {
+                // Fallback: try "tailscale" from PATH (may differ on some systems)
+                try {
+                    const child2 = spawn("tailscale", args, { stdio: ["ignore", "pipe", "pipe"] });
+                    child2.stdout.on("data", (d) => { stdout += String(d); });
+                    child2.stderr.on("data", (d) => { stderr += String(d); });
+                    child2.on("error", () => resolve({ code: null, stdout, stderr }));
+                    child2.on("exit", (code2) => resolve({ code: code2, stdout, stderr }));
+                } catch { resolve({ code: null, stdout, stderr }); }
+                return;
+            });
             let stdout = "";
             let stderr = "";
             child.stdout.on("data", (d) => { stdout += String(d); });
@@ -42,7 +54,8 @@ export function getJoinedHostname(): string | undefined {
     return joinedHostname;
 }
 
-async function readStatus(): Promise<TailscaleStatus | null> {
+/** Reads Tailscale daemon status directly (exported for configPanel VPN check). */
+export async function checkTailscaleStatus(): Promise<TailscaleStatus | null> {
     const { code, stdout } = await runTailscale(["status", "--json"]);
     if (code !== 0 || !stdout.trim()) {
         return null;
@@ -70,17 +83,18 @@ function deviceLabel(): string {
  * error surfaced to the user (login must never fail because of this).
  */
 export async function ensureTailnetJoined(hub: HubClient, log: (msg: string) => void): Promise<void> {
-    const status = await readStatus();
+    const status = await checkTailscaleStatus();
     if (status === null) {
         log("[tailnet] `tailscale` CLI not found or not responding — remote access needs it installed separately.");
         return;
     }
-    if (status.BackendState === "Running" && status.Self?.Tags?.includes("tag:symposium-host")) {
-        // Cheap lookup just for the FQDN (allowedHosts needs the full name, not the bare
-        // tailscale hostname) — no preauthkey minted, no `tailscale up` re-run.
+    if (status.BackendState === "Running" && status.Self?.HostName) {
+        // A machine that joined the tailnet (even manually, without the tag)
+        // should still show as connected so the VPN status is accurate.
         const remote = await hub.resolveSymposiumRemoteUrl();
         joinedHostname = remote?.hostname ?? status.Self.HostName;
-        return; // already joined under the right identity — nothing to do
+        log("[tailnet] already connected as " + joinedHostname);
+        return;
     }
 
     const join = await hub.joinSymposiumTailnet();

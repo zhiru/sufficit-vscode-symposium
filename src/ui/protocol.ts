@@ -66,6 +66,7 @@ export type WebviewToHost =
     | { type: "account-logout" }
     | { type: "remote-access" }
     | { type: "open-session"; sessionId: string; backend: string }
+    | { type: "open-session-editor"; sessionId: string; backend: string }
     | { type: "paste-image"; mime: string; data: string }
     | { type: "stt-transcribe"; data: string; mime: string }
     | { type: "voice-start"; vad?: boolean }
@@ -98,6 +99,7 @@ export type WebviewToHost =
     | { type: "open-settings" }
     | { type: "inspect"; target: "context" | "request" }
     | { type: "open-file"; path: string }
+    | { type: "resolve-markdown-image"; id: string; path: string }
     | { type: "reorder-pinned"; ids?: string[] }
     | { type: "file-diff"; path: string }
     | { type: "file-approve"; path: string }
@@ -131,6 +133,7 @@ export type WebviewToHost =
           retryOf?: string;
           /** One-shot note on what error interrupted the previous turn (plain Retry only). */
           interruptedBy?: string;
+          speech?: boolean;
       }
     | { type: "cancel" }
     | { type: "queue-remove"; id: number }

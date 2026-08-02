@@ -1,16 +1,5 @@
 import * as vscode from "vscode";
-import * as path from "path";
-import * as os from "os";
-import { FollowHandle, SessionInfo } from "../adapters/types";
 import { WebviewToHost } from "./protocol";
-import { ChatController } from "./chatController";
-import { TerminalSession } from "./terminalSession";
-import type { ChatSurfaceDeps } from "./chatSurface";
-import { SurfaceSync } from "./surfaceSync";
-import { SurfaceDialogues } from "./surfaceDialogues";
-import { BackendHandoff } from "./backendHandoff";
-import { ChangedFilesManager } from "./changedFiles";
-import { HubClient } from "../sync/hubClient";
 import { setTaskDone } from "../sync/tasks";
 import { removeGuardrail, clearSessionGuardrails } from "../sync/guardrails";
 import { probeRtk } from "../adapters/rtk";
@@ -19,6 +8,9 @@ import { handleFileMessage } from "./surfaceMessageFiles";
 import { handleChangedFilesMessage } from "./surfaceMessageChangedFiles";
 import { handleSessionMessage } from "./surfaceMessageSessions";
 import { symposiumLog } from "../extension";
+import type { SurfaceMessagesDeps } from "./surfaceMessagesTypes";
+import { handleMarkdownImageMessage } from "./surfaceMessageMarkdown";
+import { resolveLocalResourcePath } from "./markdownImages";
 
 /**
  * Webview → host message router for a chat surface: the big switch that turns
@@ -26,28 +18,7 @@ import { symposiumLog } from "../extension";
  * Extracted from ChatSurface; session state stays surface-owned and is reached
  * here through getters/callbacks in the deps bag.
  */
-export interface SurfaceMessagesDeps {
-    webview: vscode.Webview;
-    deps: ChatSurfaceDeps;
-    chatOnly: boolean;
-    post: (message: unknown) => void;
-    /** Marks the webview ready: flips ready, sends the host boot, flushes the queue. */
-    markReady: () => void;
-    refreshSessions: () => Promise<void>;
-    refreshQuotas: (force?: boolean) => Promise<void>;
-    openSession: (info: SessionInfo) => void;
-    /** Reveals this surface and focuses its composer after host UI detours. */
-    restoreFocus: () => Promise<void>;
-    getController: () => ChatController | undefined;
-    getTerminalSession: () => TerminalSession | undefined;
-    getFollowHandle: () => FollowHandle | undefined;
-    getSendBlockedReason: () => SessionInfo["continuationBlockedReason"] | "live-follow" | undefined;
-    sync: SurfaceSync;
-    dialogues: SurfaceDialogues;
-    handoff: BackendHandoff;
-    changedFiles: ChangedFilesManager;
-    hub: HubClient;
-}
+export type { SurfaceMessagesDeps } from "./surfaceMessagesTypes";
 
 export class SurfaceMessages {
     constructor(private readonly d: SurfaceMessagesDeps) { }
@@ -98,6 +69,14 @@ export class SurfaceMessages {
                 }
                 case "remote-access": {
                     await vscode.commands.executeCommand("symposium.showRemoteAccess");
+                    return;
+                }
+                case "open-session-editor": {
+                    const sessionsEditor = await this.d.deps.listSessions();
+                    const infoEditor = sessionsEditor.find((s) => s.sessionId === message.sessionId && s.backend === message.backend);
+                    if (infoEditor) {
+                        await vscode.commands.executeCommand("symposium.openSessionInEditor", infoEditor);
+                    }
                     return;
                 }
                 case "open-session": {
@@ -191,6 +170,9 @@ export class SurfaceMessages {
                         }
                         // Notificar a webview que o modelo foi atualizado
                         this.d.post({ type: "session-model-updated", model: message.model });
+                        // Usage is scoped by Sufficit preset. Refresh immediately
+                        // so the footer never keeps the previous preset's balance.
+                        await this.d.refreshQuotas(true);
                     }
                     return;
                 }
@@ -311,20 +293,20 @@ export class SurfaceMessages {
                 }
                 case "open-file": {
                     if (typeof message.path === "string" && message.path.trim()) {
-                        // `~` isn't a real root — path.isAbsolute("~/x") is false,
-                        // so an unexpanded tilde would fall into the cwd-relative
-                        // branch below and resolve to a bogus <cwd>/~/x path.
-                        const raw = message.path.trim().replace(/^~(?=$|[/\\])/, os.homedir());
                         // Paths clicked from free-form message text (e.g. a
                         // file-path mention in an agent reply) are workspace-
-                        // relative; tool/attachment-sourced paths are already
-                        // absolute and pass through path.isAbsolute unchanged.
-                        const cwd = this.d.getController()?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                        const resolved = path.isAbsolute(raw) ? raw : (cwd ? path.resolve(cwd, raw) : raw);
+                        // relative. file: URIs and `~` need normalization too.
+                        const cwd = this.d.getController()?.cwd ?? this.d.getTerminalSession()?.cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                        const resolved = resolveLocalResourcePath(message.path, cwd);
+                        if (!resolved) { return; }
                         // vscode.open handles text AND binary (images open in the
                         // image preview), unlike openTextDocument.
                         await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(resolved), { preview: true });
                     }
+                    return;
+                }
+                case "resolve-markdown-image": {
+                    await handleMarkdownImageMessage(message, this.d);
                     return;
                 }
                 case "reorder-pinned": {

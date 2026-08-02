@@ -1,4 +1,7 @@
 import { EventEmitter } from "events";
+import type { SessionInfo } from "./sessionInfo";
+
+export type { SessionInfo } from "./sessionInfo";
 
 /** Backend identifiers for the supported agent CLIs. */
 // Built-in backends are "claude" | "codex" | "copilot" | "openai"; custom
@@ -24,17 +27,23 @@ export interface UsageQuotaWindow {
     label?: string;
     /** Percentage consumed, normalized to the inclusive 0..100 range. */
     usedPercent: number;
+    /** Percentage still available, when the provider reports it directly. */
+    remainingPercent?: number;
     /** Rolling-window duration when the provider reports it. */
     windowMinutes?: number;
     /** Absolute reset time as Unix milliseconds. */
     resetsAt?: number;
     /** Provider status such as allowed, warning, or rejected. */
     status?: string;
+    /** Provider-owned balance or limit detail shown below the progress bar. */
+    detail?: string;
 }
 
 export type AdapterQuotaSnapshot = {
     backend: AgentBackend;
     displayName?: string;
+    /** Aggregate health reported for a routed preset; independent of provider quotas. */
+    healthPercent?: number;
     plan?: string;
     limitName?: string;
     windows: UsageQuotaWindow[];
@@ -46,7 +55,7 @@ export type AdapterQuotaSnapshot = {
 export interface AdapterUsageProvider {
     readonly backend: AgentBackend;
     readonly displayName: string;
-    read(force?: boolean): Promise<AdapterQuotaSnapshot>;
+    read(force?: boolean, context?: { model?: string }): Promise<AdapterQuotaSnapshot>;
 }
 
 /** A normalized event emitted by any adapter while a turn is running. */
@@ -124,39 +133,6 @@ export type AgentEvent =
         firstDeltaMs?: number;
     }
     | { kind: "error"; message: string; retryable?: boolean; fatal?: boolean; historical?: boolean };
-
-/** A session known to a backend, listed in the sessions tree. */
-export interface SessionInfo {
-    backend: AgentBackend;
-    /** Friendly adapter name shown in the sessions list, e.g. "Sufficit AI". */
-    backendName?: string;
-    sessionId: string;
-    title: string;
-    cwd?: string;
-    /** Git branch the session was working on (when the backend records it). Used to group sessions by task/feature. */
-    gitBranch?: string;
-    /** Original/root conversation id (claude-mem originSessionId). Sessions sharing it are the SAME logical conversation (continuations / re-runs). */
-    lineageId?: string;
-    updatedAt?: Date;
-    /** Path to the stored transcript, when the backend keeps one. */
-    transcriptPath?: string;
-    /** Last model used in this session, when the backend records one (resume hint). */
-    model?: string;
-    /** Set by the session store; true when the user archived it. */
-    archived?: boolean;
-    /** Set by the session store; true when pinned to the top. */
-    pinned?: boolean;
-    /** Order within the pinned group (0 = first). */
-    pinIndex?: number;
-    /** Live runtime status: a session with a running controller. */
-    status?: "working" | "idle";
-    /** True while a permanent delete / scrub is in progress in the background. */
-    deleting?: boolean;
-    parentId?: string; // spawned subagent parent (renders nested in the list)
-    continuationBlockedReason?: "codex-subagent"; // direct composer continuation is unsupported
-    /** ID do preset de compressão configurado para esta seção (vazio usa padrão global). */
-    compressionPresetId?: string;
-}
 
 /** One past message reconstructed from a stored transcript. */
 export interface HistoryMessage {

@@ -4,7 +4,6 @@ import { ChatController } from "./chatController";
 import { WebviewToHost, AgentPickerEntry } from "./protocol";
 import { renderHtml } from "./chatHtml";
 import { TerminalSession } from "./terminalSession";
-import { LiveSessions } from "../sessions/runtime";
 import { symposiumLog } from "../extension";
 import { ChangedFilesManager } from "./changedFiles";
 import { BackendHandoff } from "./backendHandoff";
@@ -12,36 +11,11 @@ import { SurfaceSync } from "./surfaceSync";
 import { SurfaceDialogues } from "./surfaceDialogues";
 import { SurfaceMessages } from "./surfaceMessages";
 import { HubClient } from "../sync/hubClient";
-import { activeEditorContext, isSimpleBrowserOpen } from "./chatSurfaceContext";
+import { activeEditorContext, isSimpleBrowserOpen, presetQuotaLoadingEvent } from "./chatSurfaceContext";
 import { pushVoicePreferences } from "./voicePreferences";
+import type { ChatSurfaceDeps } from "./chatSurfaceTypes";
 
-export interface ChatSurfaceDeps {
-    adapterByBackend: Map<string, AgentAdapter>;
-    listSessions(): Promise<SessionInfo[]>;
-    cwdFor(info: SessionInfo): string;
-    runtime: LiveSessions;
-    /** Remembers the last active session so it can be restored next launch. */
-    lastActive: {
-        get(): { backend: string; sessionId: string } | undefined;
-        set(value: { backend: string; sessionId: string } | undefined): void;
-    };
-    /** Sufficit account for the sessions-pane footer (avatar + login/logout). */
-    account?: {
-        get(force?: boolean): Promise<{ name?: string; email?: string; picture?: string } | undefined>;
-        onDidChange: vscode.Event<void>;
-    };
-    /** Per-adapter model preferences: pinned list + default override. */
-    modelPrefs: {
-        getPinned(backend: string): string[];
-        setPinned(backend: string, models: string[]): void;
-        setDefault(backend: string, model: string | undefined): Thenable<void>;
-    };
-    /** Session metadata store (titles, archive, pin, parent relationships). */
-    store: {
-        setParent(sessionId: string, parentId: string | undefined): void;
-        setLineage(sessionId: string, lineageId: string | undefined): void;
-    };
-}
+export type { ChatSurfaceDeps } from "./chatSurfaceTypes";
 
 /**
  * Wires one webview (sidebar view or editor panel) to the chat machinery:
@@ -60,6 +34,7 @@ export class ChatSurface {
     private loggedIn = false;   // cached Sufficit login state (for system hints)
     private queue: unknown[] = [];
     private activeUsage: AdapterUsageProvider | undefined;
+    private activeQuotaModel: string | null | undefined;
     private quotaGeneration = 0;
     private quotaRefreshTimer: ReturnType<typeof setInterval> | undefined;
     private readonly hub = new HubClient();
@@ -203,6 +178,7 @@ export class ChatSurface {
 
     private activateUsage(adapter: AgentAdapter): void {
         this.activeUsage = adapter.usage;
+        this.activeQuotaModel = null;
         this.quotaGeneration++;
         void this.refreshQuotas();
     }
@@ -211,16 +187,26 @@ export class ChatSurface {
         const usage = this.activeUsage;
         if (!usage) { return; }
         const generation = this.quotaGeneration;
+        const model = this.controller?.getModel() || undefined;
+        if (usage.backend === "openai" && model !== this.activeQuotaModel) {
+            this.activeQuotaModel = model; this.post(presetQuotaLoadingEvent(usage));
+        }
         this.post({ type: "quota-loading", loading: true });
         try {
-            const snapshot = await usage.read(force);
+            const snapshot = await usage.read(force, { model });
             if (generation !== this.quotaGeneration || usage !== this.activeUsage) { return; }
             this.post({ type: "event", event: { kind: "quota", ...snapshot } });
-            this.post({ type: "quota-loading", loading: false, backend: usage.backend });
         } catch (error) {
             if (generation !== this.quotaGeneration || usage !== this.activeUsage) { return; }
             symposiumLog(`[quota] Failed to read local adapter usage: ${error instanceof Error ? error.message : String(error)}`);
             this.post({ type: "quota-loading", loading: false, backend: usage.backend, error: true });
+        } finally {
+            // ALWAYS turn off the loading spinner — even when the session changed
+            // during the await (generation mismatch) or an early return happened.
+            // Without this the spinner can get stuck forever.
+            if (generation === this.quotaGeneration && usage === this.activeUsage) {
+                this.post({ type: "quota-loading", loading: false, backend: usage.backend });
+            }
         }
     }
 
@@ -268,6 +254,22 @@ export class ChatSurface {
             type: "sessions",
             items: sessions.map((s) => ({ ...s, updatedAt: s.updatedAt?.toISOString() })),
         });
+    }
+
+    /** Re-pushes the active session's title to the webview (so a rename is
+     *  reflected in the chat header, not just the sessions list row). */
+    async reMetaActive(): Promise<void> {
+        const controller = this.controller;
+        if (!controller?.sessionId) { return; }
+        // Read the decorated title (includes custom renames) from the session list.
+        try {
+            const sessions = await this.deps.listSessions();
+            const info = sessions.find((s) => s.sessionId === controller.sessionId);
+            const title = info?.title ?? controller?.title ?? "";
+            this.post({ type: "title-update", title });
+        } catch {
+            this.post({ type: "title-update", title: controller?.title ?? "" });
+        }
     }
 
     /**

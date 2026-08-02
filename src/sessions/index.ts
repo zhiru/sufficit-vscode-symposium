@@ -62,6 +62,33 @@ export class SessionIndex {
         this.generation++;
     }
 
+    /**
+     * Evicts a permanently deleted session immediately from memory and the
+     * persistent index. Incrementing the generation also prevents a provider
+     * scan that started before the physical scrub from restoring its stale row.
+     */
+    forget(backend: string, sessionId: string): void {
+        this.generation++;
+        if (!this.sessions.delete(keyOf({ backend, sessionId }))) { return; }
+        const remaining = [...this.sessions.values()].filter((session) => session.backend === backend);
+        try {
+            this.repository.replaceProvider(backend, remaining);
+        } catch (error) {
+            this.log(`[sessions] failed to persist deletion for ${backend}/${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /** Approximate memory used by the in-memory session catalog (bytes). */
+    memoryUsageBytes(): number {
+        let total = 0;
+        for (const [key, session] of this.sessions) {
+            // Rough estimate: key length + JSON-serialized session size
+            total += key.length * 2;  // UTF-16 chars
+            total += JSON.stringify(session).length * 2;
+        }
+        return total;
+    }
+
     dispose(): void {
         this.disposed = true;
         this.generation++;
@@ -75,9 +102,19 @@ export class SessionIndex {
                 const cached = [...this.sessions.values()]
                     .filter((session) => session.backend === adapter.backend)
                     .map(fromStored);
-                const listed = adapter.listSessionsIncremental
-                    ? await adapter.listSessionsIncremental(cached)
-                    : await adapter.listSessions();
+                let listed: SessionInfo[];
+                try {
+                    listed = adapter.listSessionsIncremental
+                        ? await adapter.listSessionsIncremental(cached)
+                        : await adapter.listSessions();
+                } catch {
+                    // Incremental path failed: retry the full listing once. If that
+                    // fails too the error must propagate — a failed provider keeps
+                    // its last known-good rows instead of being wiped as "empty".
+                    listed = await adapter.listSessions();
+                }
+                // Guard: if listSessions returned undefined/null, use empty array
+                if (!Array.isArray(listed)) { listed = []; }
                 return { backend: adapter.backend, listed: await Promise.all(listed.map(toStored)) };
             } catch (error) {
                 this.log(`[sessions] ${adapter.backend} reconciliation failed: ${error instanceof Error ? error.message : String(error)}`);

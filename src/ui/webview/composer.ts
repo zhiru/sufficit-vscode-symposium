@@ -139,6 +139,11 @@ window.addEventListener("symposium-voice-ended", () => {
     send(mode);
 });
 
+// Tracks whether the current input text originated from speech-to-text.
+// Set when a voice transcript lands; cleared on manual edit/send.
+let lastInputWasSpeech = false;
+export function setSpeechInput(v: boolean): void { lastInputWasSpeech = v; }
+
 export function send(modeOverride) {
     if (composerBlockedReason) { return; }
     if (isVoiceRecording()) {
@@ -191,7 +196,10 @@ export function send(modeOverride) {
         autonomy: autonomyValue,
         editFrom: editFrom,
         clientMessageId,
+        speech: lastInputWasSpeech,
     };
+    // Reset the speech flag after send so a manual follow-up isn't marked.
+    lastInputWasSpeech = false;
     vscode.postMessage(payload);
     // A plain send while busy is QUEUED host-side (see ChatController.onSend) —
     // it won't actually dispatch until the current turn ends. Showing the
@@ -250,12 +258,6 @@ input.addEventListener("keydown", (e) => {
         if (e.key === "ArrowUp") { e.preventDefault(); slashSel = (slashSel - 1 + slashMatches.length) % slashMatches.length; renderSlash(); return; }
         if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); acceptSlash(slashSel); return; }
         if (e.key === "Escape") { e.preventDefault(); slash.style.display = "none"; return; }
-    }
-    // Shift+Enter alone (no Ctrl/Alt) = redirect (cancel + correct next).
-    if (e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        send("redirect");
-        return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
