@@ -98,9 +98,8 @@ window.addEventListener("message", ({ data }) => {
             break;
         }
         case "history-end": {
-            // Position the viewport at the useful tail before revealing it.
-            // A second snap on the next frame covers markdown/font layout that
-            // settles between DOM insertion and paint.
+            // Keep snapping until the rendered tail is stable. WSL/Electron can
+            // finish markdown/font layout several frames after history replay.
             const cycle = historyCycle;
             settleAtBottom(() => cycle === historyCycle, () => setLoading(false));
             break;

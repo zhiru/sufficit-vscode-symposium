@@ -29,13 +29,18 @@ export class SurfaceMessages {
             switch (message?.type) {
                 case "ready": {
                     this.d.markReady();
-                    if (!this.d.chatOnly) { void this.d.refreshSessions(); }
+                    // Editor tabs are either pre-bound by their opening command or
+                    // intentionally blank for the agent picker. Never start a global
+                    // transcript scan for them: opening New Chat must stay O(1).
+                    if (!this.d.chatOnly) {
+                        void this.d.refreshSessions();
+                    }
                     void this.d.sync.pushAccount();
                     void this.d.sync.refreshTasks();
                     void this.d.sync.refreshGuardrails();
-                    // Nothing bound yet (view just opened): restore the last
-                    // active session if we have one, else start a fresh dialogue.
-                    if (!this.d.getController() && !this.d.getFollowHandle() && !this.d.getTerminalSession()) {
+                    // Only the sidebar restores the last active conversation. A
+                    // blank editor tab is owned by its picker/open command.
+                    if (!this.d.chatOnly && !this.d.getController() && !this.d.getFollowHandle() && !this.d.getTerminalSession()) {
                         void this.d.dialogues.restoreOrStart();
                     }
                     return;

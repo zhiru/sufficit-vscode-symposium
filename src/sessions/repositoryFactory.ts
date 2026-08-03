@@ -1,6 +1,7 @@
 import { JsonSessionRepository } from "./jsonRepository";
 import { InMemorySessionRepository } from "./memoryRepository";
 import { SessionRepository } from "./repository";
+import { NodeSqliteSessionRepository } from "./sqliteRepository";
 
 export interface SessionRepositoryFactoryOptions {
     storageDir: string;
@@ -36,7 +37,9 @@ export function createSessionRepository(options: SessionRepositoryFactoryOptions
 
 function defaultFactories(options: SessionRepositoryFactoryOptions): (() => SessionRepository)[] {
     const factories: (() => SessionRepository)[] = [];
-    // SQLite backend not included in this build — memory + JSON only.
+    if (!options.disableSqlite) {
+        factories.push(() => new NodeSqliteSessionRepository(options.storageDir));
+    }
     factories.push(() => new JsonSessionRepository(options.storageDir));
     factories.push(() => new InMemorySessionRepository());
     return factories;

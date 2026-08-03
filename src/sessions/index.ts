@@ -108,7 +108,10 @@ export class SessionIndex {
                         ? await adapter.listSessionsIncremental(cached)
                         : await adapter.listSessions();
                 } catch {
-                    listed = await adapter.listSessions().catch(() => []);
+                    // Incremental path failed: retry the full listing once. If that
+                    // fails too the error must propagate — a failed provider keeps
+                    // its last known-good rows instead of being wiped as "empty".
+                    listed = await adapter.listSessions();
                 }
                 // Guard: if listSessions returned undefined/null, use empty array
                 if (!Array.isArray(listed)) { listed = []; }

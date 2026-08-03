@@ -205,7 +205,6 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         storageDir: context.globalStorageUri.fsPath,
         adapters,
         log: symposiumLog,
-        disableSqlite: true,
     });
     context.subscriptions.push(sessionIndex);
     let indexPrimed = sessionIndex.listCached().length > 0;
@@ -215,12 +214,17 @@ export function activate(context: vscode.ExtensionContext): SymposiumApi {
         if (!sessionIndex) { return Promise.resolve([]); }
         const cached = sessionIndex.listCached();
         if (indexPrimed) {
+            // Stale-while-revalidate: startup and every surface receive the
+            // persisted snapshot immediately. Throttled provider reconciliation
+            // stays off the UI path and remains single-flight inside SessionIndex.
             if (Date.now() - lastReconcileAt >= RECONCILE_INTERVAL_MS) {
                 lastReconcileAt = Date.now();
                 void sessionIndex.reconcile();
             }
             return Promise.resolve(cached);
         }
+        // First run has no snapshot to show. Await one shared bootstrap pass;
+        // subsequent reloads are served entirely from globalStorage.
         lastReconcileAt = Date.now();
         return sessionIndex.reconcile().then((sessions: import("./adapters/types").SessionInfo[]) => {
             indexPrimed = true;
